@@ -1,0 +1,733 @@
+import sqlite3
+import logging
+import os
+import json
+from src.core import core_handler
+
+class LinkMasterRegistry:
+    """Manages the list of applications in the global plugins.db."""
+    def __init__(self):
+        self.logger = logging.getLogger("LinkMasterRegistry")
+        self.db_path = core_handler.db_path
+        self._create_tables()
+
+    def get_connection(self):
+        return sqlite3.connect(self.db_path)
+
+    def _create_tables(self):
+        schema = [
+            '''CREATE TABLE IF NOT EXISTS lm_apps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                storage_root TEXT NOT NULL,
+                target_root TEXT NOT NULL,
+                target_root_2 TEXT,
+                default_subpath TEXT,
+                managed_folder_name TEXT DEFAULT '_LinkMaster_Assets',
+                conflict_policy TEXT DEFAULT 'backup',
+                deployment_type TEXT DEFAULT 'folder',
+                cover_image TEXT,
+                last_target TEXT DEFAULT 'target_root',
+                default_category_style TEXT DEFAULT 'image',
+                default_package_style TEXT DEFAULT 'image'
+
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )'''
+        ]
+        with self.get_connection() as conn:
+            for sql in schema:
+                conn.execute(sql)
+            # Migration check
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN last_target TEXT DEFAULT 'target_root'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_category_style TEXT DEFAULT 'image'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_package_style TEXT DEFAULT 'image'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN executables TEXT DEFAULT '[]'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN url_list TEXT DEFAULT '[]'")
+            except: pass
+
+            conn.commit()
+
+    def get_setting(self, key: str, default: str = None) -> str:
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM lm_settings WHERE key = ?", (key,))
+            res = cur.fetchone()
+            return res[0] if res else default
+
+    def set_setting(self, key: str, value: str):
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR REPLACE INTO lm_settings (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+
+    def get_global(self, key: str, default=None):
+        """Get a global setting value. Returns default if not found."""
+        result = self.get_setting(key)
+        if result is None:
+            return default
+        # Try to parse as int/float if possible
+        try:
+            return int(result)
+        except (ValueError, TypeError):
+            try:
+                return float(result)
+            except (ValueError, TypeError):
+                return result
+
+    def set_global(self, key: str, value):
+        """Set a global setting value."""
+        self.set_setting(key, str(value))
+
+    def get_apps(self):
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_apps")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def add_app(self, data: dict):
+        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, default_subpath, managed_folder_name, conflict_policy, deployment_type, cover_image)
+                 VALUES (:name, :storage_root, :target_root, :target_root_2, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :cover_image)'''
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, data)
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_app(self, app_id: int, data: dict):
+        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'managed_folder_name', 
+                      'default_subpath', 'conflict_policy', 'deployment_type', 'cover_image', 'last_target',
+                      'default_category_style', 'default_package_style', 'executables', 'url_list']
+
+        parts = []
+        params = []
+        for k in valid_keys:
+            if k in data:
+                parts.append(f"{k} = ?")
+                params.append(data[k])
+        if not parts: return
+        sql = f"UPDATE lm_apps SET {', '.join(parts)} WHERE id = ?"
+        params.append(app_id)
+        with self.get_connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
+    def delete_app(self, app_id: int):
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_apps WHERE id = ?", (app_id,))
+            conn.commit()
+
+    def update_app_cover(self, app_id: int, cover_image: str):
+        self.update_app(app_id, {'cover_image': cover_image})
+
+    def update_app_last_target(self, app_id: int, last_target: str):
+        self.update_app(app_id, {'last_target': last_target})
+
+class LinkMasterDB:
+    """Manages application-specific data in resource/app/<app_name>/dyonis.db."""
+    def __init__(self, app_name: str = None, db_path: str = None):
+        self.app_name = app_name
+        self.logger = logging.getLogger(f"LinkMasterDB.{app_name or 'Default'}")
+        
+        if db_path:
+            self.db_path = db_path
+        elif app_name:
+            # Standard path: resource/app/<name>/dyonis.db
+            # This points to the Plugin_Manager root. We need to go up from src/core/link_master/
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            app_dir = os.path.join(project_root, "resource", "app", app_name)
+            os.makedirs(app_dir, exist_ok=True)
+            self.db_path = os.path.join(app_dir, "dyonis.db")
+            
+            # Migration: link_master.db -> dyonis.db
+            old_db_path = os.path.join(app_dir, "link_master.db")
+            if os.path.exists(old_db_path) and not os.path.exists(self.db_path):
+                import shutil
+                try:
+                    shutil.copy2(old_db_path, self.db_path)
+                    self.logger.info(f"[Migration] Copied link_master.db -> dyonis.db for {app_name}")
+                except PermissionError:
+                    self.logger.warning(f"[Migration] Could not migrate link_master.db (file in use) - using old DB instead")
+                    self.db_path = old_db_path  # Fallback to old path if locked
+        else:
+            self.db_path = core_handler.db_path # Fallback to global
+            self.logger.debug("LinkMasterDB created without app_name - using global DB fallback.")
+            # Skip table creation for global DB - app-specific tables should not exist there
+            return  # Exit __init__ without creating tables
+            
+        self._create_tables()
+
+    def get_connection(self):
+        return sqlite3.connect(self.db_path)
+
+    def _create_tables(self):
+        schema = [
+            '''CREATE TABLE IF NOT EXISTS lm_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                version TEXT,
+                description TEXT,
+                author TEXT,
+                storage_rel_path TEXT NOT NULL,
+                preview_rel_path TEXT,
+                is_enabled INTEGER DEFAULT 0,
+                last_updated TEXT
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_folder_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rel_path TEXT NOT NULL,
+                folder_type TEXT DEFAULT 'package',
+                display_style TEXT DEFAULT 'image',
+                display_name TEXT,
+                image_path TEXT,
+                manual_preview_path TEXT, -- Phase 16.5
+                is_terminal INTEGER DEFAULT 0,
+                tags TEXT,
+                target_override TEXT,     -- Phase 16
+                deployment_rules TEXT,     -- Phase 16 (JSON)
+                deploy_type TEXT,          -- Phase 18.15 (Override)
+                conflict_policy TEXT,      -- Phase 18.15 (Override)
+                conflict_tag TEXT,         -- Phase 28: Tag to check for conflicts
+                conflict_scope TEXT,       -- Phase 28: Scope for conflict check (disabled/category/global)
+                description TEXT,          -- Phase 28: User description
+                inherit_tags INTEGER DEFAULT 1, -- Phase 18 (Allow blocking inheritance)
+                trash_origin TEXT, -- Phase 18.11: Store original path for restore
+                UNIQUE(rel_path)
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                icon_rel_path TEXT,
+                category TEXT,
+                is_inheritable INTEGER DEFAULT 1 -- Phase 18.9
+            )''',
+
+            '''CREATE TABLE IF NOT EXISTS lm_item_tags (
+                item_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY(item_id, tag_id)
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_preset_items (
+                preset_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                PRIMARY KEY(preset_id, item_id)
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_preset_folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                is_expanded INTEGER DEFAULT 1
+            )'''
+        ]
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for sql in schema:
+                cursor.execute(sql)
+            
+            # Migrations
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN target_override TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deployment_rules TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN manual_preview_path TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN inherit_tags INTEGER DEFAULT 1")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_tags ADD COLUMN is_inheritable INTEGER DEFAULT 1")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN trash_origin TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deploy_type TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN conflict_policy TEXT")
+            except: pass
+            
+            # Phase 28 Migrations
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN conflict_tag TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN conflict_scope TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN description TEXT")
+            except: pass
+            try:
+                # Phase 28: Cache for link status to avoid expensive recursive scans
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN last_known_status TEXT DEFAULT 'none'")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_visible INTEGER DEFAULT 1")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN display_style_package TEXT DEFAULT 'image'")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_presets ADD COLUMN folder TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN sort_order INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_presets ADD COLUMN sort_order INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_presets ADD COLUMN folder_id INTEGER DEFAULT NULL")
+            except: pass
+            
+            # Phase 4 New Features: Library Management
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_library INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_name TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_version TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_deps TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_priority INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_priority_mode TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_memo TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_hidden INTEGER DEFAULT 0")
+            except: pass
+            
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN author TEXT")
+            except: pass
+            
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN size_bytes INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN scanned_at TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN url TEXT")
+            except: pass
+            
+            # Favorite & URL List Enhancement
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_favorite INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN score INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN url_list TEXT")
+            except: pass
+
+            # Phase X: Persistent Visual Flags
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN has_logical_conflict INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_library_alt_version INTEGER DEFAULT 0")
+            except: pass
+
+            # Create indexes for performance
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_lib_name ON lm_folder_config (lib_name)")
+            except: pass
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_is_library ON lm_folder_config (is_library)")
+            except: pass
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_status ON lm_folder_config (last_known_status)")
+            except: pass
+            
+            conn.commit()
+
+    # --- Item Methods ---
+    def get_items(self):
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_items")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_or_create_item(self, name: str, rel_path: str):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM lm_items WHERE storage_rel_path = ?", (rel_path,))
+            row = cursor.fetchone()
+            if row: return row[0]
+            
+            cursor.execute("INSERT INTO lm_items (name, storage_rel_path, is_enabled) VALUES (?, ?, 0)", (name, rel_path))
+            conn.commit()
+            return cursor.lastrowid
+
+    def set_item_enabled_state(self, item_id: int, is_enabled: bool):
+        with self.get_connection() as conn:
+            conn.execute("UPDATE lm_items SET is_enabled = ? WHERE id = ?", (1 if is_enabled else 0, item_id))
+            conn.commit()
+
+    # --- Preset Methods ---
+    def create_preset(self, name: str, item_ids: list, description: str = None, folder: str = None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO lm_presets (name, description, folder) VALUES (?, ?, ?)", (name, description, folder))
+            preset_id = cursor.lastrowid
+            vals = [(preset_id, iid) for iid in item_ids]
+            cursor.executemany("INSERT INTO lm_preset_items (preset_id, item_id) VALUES (?, ?)", vals)
+            conn.commit()
+            return preset_id
+
+    def get_presets(self):
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_presets")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_preset_items(self, preset_id: int):
+        sql = "SELECT i.* FROM lm_items i JOIN lm_preset_items pi ON pi.item_id = i.id WHERE pi.preset_id = ?"
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(sql, (preset_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_preset(self, preset_id: int):
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_presets WHERE id = ?", (preset_id,))
+            conn.commit()
+
+    def update_preset(self, preset_id: int, **kwargs):
+        """Update preset metadata like name, description, or sort_order."""
+        valid_cols = ['name', 'description', 'folder', 'sort_order']
+        updates = []
+        params = []
+        for k, v in kwargs.items():
+            if k in valid_cols:
+                updates.append(f"{k} = ?")
+                params.append(v)
+        if not updates: return
+        
+        sql = f"UPDATE lm_presets SET {', '.join(updates)} WHERE id = ?"
+        params.append(preset_id)
+        with self.get_connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
+    def update_preset_order(self, order_list: list):
+        """Update sort_order for multiple presets at once.
+        order_list: list of preset_id in the desired order.
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for i, p_id in enumerate(order_list):
+                cursor.execute("UPDATE lm_presets SET sort_order = ? WHERE id = ?", (i, p_id))
+            conn.commit()
+
+    # --- Preset Folder Methods ---
+    def create_preset_folder(self, name: str) -> int:
+        """Create a new preset folder."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO lm_preset_folders (name) VALUES (?)", (name,))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_preset_folders(self) -> list:
+        """Get all preset folders."""
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_preset_folders ORDER BY sort_order, name")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_preset_folder(self, folder_id: int, **kwargs):
+        """Update preset folder metadata."""
+        valid_cols = ['name', 'sort_order', 'is_expanded']
+        updates = []
+        params = []
+        for k, v in kwargs.items():
+            if k in valid_cols:
+                updates.append(f"{k} = ?")
+                params.append(v)
+        if not updates: return
+        
+        sql = f"UPDATE lm_preset_folders SET {', '.join(updates)} WHERE id = ?"
+        params.append(folder_id)
+        with self.get_connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
+    def delete_preset_folder(self, folder_id: int):
+        """Delete a preset folder. Presets in this folder will be moved to root."""
+        with self.get_connection() as conn:
+            # Move presets to root (folder_id = NULL)
+            conn.execute("UPDATE lm_presets SET folder_id = NULL WHERE folder_id = ?", (folder_id,))
+            conn.execute("DELETE FROM lm_preset_folders WHERE id = ?", (folder_id,))
+            conn.commit()
+
+    def move_preset_to_folder(self, preset_id: int, folder_id: int = None):
+        """Move a preset to a folder. folder_id=None means root."""
+        with self.get_connection() as conn:
+            conn.execute("UPDATE lm_presets SET folder_id = ? WHERE id = ?", (folder_id, preset_id))
+            conn.commit()
+
+    def update_folder_order(self, order_list: list):
+        """Update sort_order for preset folders."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for i, f_id in enumerate(order_list):
+                cursor.execute("UPDATE lm_preset_folders SET sort_order = ? WHERE id = ?", (i, f_id))
+            conn.commit()
+
+    # --- Folder Config ---
+    def get_folder_config(self, rel_path: str):
+        # Normalize path to forward slashes for consistent DB lookup
+        rel_path = rel_path.replace('\\', '/') if rel_path else rel_path
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_all_folder_configs(self):
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_folder_config")
+            rows = cursor.fetchall()
+            return {r['rel_path']: dict(r) for r in rows}
+
+    def store_item_origin(self, rel_path, origin_rel_path):
+        """Phase 18.11: Store the original relative path of an item before moving it (e.g. to Trash)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE lm_folder_config SET trash_origin = ? WHERE rel_path = ?", (origin_rel_path, rel_path))
+            conn.commit()
+
+    def get_item_origin(self, rel_path):
+        """Phase 18.11: Get the original relative path for restore."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT trash_origin FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def delete_folder_config(self, rel_path: str):
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+            conn.commit()
+
+    def reset_app_folder_configs(self):
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_folder_config")
+            conn.execute("DELETE FROM lm_items") # Reset link states too
+            conn.commit()
+
+    def update_folder_display_config(self, rel_path: str, **kwargs):
+        """Update display config for a folder (Upsert)."""
+        # Normalize path to forward slashes for consistent DB storage
+        rel_path = rel_path.replace('\\', '/') if rel_path else rel_path
+        valid_cols = ['app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
+                      'tags', 'is_terminal', 'target_override', 'deployment_rules', 'inherit_tags', 'is_visible',
+                      'deploy_type', 'conflict_policy', 'sort_order', 'last_known_status',
+                      'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
+                      'is_favorite', 'score', 'url_list',
+                      'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
+                      'has_logical_conflict', 'is_library_alt_version',
+                      'size_bytes', 'scanned_at']
+        updates = []
+        params = []
+        for k, v in kwargs.items():
+            if k in valid_cols:
+                # Include None values to allow clearing fields
+                updates.append(f"{k} = ?")
+                params.append(v)  # None will be saved as NULL, clearing the field
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Phase 28 Fix: Case-Insensitive Lookup on Windows to prevent duplicate entries
+            # If we have 'Path' and try to update 'path', we should update 'Path'.
+            target_id = None
+            if os.name == 'nt':
+                cursor.execute("SELECT id, rel_path FROM lm_folder_config WHERE LOWER(rel_path) = ?", (rel_path.lower(),))
+            else:
+                cursor.execute("SELECT id, rel_path FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+            
+            row = cursor.fetchone()
+            if row:
+                target_id = row[0]
+                # If we found it by case-insensitive match, use the EXISTING casing for the update if we aren't changing it?
+                # Actually, we rely on ID.
+            
+            if target_id:
+                # Only update if there are updates
+                if updates:
+                    params.append(target_id)
+                    cursor.execute(f"UPDATE lm_folder_config SET {', '.join(updates)} WHERE id = ?", params)
+            else:
+                # Insert new record - always insert even with no kwargs (just rel_path)
+                insert_cols = ['rel_path']
+                insert_params = [rel_path]
+                for k, v in kwargs.items():
+                    if k in valid_cols and v is not None:
+                        insert_cols.append(k)
+                        insert_params.append(v)
+                placeholders = ['?'] * len(insert_cols)
+                cursor.execute(f"INSERT INTO lm_folder_config ({', '.join(insert_cols)}) VALUES ({', '.join(placeholders)})", insert_params)
+            conn.commit()
+
+
+    def update_visual_flags_bulk(self, updates: dict):
+        """
+        Efficiently update visual flags for multiple paths in a single transaction.
+        'updates' should be: { rel_path: { 'has_logical_conflict': 0/1, 'is_library_alt_version': 0/1 } }
+        """
+        if not updates: return
+        
+        sql = """
+        UPDATE lm_folder_config 
+        SET has_logical_conflict = ?, is_library_alt_version = ?
+        WHERE rel_path = ?
+        """
+        
+        # Prepare params list for executemany
+        params = []
+        for rel_p, flags in updates.items():
+            # Standardize path
+            rel_p = rel_p.replace('\\', '/') if rel_p else rel_p
+            params.append((
+                flags.get('has_logical_conflict', 0),
+                flags.get('is_library_alt_version', 0),
+                rel_p
+            ))
+            
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.executemany(sql, params)
+            conn.commit()
+
+    def get_folder_tags(self, rel_path: str) -> list:
+        config = self.get_folder_config(rel_path)
+        if config and config.get('tags'):
+            return [t.strip() for t in config['tags'].split(',') if t.strip()]
+        return []
+
+    def get_all_tags(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT tags FROM lm_folder_config WHERE tags IS NOT NULL AND tags != ''")
+            rows = cursor.fetchall()
+            unique = set()
+            for r in rows:
+                unique.update([t.strip() for t in r[0].split(',') if t.strip()])
+            return sorted(list(unique))
+
+    # --- Frequent Tag Management (lm_tags) ---
+    def get_tag_definitions(self):
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM lm_tags")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_tag_definition(self, tag_id: int, tags_data: dict):
+        valid_keys = ['name', 'icon_rel_path', 'category', 'is_inheritable']
+        parts = []
+        params = []
+        for k in valid_keys:
+            if k in tags_data:
+                parts.append(f"{k} = ?")
+                params.append(tags_data[k])
+        if not parts: return
+        sql = f"UPDATE lm_tags SET {', '.join(parts)} WHERE id = ?"
+        params.append(tag_id)
+        with self.get_connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
+    def add_tag_definition(self, tags_data: dict):
+        sql = "INSERT INTO lm_tags (name, icon_rel_path, category, is_inheritable) VALUES (:name, :icon_rel_path, :category, :is_inheritable)"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # Ensure defaults for insert
+            if 'is_inheritable' not in tags_data: tags_data['is_inheritable'] = 1
+            cursor.execute(sql, tags_data)
+            conn.commit()
+            return cursor.lastrowid
+
+    def delete_tag_definition(self, tag_id: int):
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_tags WHERE id = ?", (tag_id,))
+            conn.commit()
+
+    def get_non_inheritable_tag_names(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM lm_tags WHERE is_inheritable = 0")
+            return {row[0].lower() for row in cursor.fetchall()}
+
+    # --- Settings ---
+    def get_setting(self, key: str, default: str = None) -> str:
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM lm_settings WHERE key = ?", (key,))
+            res = cur.fetchone()
+            return res[0] if res else default
+
+    def set_setting(self, key: str, value: str):
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR REPLACE INTO lm_settings (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+
+# Singletons / Helpers
+_registry_instance = None
+def get_lm_registry():
+    global _registry_instance
+    if _registry_instance is None:
+        _registry_instance = LinkMasterRegistry()
+    return _registry_instance
+
+_db_instances = {}
+def get_lm_db(app_name: str = None):
+    """Returns an app-specific DB instance. If no name, uses global fallback."""
+    if not app_name:
+        return LinkMasterDB() 
+    if app_name not in _db_instances:
+        _db_instances[app_name] = LinkMasterDB(app_name=app_name)
+    return _db_instances[app_name]

@@ -1,0 +1,79 @@
+"""
+Link Master: File Management Mixin
+個別のファイル管理（ダイアログの起動とルール保存）を担当するMixin。
+"""
+import os
+import logging
+from src.ui.link_master.dialogs import FileManagementDialog
+
+class LMFileManagementMixin:
+    def _open_file_management(self, rel_path):
+        """指定された相対パスのフォルダに対してファイル管理ダイアログを開く。"""
+        if not hasattr(self, 'db') or not self.db: return
+        if not hasattr(self, 'storage_root') or not self.storage_root: return
+        
+        abs_path = os.path.join(self.storage_root, rel_path)
+        if not os.path.exists(abs_path):
+            self.logger.error(f"File management target not found: {abs_path}")
+            return
+            
+        config = self.db.get_folder_config(rel_path) or {}
+        
+        # Phase 5: Get P/S paths for quick redirection
+        app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else {}
+        # Resolve mod-specific folders for both Primary and Secondary targets
+        mod_name = os.path.basename(rel_path)
+        primary_root = app_data.get('target_root', '')
+        secondary_root = app_data.get('target_root_2', '')
+        
+        mod_primary_base = config.get('target_override') or os.path.join(primary_root, mod_name)
+        mod_secondary_base = os.path.join(secondary_root, mod_name) if secondary_root else ""
+        
+        diag = FileManagementDialog(self, abs_path, config.get('deployment_rules'), 
+                                   primary_target=mod_primary_base, secondary_target=mod_secondary_base)
+        if diag.exec():
+            new_rules = diag.get_rules_json()
+            try:
+                self.db.update_folder_display_config(rel_path, deployment_rules=new_rules)
+                self.logger.info(f"Updated file deployment rules for {rel_path}")
+                
+                # Targeted UI Update (Phase 28 optimization)
+                # Normalize path for lookup (ScannerWorker uses forward slashes)
+                abs_path_norm = abs_path.replace('\\', '/')
+                card = self._get_active_card_by_path(abs_path_norm)
+                if card:
+                    # Re-calculate is_partial for the card border
+                    # Check both 'exclude' and 'overrides' (new name for 'rename')
+                    is_partial = False
+                    try:
+                        import json
+                        rules = json.loads(new_rules)
+                        # Transition rename -> overrides if needed (migration)
+                        if 'rename' in rules and 'overrides' not in rules:
+                            rules['overrides'] = rules.pop('rename')
+                        
+                        if (rules.get('exclude') and len(rules['exclude']) > 0) or \
+                           (rules.get('overrides') and len(rules['overrides']) > 0):
+                            is_partial = True
+                    except: pass
+                    
+                    card.update_data(deployment_rules=new_rules, is_partial=is_partial)
+                    card.update_link_status()
+                    self.logger.info(f"Updated ItemCard in-place: {rel_path} (is_partial={is_partial})")
+                    
+                    # Phase 3.5: Auto-sync if currently linked
+                    if card.link_status == 'linked':
+                        self.logger.info(f"Auto-syncing deployment for {rel_path} after rule change...")
+                        # LinkMasterWindow inherits LMFileManagementMixin and LMBatchOpsMixin
+                        # So _deploy_single is available on self.
+                        self._deploy_single(rel_path)
+                else:
+                    self.logger.info(f"Card not currently visible for update: {abs_path_norm}")
+                    
+                    # Even if card is not visible, if it was deployed, we should sync
+                    # We can check DB or just try to sync if it was recently linked
+                    # But if card is invisible, it's safer to just let the user deploy later
+                    # or check Scanner's cached status.
+                    # For now, let's just sync if the card IS found and linked.
+            except Exception as e:
+                self.logger.error(f"Failed to save deployment rules: {e}")

@@ -1,0 +1,730 @@
+# Link Master - Japanese Translation
+# Copyright (C) 2024
+# This file is distributed under the same license as the LinkMaster package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: LinkMaster 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-12-30 00:30+0900\n"
+"PO-Revision-Date: 2024-12-30 00:30+0900\n"
+"Last-Translator: \n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Main Window
+msgid "LinkMaster"
+msgstr "LinkMaster"
+
+msgid "Back"
+msgstr "戻る"
+
+msgid "Root"
+msgstr "ルート"
+
+# Sidebar
+msgid "Library"
+msgstr "ライブラリ"
+
+msgid "Presets"
+msgstr "プリセット"
+
+msgid "Notes"
+msgstr "ノート"
+
+msgid "Tools"
+msgstr "ツール"
+
+# Common Dialogs
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Confirm"
+msgstr "確認"
+
+msgid "Yes"
+msgstr "はい"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Apply"
+msgstr "適用"
+
+# URL Management
+msgid "Manage URLs"
+msgstr "URL管理"
+
+msgid "Add"
+msgstr "追加"
+
+msgid "Test All & Open First Working"
+msgstr "全テスト＆最初に動くものを開く"
+
+msgid "Clear All"
+msgstr "全削除"
+
+msgid "Active"
+msgstr "有効"
+
+msgid "Priority"
+msgstr "優先"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Link"
+msgstr "リンク"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "No active URLs (all disabled)."
+msgstr "有効なURLがありません（すべて無効化されています）。"
+
+msgid "Could not connect to registered URLs."
+msgstr "登録されているURLに接続できません。"
+
+msgid "URL Connection"
+msgstr "URL接続"
+
+msgid "What would you like to do?"
+msgstr "どの操作を行いますか？"
+
+msgid "Force Open"
+msgstr "強引に開く"
+
+msgid "Open URL Manager"
+msgstr "URL管理を開く"
+
+msgid "Auto-mark last accessed URL"
+msgstr "最後にアクセスしたものを自動的にマークする"
+
+# App Registration
+msgid "Edit"
+msgstr "編集"
+
+msgid "Register New"
+msgstr "新規登録"
+
+msgid "{mode} Application"
+msgstr "{mode} アプリケーション"
+
+msgid "App Name:"
+msgstr "アプリ名:"
+
+msgid "e.g. Minecraft"
+msgstr "例: Minecraft"
+
+msgid " Browse "
+msgstr " 参照 "
+
+msgid "Storage Path:"
+msgstr "ストレージパス:"
+
+msgid "Target A (Primary):"
+msgstr "ターゲット A (優先):"
+
+msgid "Target B (Optional):"
+msgstr "ターゲット B (任意):"
+
+msgid "Default Folder Property Settings"
+msgstr "フォルダプロパティのデフォルト設定"
+
+msgid "Deploy Type:"
+msgstr "展開方式:"
+
+msgid "Conflict Policy:"
+msgstr "競合ポリシー:"
+
+msgid "[Conflict] {name}"
+msgstr "[競合] {name}"
+
+msgid "Target App:"
+msgstr "対象アプリ:"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Search by name or tags..."
+msgstr "名前やタグで検索..."
+
+msgid "OR"
+msgstr "OR"
+
+msgid "AND"
+msgstr "AND"
+
+msgid "📦 All Packages"
+msgstr "📦 すべてのパッケージ"
+
+msgid "📁 Categories Only"
+msgstr "📁 カテゴリのみ"
+
+msgid "📁+📦 Cats with Pkgs"
+msgstr "📁+📦 パッケージを含むカテゴリ"
+
+msgid "Global"
+msgstr "全体"
+
+msgid "Toggle Explorer Panel"
+msgstr "エクスプローラーパネルの表示/非表示"
+
+msgid "Library Management"
+msgstr "ライブラリ管理"
+
+msgid "Toggle Presets"
+msgstr "プリセットの表示/非表示"
+
+msgid "Toggle Quick Notes"
+msgstr "クイックメモの表示/非表示"
+
+msgid "📚 Library Management"
+msgstr "📚 ライブラリ管理"
+
+msgid "Library Name"
+msgstr "ライブラリ名"
+
+msgid "Status"
+msgstr "状態"
+
+msgid "Latest"
+msgstr "最新版"
+
+msgid "Priority"
+msgstr "優先"
+
+msgid "Deps"
+msgstr "依存数"
+
+msgid "🚀 Deploy"
+msgstr "🚀 デプロイ"
+
+msgid "🌐 URL"
+msgstr "🌐 URL"
+
+msgid "⚙ Settings"
+msgstr "⚙ 設定"
+
+msgid "📋 Properties"
+msgstr "📋 プロパティ"
+
+msgid "📦 Check Deps"
+msgstr "📦 依存確認"
+
+msgid "🗑 Unregister"
+msgstr "🗑 解除"
+
+msgid "👁 Hide"
+msgstr "👁 非表示"
+
+msgid "🏷 Register Selected Package"
+msgstr "🏷 選択パッケージを登録"
+
+msgid "Open URL in Browser"
+msgstr "ブラウザでURLを開く"
+
+msgid "Open properties of priority version"
+msgstr "優先バージョンのプロパティを開く"
+
+msgid "Unregister selected version from library"
+msgstr "選択バージョンをライブラリから解除"
+
+msgid "Hide from library list"
+msgstr "リストから非表示にする"
+
+msgid "Register the selected folder as a library."
+msgstr "選択中のフォルダをライブラリとして登録します。"
+
+msgid "Conflict (Occupied by another package)"
+msgstr "競合（他のパッケージが占有中）"
+
+msgid "Deployed (Link normal)"
+msgstr "デプロイ済み（リンク正常）"
+
+msgid "Not Deployed (Inactive)"
+msgstr "未デプロイ（非アクティブ）"
+
+msgid "🔄 Latest"
+msgstr "🔄 最新"
+
+msgid "🔍 {n} hit(s)"
+msgstr "🔍 {n} 件ヒット"
+
+msgid "🔍 0 hits"
+msgstr "🔍 ヒットなし"
+
+msgid "No categories match: {q}"
+msgstr "カテゴリが見つかりません: {q}"
+
+msgid "No packages match: {q}"
+msgstr "パッケージが見つかりません: {q}"
+
+msgid "🔍 Searching"
+msgstr "🔍 検索中"
+
+msgid "🔍 Searching{dots}"
+msgstr "🔍 検索中{dots}"
+
+msgid "No Image"
+msgstr "画像なし"
+
+msgid "Loading..."
+msgstr "読み込み中..."
+
+msgid "Open related URL"
+msgstr "関連URLを開く"
+
+msgid "Help text here..."
+msgstr "ヘルプテキストを入力..."
+
+msgid "Reset Anchor (Jump Out)"
+msgstr "アンカーをリセット (外側にジャンプ)"
+
+msgid "Change Background Color"
+msgstr "背景色を変更"
+
+msgid "Change Text Color"
+msgstr "テキスト色を変更"
+
+msgid "Delete (Clear Content)"
+msgstr "削除 (内容をクリア)"
+
+msgid "Select Background Color"
+msgstr "背景色の選択"
+
+msgid "Select Text Color"
+msgstr "テキスト色の選択"
+
+msgid "Category Style:"
+msgstr "カテゴリスタイル:"
+
+msgid "Package Style:"
+msgstr "パッケージスタイル:"
+
+msgid "Cover Image:"
+msgstr "カバー画像:"
+
+msgid "Optional: Select cover image for app"
+msgstr "任意: アプリのカバー画像を選択"
+
+msgid "✂ Edit Region"
+msgstr "✂ 範囲編集"
+
+msgid "Select custom region from image"
+msgstr "画像から任意の範囲を選択"
+
+msgid "📋 Paste"
+msgstr "📋 貼り付け"
+
+msgid "Paste image from clipboard"
+msgstr "クリップボードから画像を貼り付け"
+
+msgid "No Image"
+msgstr "画像なし"
+
+msgid "Preview:"
+msgstr "プレビュー:"
+
+msgid "🚀 Manage Executables..."
+msgstr "🚀 実行ファイルを管理..."
+
+msgid "Executables:"
+msgstr "実行ファイル:"
+
+msgid "🌐 Manage URLs..."
+msgstr "🌐 URLを管理..."
+
+msgid "URLs:"
+msgstr "URL:"
+
+msgid "Register"
+msgstr "登録"
+
+msgid "Select Storage Root"
+msgstr "ストレージルートを選択"
+
+msgid "Select Target Install Root A"
+msgstr "ターゲットインストールルート A を選択"
+
+msgid "Select Target Install Root B"
+msgstr "ターゲットインストールルート B を選択"
+
+msgid "Select Cover Image"
+msgstr "カバー画像を選択"
+
+msgid "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
+msgstr "画像 (*.png *.jpg *.jpeg *.bmp *.webp)"
+
+# Debug Window
+msgid "LinkMaster Debug"
+msgstr "LinkMaster デバッグ"
+
+msgid "Core Security Check"
+msgstr "コアセキュリティチェック"
+
+msgid "Backup Management"
+msgstr "バックアップ管理"
+
+msgid "Source Code Backup (Versioning)"
+msgstr "ソースコードバックアップ（バージョニング）"
+
+msgid "UI Debug"
+msgstr "UIデバッグ"
+
+msgid "Language Settings"
+msgstr "言語設定"
+
+msgid "Current Language:"
+msgstr "現在の言語:"
+
+msgid "Switch Language"
+msgstr "言語を切り替え"
+
+# Help System
+msgid "Import from other language"
+msgstr "他の言語からインポート"
+
+msgid "Import from English"
+msgstr "英語からインポート"
+
+msgid "Import from Japanese"
+msgstr "日本語からインポート"
+
+# Tooltips - Main Window
+msgid "Show linked categories/packages"
+msgstr "リンク済みカテゴリ/パッケージを表示"
+
+msgid "Show unlinked categories/packages"
+msgstr "未リンクカテゴリ/パッケージを表示"
+
+msgid "Unlink All Active Links"
+msgstr "全アンリンク"
+
+msgid "Open Trash"
+msgstr "ゴミ箱を開く"
+
+msgid "Import Folder or Zip to Categories"
+msgstr "フォルダまたはZipをカテゴリにインポート"
+
+msgid "Import Folder or Zip to Packages"
+msgstr "フォルダまたはZipをパッケージにインポート"
+
+msgid "Show/Hide hidden folders"
+msgstr "非表示フォルダを表示/非表示"
+
+msgid "Card Size Settings"
+msgstr "カードサイズ設定"
+
+msgid "Toggle Explorer Panel"
+msgstr "エクスプローラーパネル切替"
+
+msgid "Library Management"
+msgstr "ライブラリ管理"
+
+msgid "Toggle Presets"
+msgstr "プリセット切替"
+
+msgid "Toggle Quick Notes"
+msgstr "クイックノート切替"
+
+msgid "Special Actions"
+msgstr "特殊機能"
+
+msgid "Edit Frequent Tags"
+msgstr "よく使うタグを編集"
+
+# Card Settings Panel
+msgid "<b>📓 Card Settings</b>"
+msgstr "<b>📓 カードセッティング</b>"
+
+msgid "Reset"
+msgstr "戻す"
+
+msgid "Lock Display Mode (Persist)"
+msgstr "表示モードを固定（保持）する"
+
+msgid "👁 <b>Display Settings</b>"
+msgstr "👁 <b>表示設定</b>"
+
+msgid "  <font color='#888'>Link Button (🌐)</font>"
+msgstr "  <font color='#888'>リンクボタン (🌐)</font>"
+
+msgid "Show in Category"
+msgstr "カテゴリに表示"
+
+msgid "Show in Package"
+msgstr "パッケージに表示"
+
+msgid "  <font color='#888'>Deploy Button (🔵)</font>"
+msgstr "  <font color='#888'>デプロイボタン (🔵)</font>"
+
+# Library Panel
+msgid "📚 Library Management"
+msgstr "📚 ライブラリ管理"
+
+msgid "Library Name"
+msgstr "ライブラリ名"
+
+msgid "Status"
+msgstr "状態"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Deps"
+msgstr "依存"
+
+msgid "🚀 Deploy"
+msgstr "🚀 デプロイ"
+
+msgid "🌐 URL"
+msgstr "🌐 URL"
+
+msgid "Open URL in Browser"
+msgstr "ブラウザでURLを開く"
+
+msgid "⚙ Settings"
+msgstr "⚙ 設定"
+
+msgid "📋 Properties"
+msgstr "📋 プロパティ"
+
+msgid "Open properties of priority version"
+msgstr "優先バージョンのプロパティを開く"
+
+msgid "📦 Check Deps"
+msgstr "📦 依存確認"
+
+msgid "🗑 Unregister"
+msgstr "🗑 登録解除"
+
+msgid "Unregister selected version from library"
+msgstr "選択バージョンをライブラリから登録解除"
+
+msgid "👁 Hide"
+msgstr "👁 非表示"
+
+msgid "Hide from library list"
+msgstr "ライブラリリストから非表示"
+
+msgid "🏷 Register Selected Package"
+msgstr "🏷 選択パッケージを登録"
+
+msgid "Register the selected folder as a library."
+msgstr "選択フォルダをライブラリとして登録"
+
+# Presets Panel
+msgid "<b>Presets</b>"
+msgstr "<b>プリセット</b>"
+
+msgid "Refresh Presets"
+msgstr "プリセット更新"
+
+msgid "Create New Preset from Current Links"
+msgstr "現在のリンクからプリセット作成"
+
+msgid "📁 Folder"
+msgstr "📁 フォルダ"
+
+msgid "🗑 Delete"
+msgstr "🗑 削除"
+
+msgid "🔓 Unlink"
+msgstr "🔓 アンリンク"
+
+msgid "Remove all active links for this app"
+msgstr "このアプリの全アクティブリンクを解除"
+
+msgid "🔓 Clear Filter"
+msgstr "🔓 フィルタ解除"
+
+msgid "Create Folder"
+msgstr "フォルダ作成"
+
+msgid "Folder Name:"
+msgstr "フォルダ名:"
+
+# Notes Panel
+msgid "<b>Quick Notes</b>"
+msgstr "<b>クイックノート</b>"
+
+msgid "Add New Note"
+msgstr "新規ノート追加"
+
+msgid "Select a note to edit..."
+msgstr "編集するノートを選択..."
+
+msgid "💾 Save"
+msgstr "💾 保存"
+
+msgid "🚀 Open Externally"
+msgstr "🚀 外部で開く"
+
+# Tools Panel
+msgid "<b>Special Tools</b>"
+msgstr "<b>特殊ツール</b>"
+
+msgid "🔧 Special Actions"
+msgstr "🔧 特殊機能"
+
+msgid "Manual Rebuild"
+msgstr "手動リビルド"
+
+msgid "Clear cache and rescan all folders to ensure data integrity."
+msgstr "キャッシュをクリアして全フォルダを再スキャンし、データ整合性を確保"
+
+msgid "Run Manual Rebuild"
+msgstr "手動リビルド実行"
+
+msgid "UI Performance Settings"
+msgstr "UIパフォーマンス設定"
+
+msgid "Adjust widget pooling settings."
+msgstr "ウィジェットプーリング設定を調整"
+
+msgid "Pool Size:"
+msgstr "プールサイズ:"
+
+msgid "Enable Search Result Caching"
+msgstr "検索結果キャッシュを有効化"
+
+msgid "Import/Export (Portability)"
+msgstr "インポート/エクスポート（ポータビリティ）"
+
+msgid "Export/Import current app settings and images as .dioco files."
+msgstr "現在のアプリ設定と画像を.diocoファイルとしてエクスポート/インポート"
+
+msgid "📤 Export"
+msgstr "📤 エクスポート"
+
+msgid "📥 Import"
+msgstr "📥 インポート"
+
+msgid "📦 Package Size Management"
+msgstr "📦 パッケージサイズ管理"
+
+msgid "Recalculate disk usage for all packages. Useful for verifying actual size when managing large mods."
+msgstr "全パッケージのディスク使用量を再計算。大規模MOD管理時のサイズ確認に便利"
+
+msgid "Run All Size Checks"
+msgstr "全サイズチェック実行"
+
+msgid "Last check: Not run"
+msgstr "最終チェック: 未実行"
+
+msgid "🎨 Display Settings"
+msgstr "🎨 表示設定"
+
+msgid "Deploy Button Opacity:"
+msgstr "デプロイボタン透明度:"
+
+msgid "⚠ Reset All Folder Attributes"
+msgstr "⚠ 全フォルダ属性をリセット"
+
+msgid "Bulk delete all folder settings (type, display, tags) for the current app and reset to initial state."
+msgstr "現在のアプリの全フォルダ設定（タイプ、表示、タグ）を一括削除し、初期状態にリセット"
+
+msgid "⚠ Reset All Attributes"
+msgstr "⚠ 全属性をリセット"
+
+# Context Menu - Main Window
+msgid "Folder: {name}"
+msgstr "フォルダ: {name}"
+
+msgid "📦 Restore to Original"
+msgstr "📦 元の場所に復元"
+
+msgid "🔗 Unlink (Remove Safe)"
+msgstr "🔗 アンリンク（安全な削除）"
+
+msgid "⚠ Conflict: File Exists"
+msgstr "⚠ 競合: ファイルが既に存在"
+
+msgid "🔄 Overwrite Target with Link"
+msgstr "🔄 ターゲットをリンクで上書き"
+
+msgid "Delete the conflicting file in target and create a symlink to this source."
+msgstr "ターゲット内の競合ファイルを削除し、このソースへのシンボリックリンクを作成"
+
+msgid "⚠ Conflict: Tag '{tag}'"
+msgstr "⚠ 競合: タグ '{tag}'"
+
+msgid "🔄 Overwrite Target (Swap)"
+msgstr "🔄 ターゲットを上書き（スワップ）"
+
+msgid "Disable '{name}' and enable this item."
+msgstr "'{name}' を無効にして、このアイテムを有効化"
+
+msgid "🚀 Deploy Link"
+msgstr "🚀 リンクをデプロイ"
+
+msgid "👁 Show Item"
+msgstr "👁 アイテムを表示"
+
+msgid "👻 Hide Item"
+msgstr "👻 アイテムを非表示"
+
+msgid "📋 View Properties"
+msgstr "📋 プロパティ表示"
+
+msgid "📝 Edit Properties"
+msgstr "📝 プロパティ編集"
+
+msgid "🛠 Manage Files (Exclude/Move)..."
+msgstr "🛠 ファイル管理（除外/移動）..."
+
+msgid "📁 Open in Explorer"
+msgstr "📁 エクスプローラーで開く"
+
+msgid "🗑 Move to Trash"
+msgstr "🗑 ゴミ箱へ移動"
+
+# Presets Context Menu
+msgid "✏️ Rename"
+msgstr "✏️ 名前変更"
+
+msgid "Rename Folder"
+msgstr "フォルダ名変更"
+
+msgid "New Name:"
+msgstr "新しい名前:"
+
+msgid "📁 Move to Folder"
+msgstr "📁 フォルダへ移動"
+
+msgid "(Root)"
+msgstr "（ルート）"
+
+msgid "⏫ Move to Top"
+msgstr "⏫ 先頭へ移動"
+
+msgid "⏬ Move to Bottom"
+msgstr "⏬ 末尾へ移動"
+
+msgid "Delete Folder"
+msgstr "フォルダ削除"
+
+msgid "Delete folder '{folder_name}'?\n(Presets inside will be moved to root)"
+msgstr "フォルダ '{folder_name}' を削除しますか？\n（中のプリセットはルートに移動します）"
+
+msgid "Delete Preset"
+msgstr "プリセット削除"
+
+msgid "Delete '{preset_name}'?"
+msgstr "'{preset_name}' を削除しますか？"
+
+msgid "📝 Properties"
+msgstr "📝 プロパティ"

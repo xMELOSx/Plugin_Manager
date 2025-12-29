@@ -1,0 +1,3087 @@
+﻿""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を介すること。
+"""
+
+import os
+import json
+import logging
+import copy
+import time
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
+                             QLineEdit, QPushButton, QTreeView, QSplitter, QScrollArea, QMessageBox,
+                             QTabWidget, QInputDialog, QFileDialog, QMenu, QApplication, 
+                             QWidgetAction, QSlider, QFrame, QSpinBox)
+from PyQt6.QtCore import Qt, QDir
+from PyQt6.QtGui import QFileSystemModel
+from src.core.lang_manager import _
+
+from src.ui.frameless_window import FramelessWindow
+from src.ui.title_bar_button import TitleBarButton
+from src.ui.window_mixins import OptionsMixin
+from src.components.sub_windows import OptionsWindow, HelpWindow
+from src.ui.link_master.dialogs import AppRegistrationDialog, ImportTypeDialog
+from src.core.image_loader import ImageLoader
+from src.core.link_master.database import get_lm_registry, get_lm_db
+from src.core.link_master.scanner import Scanner
+from src.ui.flow_layout import FlowLayout
+from src.ui.link_master.item_card import ItemCard
+from src.core.link_master.deployer import Deployer
+from src.ui.link_master.single_folder_proxy import SingleFolderProxyModel
+from src.ui.link_master.explorer_window import ExplorerPanel # Renamed
+from src.ui.link_master.presets_panel import PresetsPanel
+from src.ui.link_master.notes_panel import NotesPanel
+from src.ui.link_master.library_panel import LibraryPanel
+from src.core.link_master.thumbnail_manager import ThumbnailManager
+from src.apps.scanner_worker import ScannerWorker
+from src.apps.size_scanner_worker import SizeScannerWorker
+from PyQt6.QtCore import QThread, QTimer
+
+# Refactoring Phase 2: Import Mixins
+from src.apps.lm_batch_ops import LMBatchOpsMixin
+from src.apps.lm_presets import LMPresetsMixin
+from src.apps.lm_trash import LMTrashMixin
+from src.apps.lm_search import LMSearchMixin
+from src.apps.lm_selection import LMSelectionMixin
+from src.apps.lm_card_settings import LMCardSettingsMixin
+from src.apps.lm_display import LMDisplayMixin
+from src.apps.lm_navigation import LMNavigationMixin
+from src.apps.lm_scan_handler import LMScanHandlerMixin
+from src.apps.lm_import import LMImportMixin
+from src.apps.lm_tags import LMTagsMixin
+from src.apps.lm_card_pool import LMCardPoolMixin
+from src.apps.lm_portability import LMPortabilityMixin
+from src.ui.link_master.help_sticky import StickyHelpWidget
+from src.core.link_master.help_manager import StickyHelpManager
+from src.apps.lm_file_management import LMFileManagementMixin
+
+class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPortabilityMixin, LMImportMixin, LMScanHandlerMixin, LMNavigationMixin, LMDisplayMixin, LMCardSettingsMixin, LMBatchOpsMixin, LMPresetsMixin, LMTrashMixin, LMSearchMixin, LMSelectionMixin, FramelessWindow, OptionsMixin):
+    def __init__(self):
+        self._init_start_t = time.time()
+        super().__init__()
+        self.logger = logging.getLogger("LinkMasterWindow")
+        self.registry = get_lm_registry()
+        self.db = get_lm_db() # App DB (Initializes with current app later)
+        self.scanner = Scanner()
+        self.image_loader = ImageLoader()
+        self.deployer = Deployer()
+        
+        # Phase 19: Multi-Selection State
+        self.selected_paths = set()
+        self._last_selected_path = None
+        
+        # Phase 28: Card Pooling
+        self._init_card_pool()
+        
+        # Initialize Thumbnail Manager (resource/app in Project Root)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        resource_path = os.path.join(project_root, "resource", "app")
+        self.thumbnail_manager = ThumbnailManager(resource_path)
+        
+        # Threaded Scanner Setup
+        self.scanner_thread = QThread()
+        # Phase 19.x: Dual-Worker Scanning (Prevents race conditions on simultaneous area refreshes)
+        self.cat_scanner_worker = ScannerWorker(self.scanner, self.deployer, self.db)
+        self.pkg_scanner_worker = ScannerWorker(self.scanner, self.deployer, self.db)
+        
+        self.cat_scanner_worker.moveToThread(self.scanner_thread)
+        self.pkg_scanner_worker.moveToThread(self.scanner_thread)
+        
+        # Connect the run method to the thread's started signal for both workers
+        self.scanner_thread.started.connect(self.cat_scanner_worker.run)
+        self.scanner_thread.started.connect(self.pkg_scanner_worker.run)
+
+        self.cat_scanner_worker.results_ready.connect(self._on_scan_results_ready)
+        self.pkg_scanner_worker.results_ready.connect(self._on_scan_results_ready)
+        self.cat_scanner_worker.finished.connect(self._on_scan_finished)
+        self.pkg_scanner_worker.finished.connect(self._on_scan_finished)
+        
+        self.scanner_thread.start()
+        
+        # Icon Setup (User Request)
+        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
+        if os.path.exists(icon_path):
+            self.set_window_icon_from_path(icon_path)
+            self.icon_label.mousePressEvent = self._icon_mouse_press
+        
+        # State
+        self.current_app_id = None
+        self.current_target_key = "target_root" # target_root or target_root_2
+        self.selected_paths = set()
+        self.non_inheritable_tags = set()
+        self.current_path = None  # Track current path for reload
+
+        self.storage_root = None  # Unified storage root path
+        
+        # Preset Filter State
+        self.preset_filter_mode = False  # When True, only show preset items
+        self.preset_filter_paths = set()  # Set of storage_rel_paths in the preset
+        self.preset_filter_categories = set()  # Parent categories of preset items
+        
+        # Link Filter State (for linked/unlinked category filtering)
+        self.link_filter_mode = None  # 'linked', 'unlinked', or None
+
+        
+        # Read version from VERSION.txt
+        self.version = self._read_version()
+        self.setWindowTitle(f"Dionys Control Ver.{self.version}")
+        self.resize(1400, 850)
+        
+        # Explorer is now embedded, not a window
+        
+        self._init_title_buttons()
+        # Drag & Drop Support
+        self.setAcceptDrops(True)
+        
+        self._init_ui()
+        
+        # Sub Windows with parent=self to stay on top of main window
+        self.options_window = OptionsWindow(parent_debug_window=self, db=self.db)
+        self.options_window.setParent(self, self.options_window.windowFlags())
+        self.options_window.closed.connect(self._on_options_window_closed)
+        # Replace old list-based HelpWindow with dynamic StickyHelp
+        self.help_manager = StickyHelpManager(self)
+        self._register_sticky_help()
+        
+        # self.help_window = HelpWindow()
+        # self.help_window.setParent(self, self.help_window.windowFlags())
+        # self.help_window.closed.connect(self._on_help_window_closed)
+
+        t0 = time.time()
+        self._load_apps()
+        # Connect to language change signal for real-time translation
+        from src.core.lang_manager import get_lang_manager
+        get_lang_manager().language_changed.connect(self.retranslate_ui)
+        
+        self.logger.info(f"[Profile] _load_apps took {time.time()-t0:.3f}s")
+        self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.time()-self._init_start_t :.3f}s")
+        
+        # Centralized Card Settings State (Phase 19.x)
+        self.card_settings = {}
+        self._load_card_settings()
+        
+        # Sane Defaults for each mode (Base Sizes)
+        self._init_mode_settings()
+        
+        # Restore last selected app and path (Handled by _restore_last_state via QTimer)
+
+        
+        # Display Overrides & Lock State (Phase 25)
+        self.cat_display_override = None
+        self.pkg_display_override = None
+        self.display_mode_locked = False
+        
+        # Restore window/view state (Phase 18.12 + 25)
+        self._always_on_top = False # Initialize state
+        self.load_options("link_master")
+        
+        # Navigation History (Phase 28)
+        self.nav_history = []
+        self.nav_index = -1
+        self._is_navigating_history = False
+
+
+    
+    def _save_card_settings(self):
+        """Save card settings dictionary to Global DB as JSON.
+        
+        Phase 25: Continued using Registry (DB) for card sizes/scales as requested.
+        """
+        try:
+            blob = json.dumps(self.card_settings)
+            self.registry.set_setting('link_master_card_config', blob)
+        except Exception as e:
+            self.logger.error(f"Failed to save card settings: {e}")
+
+    def save_options(self, key_prefix: str):
+        """Override to include display overrides and lock state in JSON (config/window.json)"""
+        # Check if OptionsWindow's 'Remember Position/Size' is enabled
+        save_geo = True
+        if hasattr(self, 'options_window') and self.options_window:
+            save_geo = self.options_window.get_remember_geo()
+        
+        extra_data = {
+            'display_mode_locked': self.display_mode_locked,
+            'save_window_state': save_geo
+        }
+        if self.display_mode_locked:
+            extra_data['cat_display_override'] = self.cat_display_override
+            extra_data['pkg_display_override'] = self.pkg_display_override
+            
+        super().save_options(key_prefix, extra_data=extra_data)
+
+    def load_options(self, key_prefix: str):
+        """Override to restore display overrides and lock state from JSON"""
+        data = super().load_options(key_prefix)
+        if data:
+            self.display_mode_locked = data.get('display_mode_locked', False)
+            if self.display_mode_locked:
+                # Only restore overrides if they were actually set (not None)
+                saved_cat = data.get('cat_display_override')
+                saved_pkg = data.get('pkg_display_override')
+                if saved_cat:
+                    self.cat_display_override = saved_cat
+                if saved_pkg:
+                    self.pkg_display_override = saved_pkg
+                    
+                # Update UI only if overrides were loaded
+                if saved_cat or saved_pkg:
+                    self._update_override_buttons()
+            
+            # Sync Pin button state
+            if 'always_on_top' in data and hasattr(self, 'pin_btn'):
+                is_pinned = data['always_on_top']
+                if self.pin_btn.toggled_state != is_pinned:
+                    self.pin_btn._force_state(is_pinned) # Avoid triggering clicked signal
+                    
+            return data
+        return None
+
+
+    def _load_card_settings(self):
+        """Load card settings dictionary from Global DB."""
+        try:
+            import json
+            blob = self.registry.get_setting('link_master_card_config')
+            if blob:
+                self.card_settings = json.loads(blob)
+            else:
+                self.card_settings = {}
+        except Exception as e:
+            self.logger.error(f"Failed to load card settings: {e}")
+            self.card_settings = {}
+
+    def _get_card_setting(self, key, default):
+        """Helper to get a card setting with a default value."""
+        return self.card_settings.get(key, default)
+
+    
+    def _init_mode_settings(self):
+        """Initialize base size settings for all display modes using centralized dictionary."""
+        defaults = {
+            # Category Defaults
+            'cat_text_list_card_w': 280, 'cat_text_list_card_h': 40,
+            'cat_text_list_img_w': 0, 'cat_text_list_img_h': 0,
+            'cat_mini_image_card_w': 120, 'cat_mini_image_card_h': 120,
+            'cat_mini_image_img_w': 100, 'cat_mini_image_img_h': 100,
+            'cat_image_text_card_w': 160, 'cat_image_text_card_h': 220,
+            'cat_image_text_img_w': 140, 'cat_image_text_img_h': 140,
+            
+            # Package Defaults
+            'pkg_text_list_card_w': 280, 'pkg_text_list_card_h': 40,
+            'pkg_text_list_img_w': 0, 'pkg_text_list_img_h': 0,
+            'pkg_mini_image_card_w': 120, 'pkg_mini_image_card_h': 120,
+            'pkg_mini_image_img_w': 100, 'pkg_mini_image_img_h': 100,
+            'pkg_image_text_card_w': 160, 'pkg_image_text_card_h': 220,
+            'pkg_image_text_img_w': 140, 'pkg_image_text_img_h': 140,
+            
+            # Independent Scales per Mode (Requirement)
+            'cat_text_list_scale': 1.0,
+            'cat_mini_image_scale': 1.0,
+            'cat_image_text_scale': 1.0,
+            'pkg_text_list_scale': 1.0,
+            'pkg_mini_image_scale': 1.0,
+            'pkg_image_text_scale': 1.0,
+            
+            # Phase 31: Visibility Toggles
+            'cat_text_list_show_link': True, 'cat_text_list_show_deploy': True,
+            'cat_mini_image_show_link': True, 'cat_mini_image_show_deploy': True,
+            'cat_image_text_show_link': True, 'cat_image_text_show_deploy': True,
+            'pkg_text_list_show_link': True, 'pkg_text_list_show_deploy': True,
+            'pkg_mini_image_show_link': True, 'pkg_mini_image_show_deploy': True,
+            'pkg_image_text_show_link': True, 'pkg_image_text_show_deploy': True,
+        }
+        
+        # Merge defaults into card_settings if keys are missing
+        for k, v in defaults.items():
+            if k not in self.card_settings:
+                self.card_settings[k] = v
+        
+        # Phase 19.x: Map dictionary keys to instance attributes for legacy code/UI compatibility
+        # This allows self.cat_scale etc to still work while being backed by card_settings
+        for k, v in self.card_settings.items():
+            setattr(self, k, v)
+
+
+    
+    
+    def closeEvent(self, event):
+        """Save geometry on close and close subwindows."""
+        # Phase 19.x: Save last viewed app/path
+        self._save_last_state()
+        
+        # Save category view height
+        if hasattr(self, '_category_fixed_height'):
+            self.registry.set_global("category_view_height", self._category_fixed_height)
+        
+        # Phase 18.12: Save persistent window state
+        self.save_options("link_master")
+        
+        # Close subwindows
+        if hasattr(self, 'options_window') and self.options_window:
+            self.options_window.close()
+        if hasattr(self, 'help_window') and self.help_window:
+            self.help_window.close()
+        if hasattr(self, 'debug_window') and self.debug_window:
+            self.debug_window.close()
+            
+        super().closeEvent(event)
+    
+    def _on_splitter_moved(self, pos, index):
+        """Save category view height when splitter is moved by user."""
+        if hasattr(self, 'v_splitter'):
+            sizes = self.v_splitter.sizes()
+            if sizes and len(sizes) >= 1:
+                self._category_fixed_height = sizes[0]
+                self.registry.set_global("category_view_height", self._category_fixed_height)
+    
+    def resizeEvent(self, event):
+        """Maintain fixed category height on window resize."""
+        super().resizeEvent(event)
+        # Apply fixed category height after resize using timer to ensure layout is complete
+        if hasattr(self, 'v_splitter') and hasattr(self, '_category_fixed_height'):
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._apply_fixed_category_height)
+    
+    def _apply_fixed_category_height(self):
+        """Force-apply the fixed category height to the splitter."""
+        if not hasattr(self, 'v_splitter') or not hasattr(self, '_category_fixed_height'):
+            return
+        total_height = self.v_splitter.height()
+        cat_height = self._category_fixed_height
+        # Ensure category doesn't exceed total height minus minimum package area
+        cat_height = min(cat_height, total_height - 100)
+        cat_height = max(50, cat_height)  # Minimum 50px for category
+        pkg_height = total_height - cat_height
+        self.v_splitter.setSizes([cat_height, pkg_height])
+
+    
+    def _read_version(self):
+        """Read version from VERSION.txt."""
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            version_file = os.path.join(project_root, "VERSION.txt")
+            if os.path.exists(version_file):
+                with open(version_file, 'r') as f:
+                    return f.read().strip()
+        except:
+            pass
+        return "0.2.0"
+    
+    def _restore_last_app(self):
+        """Restore last selected app from registry."""
+        try:
+            last_app_id = self.registry.get_setting("linkmaster_last_app")
+            if last_app_id:
+                app_id = int(last_app_id)
+                for i in range(self.app_combo.count()):
+                    data = self.app_combo.itemData(i)
+                    if data and data.get('id') == app_id:
+                        self.app_combo.setCurrentIndex(i)
+                        break
+        except:
+            pass
+
+    def _init_title_buttons(self):
+        # 1. Option Button
+        self.opt_btn = TitleBarButton("⚙", is_toggle=True)
+        self.opt_btn.clicked.connect(self.toggle_options)
+        self.add_title_bar_button(self.opt_btn, index=0)
+
+        # 2. Pin Button (Leftmost custom button)
+        self.pin_btn = TitleBarButton("📌", is_toggle=True)
+        self.pin_btn.clicked.connect(self.toggle_pin_click)
+        self.add_title_bar_button(self.pin_btn, index=0)
+        
+        # 3. Help Button (To the right of pin)
+        self.help_btn = TitleBarButton("?", is_toggle=True)
+        self.help_btn.clicked.connect(self.toggle_help)
+        self.help_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.help_btn.customContextMenuRequested.connect(self._show_help_button_menu)
+        self.add_title_bar_button(self.help_btn, index=1)
+
+    def _init_ui(self):
+        main_widget = QWidget()
+        main_widget.setStyleSheet("""
+            QWidget { background-color: transparent; }
+            QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
+            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #3498db; border: 1px solid #555; }
+        """)
+        
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(5, 2, 5, 5)
+        
+        # 1. Header
+        header_layout = QHBoxLayout()
+        header_layout.setAlignment(Qt.AlignmentFlag.AlignTop) # Keep header at the top
+        
+        self.app_combo = QComboBox()
+        self.app_combo.setMinimumWidth(200)
+        self.app_combo.setMouseTracking(True)
+        self.app_combo.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.app_combo.currentIndexChanged.connect(self._on_app_changed)
+        target_app_lbl = QLabel(_("Target App:"))
+        target_app_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        header_layout.addWidget(target_app_lbl)
+        header_layout.addWidget(self.app_combo)
+        
+        self.edit_app_btn = QPushButton(_("Edit"))
+        self.edit_app_btn.clicked.connect(self._open_edit_dialog)
+        self.edit_app_btn.setFixedWidth(55)
+        self.edit_app_btn.setStyleSheet("""
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
+            QPushButton:pressed { background-color: #222; padding-top: 5px; padding-left: 5px; }
+        """)
+        header_layout.addWidget(self.edit_app_btn)
+        
+        self.web_btn = QPushButton("🌐")
+        self.web_btn.setFixedSize(32, 28)
+        self.web_btn.setToolTip(_("Open Preferred URL in Browser"))
+        self.web_btn.clicked.connect(self._open_preferred_url)
+        self.web_btn.setStyleSheet("""
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QPushButton:hover { background-color: #3498db; border-color: #3498db; }
+            QPushButton:pressed { background-color: #222; font-size: 13px; }
+        """)
+        header_layout.addWidget(self.web_btn)
+        
+        self.register_app_btn = QPushButton("➕")
+        self.register_app_btn.clicked.connect(self._open_register_dialog)
+        self.register_app_btn.setFixedSize(32, 28) # Fixed sqaure-ish size to prevent squashing
+        self.register_app_btn.setToolTip(_("Register New App"))
+        self.register_app_btn.setStyleSheet("""
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
+            QPushButton:pressed { background-color: #222; font-size: 13px; }
+        """)
+        header_layout.addWidget(self.register_app_btn)
+        
+        header_layout.addSpacing(20)
+        
+        from src.ui.link_master.tag_bar import TagBar
+        self.tag_bar = TagBar()
+        self.tag_bar.tags_changed.connect(self._on_tags_changed)
+        self.tag_bar.request_edit_tags.connect(self._open_tag_manager)
+        self.tag_bar.tag_icon_updated.connect(self._on_tag_icon_updated)
+        header_layout.addWidget(self.tag_bar, 1) # Give TagBar stretch factor 1
+        
+        header_layout.addSpacing(10)
+
+        self.search_logic = QComboBox()
+
+        self.search_logic.setMouseTracking(True)
+        self.search_logic.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.search_logic.addItem(_("OR"), "or")
+        self.search_logic.addItem(_("AND"), "and")
+        self.search_logic.setFixedWidth(60)
+        self.search_logic.setStyleSheet("""
+            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
+            QComboBox:hover { border-color: #3498db; background-color: #444; }
+            QComboBox::drop-down { border: none; }
+        """)
+        header_layout.addWidget(self.search_logic)
+        
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText(_("Search by name or tags..."))
+        self.search_bar.setFixedWidth(300) # Shorten search bar as requested (was expanding before)
+        
+        self.logger.info(f"[Profile] _init_ui took {time.time()-self._init_start_t if hasattr(self, '_init_start_t') else 0:.3f}s")
+        self.search_bar.setMouseTracking(True)
+        self.search_bar.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.search_bar.returnPressed.connect(self._perform_search)
+        header_layout.addWidget(self.search_bar)
+        
+        self.search_mode = QComboBox()
+        self.search_mode.setMouseTracking(True)
+        self.search_mode.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.search_mode.addItem(_("📦 All Packages"), "all_packages")
+        self.search_mode.addItem(_("📁 Categories Only"), "categories_only")
+        self.search_mode.addItem(_("📁+📦 Cats with Pkgs"), "cats_with_packages")
+        self.search_mode.setFixedWidth(150)
+        self.search_mode.setStyleSheet("""
+            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
+            QComboBox:hover { border-color: #3498db; background-color: #444; }
+            QComboBox::drop-down { border: none; }
+        """)
+        header_layout.addWidget(self.search_mode)
+        
+        from PyQt6.QtWidgets import QCheckBox
+        self.search_global_chk = QCheckBox(_("Global"))
+        self.search_global_chk.setChecked(True)
+        self.search_global_chk.hide()
+        
+        self.search_btn = QPushButton("🔍")
+        self.search_btn.setFixedSize(30, 28)
+        self.search_btn.setMouseTracking(True)
+        self.search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.search_btn.clicked.connect(self._perform_search)
+        self.search_btn.setStyleSheet("""
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QPushButton:hover { background-color: #3498db; border-color: #5dade2; }
+            QPushButton:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
+        """)
+        header_layout.addWidget(self.search_btn)
+        
+        self.clear_search_btn = QPushButton("✕")
+        self.clear_search_btn.setFixedSize(30, 28)
+        self.clear_search_btn.setMouseTracking(True)
+        self.clear_search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.clear_search_btn.clicked.connect(self._clear_search)
+        self.clear_search_btn.setStyleSheet("""
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
+            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 4px; }
+        """)
+        header_layout.addWidget(self.clear_search_btn)
+        
+        main_layout.addLayout(header_layout)
+
+        # 2. Content Area: [ThinDrawerBtn] [Splitter: SidebarDrawer | CardView]
+
+
+        self.content_wrapper = QWidget()
+        content_wrapper_layout = QHBoxLayout(self.content_wrapper)
+        content_wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        content_wrapper_layout.setSpacing(0)
+        
+        # Left Edge: Vertical button strip
+        btn_strip = QWidget()
+        btn_strip.setFixedWidth(28)
+        btn_strip.setStyleSheet("background-color: #222; border-right: 1px solid #333;")
+        btn_strip_layout = QVBoxLayout(btn_strip)
+        btn_strip_layout.setContentsMargins(1, 82, 1, 2)
+        btn_strip_layout.setSpacing(10) # More space between tools
+        
+        # Explorer Toggle Button (🌲 at top)
+        self.btn_drawer = QPushButton("🌲")
+        self.btn_drawer.setFixedSize(24, 30)
+        self.btn_drawer.setCheckable(True)
+        self.btn_drawer.clicked.connect(self._toggle_explorer)
+        self.btn_drawer.setStyleSheet("""
+            QPushButton { font-size: 16px; padding: 2px; border: none; background: transparent; }
+            QPushButton:hover { background: #555; border-radius: 4px; }
+            QPushButton:checked { background: #27ae60; border-radius: 4px; }
+        """)
+        self.btn_drawer.setToolTip(_("Toggle Explorer Panel"))
+        btn_strip_layout.addWidget(self.btn_drawer)
+
+        # Library Toggle Button (📚)
+        self.btn_libraries = QPushButton("📚")
+        self.btn_libraries.setFixedSize(24, 30)
+        self.btn_libraries.setCheckable(True)
+        self.btn_libraries.clicked.connect(lambda: self._toggle_sidebar_tab(0))
+        self.btn_libraries.setStyleSheet("""
+            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
+            QPushButton:hover { background: #555; border-radius: 4px; }
+            QPushButton:checked { background: #16a085; border-radius: 4px; }
+        """)
+        self.btn_libraries.setToolTip(_("Library Management"))
+        btn_strip_layout.addWidget(self.btn_libraries)
+
+        # Presets Toggle Button
+        self.btn_presets = QPushButton("📋")
+        self.btn_presets.setFixedSize(24, 30)
+        self.btn_presets.setCheckable(True)
+        self.btn_presets.clicked.connect(lambda: self._toggle_sidebar_tab(1))
+        self.btn_presets.setStyleSheet("""
+            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
+            QPushButton:hover { background: #555; border-radius: 4px; }
+            QPushButton:checked { background: #2980b9; border-radius: 4px; }
+        """)
+        self.btn_presets.setToolTip(_("Toggle Presets"))
+        btn_strip_layout.addWidget(self.btn_presets)
+        
+        # Notes Toggle Button (📒)
+        self.btn_notes = QPushButton("📒")
+        self.btn_notes.setFixedSize(24, 30)
+        self.btn_notes.setCheckable(True)
+        self.btn_notes.clicked.connect(lambda: self._toggle_sidebar_tab(2))
+        self.btn_notes.setStyleSheet("""
+            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
+            QPushButton:hover { background: #555; border-radius: 4px; }
+            QPushButton:checked { background: #8e44ad; border-radius: 4px; }
+        """)
+        self.btn_notes.setToolTip(_("Toggle Quick Notes"))
+        btn_strip_layout.addWidget(self.btn_notes)
+
+        # Tools Toggle Button (🔧)
+        self.btn_tools = QPushButton("🔧")
+        self.btn_tools.setFixedSize(24, 30)
+        self.btn_tools.setCheckable(True)
+        self.btn_tools.clicked.connect(lambda: self._toggle_sidebar_tab(3))
+        self.btn_tools.setStyleSheet("""
+            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
+            QPushButton:hover { background: #555; border-radius: 4px; }
+            QPushButton:checked { background: #d35400; border-radius: 4px; }
+        """)
+        self.btn_tools.setToolTip(_("Special Actions"))
+        btn_strip_layout.addWidget(self.btn_tools)
+        
+        # Shared Sidebar Drawer setup
+        self.library_panel = None
+        self.presets_panel = None
+        self.notes_panel = None
+        self.tools_panel = None
+        
+        btn_strip_layout.addStretch()
+        content_wrapper_layout.addWidget(btn_strip)
+        
+        # Resizable Sidebar Splitter (Horizontal)
+        self.sidebar_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.sidebar_splitter.setHandleWidth(4)
+        self.sidebar_splitter.setStyleSheet("QSplitter::handle { background-color: #444; } QSplitter::handle:hover { background-color: #666; }")
+        
+        # Sidebar Drawer (Shared)
+        self.drawer_widget = QWidget()
+        self.drawer_ui_layout = QVBoxLayout(self.drawer_widget)
+        self.drawer_ui_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.sidebar_tabs = QTabWidget()
+        self.sidebar_tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self.sidebar_tabs.tabBar().hide() # Hide tab bar, use sidebar buttons
+        self.sidebar_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
+        
+        # Add empty placeholders for lazy loading
+        self.sidebar_tabs.addTab(QWidget(), "Libraries")
+        self.sidebar_tabs.addTab(QWidget(), "Presets")
+        self.sidebar_tabs.addTab(QWidget(), "Notes")
+        self.sidebar_tabs.addTab(QWidget(), "Tools")
+        
+        self.drawer_ui_layout.addWidget(self.sidebar_tabs)
+        self.drawer_widget.setMinimumWidth(200) # Minimum width for drawer
+        self.drawer_widget.hide()
+        
+        self.sidebar_splitter.addWidget(self.drawer_widget)
+        self.sidebar_splitter.setCollapsible(0, True) # Allow collapsing the drawer widget
+        
+        # Card View (Main Content)
+        right_widget = QWidget()
+        self.sidebar_splitter.addWidget(right_widget)
+        self.sidebar_splitter.setStretchFactor(1, 1) # Card view stretches
+        content_wrapper_layout.addWidget(self.sidebar_splitter, 1)
+
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Navigation Bar (History Buttons + Breadcrumbs)
+        nav_bar_layout = QHBoxLayout()
+        nav_bar_layout.setContentsMargins(5, 5, 5, 5)
+        nav_bar_layout.setSpacing(5)
+        
+        nav_btn_style = """
+            QPushButton { background-color: #3b3b3b; color: #fff; font-size: 14px; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #999; }
+            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 8px; }
+            QPushButton:disabled { background-color: #222; color: #555; border-color: #333; }
+        """
+        
+        self.btn_back = QPushButton("←")
+        self.btn_back.setFixedSize(30, 26)
+        self.btn_back.setStyleSheet(nav_btn_style)
+        self.btn_back.setEnabled(False)
+        self.btn_back.clicked.connect(self._navigate_back)
+        nav_bar_layout.addWidget(self.btn_back)
+        
+        self.btn_forward = QPushButton("→")
+        self.btn_forward.setFixedSize(30, 26)
+        self.btn_forward.setStyleSheet(nav_btn_style)
+        self.btn_forward.setEnabled(False)
+        self.btn_forward.clicked.connect(self._navigate_forward)
+        nav_bar_layout.addWidget(self.btn_forward)
+
+        # Breadcrumbs
+        self.breadcrumb_layout = QHBoxLayout()
+        self.breadcrumb_layout.setSpacing(5)
+        nav_bar_layout.addLayout(self.breadcrumb_layout)
+        
+        nav_bar_layout.addStretch()
+        
+        # Filter and Action Buttons (on breadcrumb line)
+        filter_btn_style = """
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
+            QPushButton:pressed { background-color: #222; }
+            QPushButton:checked { background-color: #27ae60; border-color: #2ecc71; }
+        """
+        
+        self.btn_filter_linked = QPushButton("🔗")
+        self.btn_filter_linked.setFixedSize(28, 26)
+        self.btn_filter_linked.setCheckable(True)
+        self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
+        self.btn_filter_linked.setStyleSheet(filter_btn_style)
+        self.btn_filter_linked.clicked.connect(self._toggle_linked_filter)
+        nav_bar_layout.addWidget(self.btn_filter_linked)
+        
+        self.btn_filter_unlinked = QPushButton("⛓️‍💥")
+        self.btn_filter_unlinked.setFixedSize(32, 26)
+        self.btn_filter_unlinked.setCheckable(True)
+        self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
+        self.btn_filter_unlinked.setStyleSheet(filter_btn_style)
+        self.btn_filter_unlinked.clicked.connect(self._toggle_unlinked_filter)
+        nav_bar_layout.addWidget(self.btn_filter_unlinked)
+        
+        nav_sep1 = QLabel("|")
+        nav_sep1.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        nav_sep1.setStyleSheet("color: #555;")
+        nav_bar_layout.addWidget(nav_sep1)
+        
+        # Red style for unlink button
+        unlink_btn_style = """
+            QPushButton { background-color: #c0392b; color: #fff; border: 1px solid #e74c3c; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #e74c3c; border-color: #fff; }
+            QPushButton:pressed { background-color: #922b21; }
+        """
+        
+        self.btn_unlink_all = QPushButton("🔓")
+        self.btn_unlink_all.setFixedSize(28, 26)
+        self.btn_unlink_all.setToolTip(_("Unlink All Active Links"))
+        self.btn_unlink_all.setStyleSheet(unlink_btn_style)
+        self.btn_unlink_all.clicked.connect(self._unload_active_links)
+        nav_bar_layout.addWidget(self.btn_unlink_all)
+        
+        # Separator before trash
+        nav_sep2 = QLabel("|")
+        nav_sep2.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        nav_sep2.setStyleSheet("color: #555;")
+        nav_bar_layout.addWidget(nav_sep2)
+        
+        self.btn_trash = QPushButton("🗑")
+        self.btn_trash.setFixedSize(28, 26)
+        self.btn_trash.setToolTip(_("Open Trash"))
+        self.btn_trash.setStyleSheet(filter_btn_style)
+        self.btn_trash.clicked.connect(self._open_trash_view)
+        nav_bar_layout.addWidget(self.btn_trash)
+        
+        right_layout.addLayout(nav_bar_layout)
+
+        
+        # Vertical Splitter: Categories | Packages (fixed height mode)
+        self.v_splitter = QSplitter(Qt.Orientation.Vertical)
+
+        
+        # Phase 4: Use consistent 2px borders even for normal buttons 
+        # to prevent layout shifts and event glitches during sweeping.
+        btn_style = """
+            QPushButton { background-color: #3b3b3b; color: #fff; font-size: 14px; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #999; }
+            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 8px; }
+        """
+        btn_selected = """
+            QPushButton { background-color: #27ae60; color: #fff; font-size: 14px; border: 1px solid #2ecc71; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #2ecc71; border-color: #fff; }
+            QPushButton:pressed { background-color: #1e8449; padding-top: 4px; padding-left: 8px; }
+        """
+        btn_default = """
+            QPushButton { background-color: #2980b9; color: #fff; font-size: 14px; border: 1px solid #3498db; border-radius: 4px; padding: 2px 6px; }
+            QPushButton:hover { background-color: #3498db; border-color: #fff; }
+            QPushButton:pressed { background-color: #1a5276; padding-top: 4px; padding-left: 8px; }
+        """
+
+        # Categories Area
+        cat_group = QWidget()
+        cat_group_layout = QVBoxLayout(cat_group)
+        cat_group_layout.setContentsMargins(0, 0, 0, 0)
+        
+        cat_header = QHBoxLayout()
+        cat_header.setContentsMargins(5, 5, 5, 5)
+        cat_header.setSpacing(8)
+        
+        # Import Button
+        # Import Button
+        self.btn_import_cat = QPushButton("📁")
+        self.btn_import_cat.setFixedSize(30, 26)
+        self.btn_import_cat.setToolTip(_("Import Folder or Zip to Categories"))
+        self.btn_import_cat.setStyleSheet(btn_style)
+        self.btn_import_cat.clicked.connect(lambda: self._open_import_dialog("category"))
+        cat_header.addWidget(self.btn_import_cat)
+
+        
+        self.cat_title_lbl = QLabel(_("<b>Categories</b>"))
+        self.cat_title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        cat_header.addWidget(self.cat_title_lbl)
+        self.cat_result_label = QLabel("")
+        self.cat_result_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.cat_result_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        cat_header.addWidget(self.cat_result_label)
+        cat_header.addStretch()
+        
+        # Display Mode Buttons
+        # Already initialized in __init__:
+        # self.cat_display_override = None
+
+        self.btn_normal_style = btn_style
+        self.btn_selected_style = btn_selected
+        self.btn_no_override_style = btn_default
+        
+        self.btn_cat_text = QPushButton("T")
+        self.btn_cat_text.setFixedSize(36, 26)
+        self.btn_cat_text.setStyleSheet(btn_style)
+        self.btn_cat_text.clicked.connect(lambda: self._toggle_cat_display_mode("text_list"))
+        cat_header.addWidget(self.btn_cat_text)
+        
+        self.btn_cat_image = QPushButton("🖼")
+        self.btn_cat_image.setFixedSize(36, 26)
+        self.btn_cat_image.setStyleSheet(btn_default)
+        self.btn_cat_image.clicked.connect(lambda: self._toggle_cat_display_mode("mini_image"))
+        cat_header.addWidget(self.btn_cat_image)
+        
+        self.btn_cat_both = QPushButton("🖼T")
+        self.btn_cat_both.setFixedSize(44, 26)
+        self.btn_cat_both.setStyleSheet(btn_style)
+        self.btn_cat_both.clicked.connect(lambda: self._toggle_cat_display_mode("image_text"))
+        cat_header.addWidget(self.btn_cat_both)
+        
+        sep1 = QLabel("|")
+        sep1.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        sep1.setStyleSheet("color: #555;")
+        cat_header.addWidget(sep1)
+        
+        # Show Hidden Button (＝ when OFF, 👁 when ON)
+        self.show_hidden = False
+        self.btn_show_hidden = QPushButton("＝")  
+        self.btn_show_hidden.setFixedSize(28, 26)
+        self.btn_show_hidden.setMouseTracking(True)
+        self.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
+        self.btn_show_hidden.setStyleSheet(btn_style)
+        self.btn_show_hidden.clicked.connect(self._toggle_show_hidden)
+        cat_header.addWidget(self.btn_show_hidden)
+        
+        # Store for translation
+        self.target_app_lbl = target_app_lbl
+        
+        sep2 = QLabel("|")
+        sep2.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        sep2.setStyleSheet("color: #555;")
+        cat_header.addWidget(sep2)
+        
+        # Card Settings Button (📓)
+
+        self.btn_card_settings = QPushButton("📓")
+        self.btn_card_settings.setFixedSize(28, 26)
+        self.btn_card_settings.setMouseTracking(True)
+        self.btn_card_settings.setToolTip(_("Card Size Settings"))
+        self.btn_card_settings.setStyleSheet(btn_style)
+        self.btn_card_settings.clicked.connect(self._show_settings_menu)
+        cat_header.addWidget(self.btn_card_settings)
+
+        
+        cat_group_layout.addLayout(cat_header)
+        
+        self.cat_container = QWidget()
+        self.cat_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.cat_container.customContextMenuRequested.connect(self._show_cat_context_menu)
+        # Allow container to shrink freely - ignore content size for splitter flexibility
+        from PyQt6.QtWidgets import QSizePolicy
+        self.cat_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+        self.cat_layout = FlowLayout(self.cat_container, margin=10, spacing=10)
+        self.cat_scroll = QScrollArea()
+        self.cat_scroll.setWidgetResizable(True)
+        self.cat_scroll.setWidget(self.cat_container)
+        self.cat_scroll.setMinimumHeight(50)  # Reduced for user flexibility
+        cat_group_layout.addWidget(self.cat_scroll)
+        
+        # Packages Area
+        pkg_group = QWidget()
+        pkg_group_layout = QVBoxLayout(pkg_group)
+        pkg_group_layout.setContentsMargins(0, 0, 0, 0)
+        
+        pkg_header = QHBoxLayout()
+        pkg_header.setContentsMargins(5, 5, 5, 5)
+        pkg_header.setSpacing(8)
+        
+        self.btn_import_pkg = QPushButton("📁")
+        self.btn_import_pkg.setFixedSize(30, 26)
+        self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
+        self.btn_import_pkg.setStyleSheet(btn_style) 
+        self.btn_import_pkg.clicked.connect(lambda: self._open_import_dialog("package"))
+        pkg_header.addWidget(self.btn_import_pkg)
+
+        self.pkg_title_lbl = QLabel(_("<b>Packages</b>"))
+        self.pkg_title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        pkg_header.addWidget(self.pkg_title_lbl)
+        
+        self.total_link_count_label = QLabel(_("Total Links: 0"))
+        self.total_link_count_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.total_link_count_label.setStyleSheet("color: #3498db; font-weight: bold;")
+        self.total_link_count_label.setToolTip(_("Total Link Count"))
+        pkg_header.addWidget(self.total_link_count_label)
+        
+        # Separator
+        sep_counts = QLabel("|")
+        sep_counts.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        sep_counts.setStyleSheet("color: #555;")
+        pkg_header.addWidget(sep_counts)
+        
+        # Category link count (current view)
+        self.pkg_link_count_label = QLabel("")
+        self.pkg_link_count_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.pkg_link_count_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
+        pkg_header.addWidget(self.pkg_link_count_label)
+        
+        self.pkg_result_label = QLabel("")
+        self.pkg_result_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.pkg_result_label.setStyleSheet("color: #888;")
+        self.pkg_result_label.setToolTip(_("Package Count"))
+        pkg_header.addWidget(self.pkg_result_label)
+        
+        pkg_header.addStretch()
+        
+        # Separator before display mode buttons
+        sep_pkg = QLabel("|")
+        sep_pkg.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        sep_pkg.setStyleSheet("color: #555;")
+        pkg_header.addWidget(sep_pkg)
+
+        # Package Display Mode Buttons
+
+        self.btn_pkg_text = QPushButton("T")
+        self.btn_pkg_text.setFixedSize(36, 26)
+        self.btn_pkg_text.setStyleSheet(btn_style)
+        self.btn_pkg_text.clicked.connect(lambda: self._toggle_pkg_display_mode("text_list"))
+        pkg_header.addWidget(self.btn_pkg_text)
+        
+        self.btn_pkg_image = QPushButton("🖼")
+        self.btn_pkg_image.setFixedSize(36, 26)
+        self.btn_pkg_image.setStyleSheet(btn_default)
+        self.btn_pkg_image.clicked.connect(lambda: self._toggle_pkg_display_mode("mini_image"))
+        pkg_header.addWidget(self.btn_pkg_image)
+        
+        self.btn_pkg_image_text = QPushButton("🖼T")
+        self.btn_pkg_image_text.setFixedSize(36, 26)
+        self.btn_pkg_image_text.setStyleSheet(btn_style)
+        self.btn_pkg_image_text.clicked.connect(lambda: self._toggle_pkg_display_mode("image_text"))
+        pkg_header.addWidget(self.btn_pkg_image_text)
+
+        
+        pkg_group_layout.addLayout(pkg_header)
+
+        
+        self.pkg_container = QWidget()
+        self.pkg_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.pkg_container.customContextMenuRequested.connect(self._show_pkg_context_menu)
+        # Allow container to shrink freely
+        from PyQt6.QtWidgets import QSizePolicy
+        self.pkg_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+        self.pkg_layout = FlowLayout(self.pkg_container, margin=10, spacing=10)
+        self.pkg_scroll = QScrollArea()
+        self.pkg_scroll.setWidgetResizable(True)
+        self.pkg_scroll.setWidget(self.pkg_container)
+        pkg_group_layout.addWidget(self.pkg_scroll)
+        
+        self.v_splitter.addWidget(cat_group)
+        self.v_splitter.addWidget(pkg_group)
+        
+        # Load saved category height or use default
+        saved_cat_height = self.registry.get_global("category_view_height", 200)
+        self._category_fixed_height = saved_cat_height
+        self.v_splitter.setSizes([saved_cat_height, 400])
+        
+        # Disable stretch factors to prevent proportional resizing
+        self.v_splitter.setStretchFactor(0, 0)  # Category: no stretch
+        self.v_splitter.setStretchFactor(1, 1)  # Package: takes all extra space
+        
+        # Connect splitter moved signal to save category height
+        self.v_splitter.splitterMoved.connect(self._on_splitter_moved)
+        
+        right_layout.addWidget(self.v_splitter, 1) 
+
+        
+
+
+        
+        main_layout.addWidget(self.content_wrapper, 1)
+        self.set_content_widget(main_widget)
+
+        # 3. Floating Explorer Panel (Overlay - does NOT push content)
+        # Explorer Panel initialization
+        self.explorer_panel = ExplorerPanel(self)
+        
+        self.explorer_panel.path_selected.connect(lambda p: self._handle_tree_navigation(p, is_double_click=True))
+        self.explorer_panel.item_clicked.connect(lambda p: self._handle_tree_navigation(p, is_double_click=False))
+        self.explorer_panel.context_menu_provider = self._create_item_context_menu
+        self.explorer_panel.config_changed.connect(self._refresh_current_view)
+        # Phase 28: Connect redirection edit request from explorer/breadcrumbs
+        self.explorer_panel.request_properties_edit.connect(self._handle_explorer_properties_edit)
+        self.explorer_panel.hide()
+
+        self.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
+
+        # Initial translation
+        self.retranslate_ui()
+        
+    def retranslate_ui(self):
+        """Update all UI strings logic."""
+        # Header
+        self.target_app_lbl.setText(_("Target App:"))
+        self.edit_app_btn.setText(_("Edit"))
+        self.web_btn.setToolTip(_("Open Preferred URL in Browser"))
+        self.register_app_btn.setToolTip(_("Register New App"))
+        
+        # Search
+        self.search_logic.setItemText(0, _("OR"))
+        self.search_logic.setItemText(1, _("AND"))
+        self.search_bar.setPlaceholderText(_("Search by name or tags..."))
+        self.search_mode.setItemText(0, _("📦 All Packages"))
+        self.search_mode.setItemText(1, _("📁 Categories Only"))
+        self.search_mode.setItemText(2, _("📁+📦 Cats with Pkgs"))
+        self.search_global_chk.setText(_("Global"))
+        
+        # Sidebar Toggles
+        self.btn_drawer.setToolTip(_("Toggle Explorer Panel"))
+        self.btn_libraries.setToolTip(_("Library Management"))
+        self.btn_presets.setToolTip(_("Toggle Presets"))
+        self.btn_notes.setToolTip(_("Toggle Quick Notes"))
+        self.btn_tools.setToolTip(_("Special Actions"))
+        
+        # Nav etc
+        self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
+        self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
+        self.btn_unlink_all.setToolTip(_("Unlink All"))
+        self.btn_trash.setToolTip(_("Open Trash"))
+        
+        # Main Area
+        self.cat_title_lbl.setText(_("<b>Categories</b>"))
+        self.btn_import_cat.setToolTip(_("Import Folder or Zip to Categories"))
+        self.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
+        self.btn_card_settings.setToolTip(_("Card Size Settings"))
+        
+        self.pkg_title_lbl.setText(_("<b>Packages</b>"))
+        self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
+        
+        self.total_link_count_label.setToolTip(_("Total Link Count"))
+        self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
+        self.pkg_result_label.setToolTip(_("Package Count"))
+        
+        # Refresh current count labels (which contain translated "Total links:" bits)
+        self._update_total_link_count()
+        
+        # Update panels if they exist
+        if self.library_panel: self.library_panel.retranslate_ui()
+        if self.presets_panel: self.presets_panel.retranslate_ui()
+        if self.notes_panel: self.notes_panel.retranslate_ui()
+        if self.tools_panel: self.tools_panel.retranslate_ui()
+        
+        # Re-render search result label if query exists
+        if hasattr(self, 'search_bar') and self.search_bar.text():
+            self._perform_search()
+        
+        # Update explorer panel if it exists
+        if hasattr(self, 'explorer_panel'):
+            self.explorer_panel.retranslate_ui()
+
+    def _on_tag_icon_updated(self, tag_value: str, image_path: str):
+        """Persist tag icon change to the database and optionally copy/resize image."""
+        if not self.current_app_id or not self.db:
+            return
+        
+        # Get all tags for the current app
+        tags = self.db.get_all_tags(self.current_app_id) or []
+        
+        # Find and update the matching tag
+        for tag in tags:
+            if tag.get('value') == tag_value:
+                # Optionally copy to resource/tag_icons/ and resize
+                from src.core.file_handler import FileHandler
+                fh = FileHandler()
+                tag_icon_dir = os.path.join(fh.project_root, "resource", "tag_icons")
+                os.makedirs(tag_icon_dir, exist_ok=True)
+                
+                # Resize and save
+                from PyQt6.QtGui import QImage, QPixmap
+                img = QImage(image_path)
+                if not img.isNull():
+                    scaled = img.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    dest_name = f"{tag_value}_{os.path.basename(image_path)}"
+                    dest_path = os.path.join(tag_icon_dir, dest_name)
+                    scaled.save(dest_path)
+                    tag['icon'] = dest_path
+                else:
+                    tag['icon'] = image_path
+                
+                tag['prefer_emoji'] = False  # Using icon over emoji
+                break
+        
+        # Save updated tags
+        self.db.set_tags(self.current_app_id, tags)
+        self.logger.info(f"[TagIcon] Updated icon for tag '{tag_value}' to: {tag.get('icon', image_path)}")
+
+    def _show_settings_menu(self):
+        """Show/toggle settings panel with size sliders."""
+        # Toggle existing panel
+        if hasattr(self, '_settings_panel') and self._settings_panel.isVisible():
+            self._settings_panel.hide()
+            return
+        
+        # Create panel if not exists
+        if not hasattr(self, '_settings_panel'):
+            self._settings_panel = QFrame(self)
+            self._settings_panel.setStyleSheet("""
+                QFrame { background-color: #2b2b2b; border: 2px solid #555; border-radius: 8px; }
+                QLabel { color: #ddd; padding: 2px; }
+                QSlider::groove:horizontal { height: 8px; background: #444; border-radius: 4px; }
+                QSlider::handle:horizontal { background: #3498db; width: 18px; height: 18px; margin: -5px 0; border-radius: 9px; }
+                QTabWidget::pane { border: 1px solid #555; background: #333; }
+                QTabBar::tab { background: #3a3a3a; color: #ddd; padding: 5px 10px; }
+                QTabBar::tab:selected { background: #555; }
+            """)
+            
+            layout = QVBoxLayout(self._settings_panel)
+            layout.setContentsMargins(8, 8, 8, 8) 
+            layout.setSpacing(2) 
+            
+            # Common style for buttons inside Settings (saving lines)
+            self._settings_panel.setStyleSheet(self._settings_panel.styleSheet() + """
+                QPushButton#settings_btn { 
+                    background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; 
+                }
+                QPushButton#settings_btn:hover { background-color: #4a4a4a; border-color: #777; }
+                QPushButton#settings_btn:pressed { background-color: #222; }
+                
+                QSlider::groove:horizontal { height: 6px; background: #444; border-radius: 3px; }
+                QSlider::handle:horizontal { background: #3498db; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
+                QSlider::handle:horizontal:hover { background: #5dade2; border: 1px solid #fff; }
+                
+                QSpinBox { background-color: #222; color: #fff; border: 1px solid #555; border-radius: 4px; }
+                QSpinBox:hover { border-color: #777; }
+            """)
+
+            
+            # Header with buttons
+            header = QHBoxLayout()
+            header.setSpacing(5)
+            header.addWidget(QLabel(_("<b>📓 Card Settings</b>")))
+            header.addStretch()
+            
+            save_btn = QPushButton(_("Save"))
+            save_btn.setFixedWidth(50)
+            save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #2ecc71; }")
+            save_btn.clicked.connect(self._settings_panel.hide)
+            header.addWidget(save_btn)
+            
+            cancel_btn = QPushButton(_("Reset"))
+            cancel_btn.setFixedWidth(50)
+            cancel_btn.setMouseTracking(True)
+            cancel_btn.setStyleSheet("QPushButton { background-color: #555; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #777; }")
+            cancel_btn.clicked.connect(self._cancel_settings)
+            header.addWidget(cancel_btn)
+            
+            close_btn = QPushButton("✕")
+            close_btn.setFixedSize(20, 20)
+            close_btn.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; }")
+            # Close button acts as Cancel per requirement (閉じたらキャンセル)
+            close_btn.clicked.connect(self._cancel_settings)
+            header.addWidget(close_btn)
+            layout.addLayout(header)
+            
+            # Phase 25: Lock View Mode Option
+            from PyQt6.QtWidgets import QCheckBox
+            self._lock_check = QCheckBox(_("Lock Display Mode (Persist)"))
+            self._lock_check.setStyleSheet("""
+                QCheckBox { color: #ddd; padding: 5px; font-size: 11px; }
+                QCheckBox:hover { color: #fff; background-color: #3d4a59; border-radius: 4px; }
+            """)
+            self._lock_check.setChecked(self.display_mode_locked)
+            self._lock_check.toggled.connect(self._on_display_lock_toggled)
+            layout.addWidget(self._lock_check)
+
+            # Tab widget for display modes
+            self._settings_tabs = QTabWidget()
+            self._settings_tabs.setFixedWidth(330) # Widen to 330
+            
+            # Create tabs for each display mode
+            for mode_name, mode_icon in [("T", "text_list"), ("🖼", "mini_image"), ("🖼T", "image_text")]:
+                tab = QWidget()
+                tab_layout = QVBoxLayout(tab)
+                tab_layout.setContentsMargins(5, 10, 5, 5)
+                
+                # Category section
+                tab_layout.addWidget(QLabel(f"📁 <b>Category</b>"))
+                tab_layout.addLayout(self._create_mode_slider("CardW:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
+                h_min = 20 if mode_icon == "text_list" else 50
+                tab_layout.addLayout(self._create_mode_slider("CardH:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
+                tab_layout.addLayout(self._create_mode_slider("ImgW:", f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
+                tab_layout.addLayout(self._create_mode_slider("ImgH:", f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
+                # Move Scale directly under Size
+                tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
+                
+                tab_layout.addSpacing(10)
+                
+                # Package section
+                tab_layout.addWidget(QLabel(f"📦 <b>Package</b>"))
+                tab_layout.addLayout(self._create_mode_slider("CardW:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
+                tab_layout.addLayout(self._create_mode_slider("CardH:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
+                tab_layout.addLayout(self._create_mode_slider("ImgW:", f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
+                tab_layout.addLayout(self._create_mode_slider("ImgH:", f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
+                # Move Scale directly under Size
+                tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
+                
+                # Phase 31: Display Toggles Section
+                tab_layout.addSpacing(10)
+                tab_layout.addWidget(QLabel(_("👁 <b>Display Settings</b>")))
+                
+                # Link Button Overlay Toggle
+                tab_layout.addWidget(QLabel(_("  <font color='#888'>Link Button (🌐)</font>")))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Category"), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Package"), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
+                
+                # Deploy Button Toggle
+                tab_layout.addWidget(QLabel(_("  <font color='#888'>Deploy Button (🔵)</font>")))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Category"), f'cat_{mode_icon}_show_deploy', 'category', mode_icon, 'show_deploy'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Package"), f'pkg_{mode_icon}_show_deploy', 'package', mode_icon, 'show_deploy'))
+
+
+                
+                tab_layout.addStretch()
+                self._settings_tabs.addTab(tab, mode_name)
+            
+            # Requirement: Automatic override selection on tab change
+            self._settings_tabs.currentChanged.connect(self._on_settings_tab_changed)
+            
+            layout.addWidget(self._settings_tabs)
+
+            
+            
+            self._settings_panel.adjustSize()
+        self._settings_panel.setFixedWidth(350) 
+        
+        # --- Transactional Backup (Requirement) ---
+        self._settings_backup = copy.deepcopy(self.card_settings)
+        self._overrides_backup = (self.cat_display_override, self.pkg_display_override)
+        
+        # --- Initial Tab Selection (Requirement) ---
+        # Select tab matching the CURRENT mode being used for categories
+        cur_mode = self.cat_display_override
+        if not cur_mode:
+            # Check what's currently marked as active in UI (which aligns with _refresh_current_view)
+            if self.btn_cat_text.styleSheet() == self.btn_selected_style or self.btn_cat_text.styleSheet() == self.btn_no_override_style:
+                cur_mode = "text_list"
+            elif self.btn_cat_image.styleSheet() == self.btn_selected_style or self.btn_cat_image.styleSheet() == self.btn_no_override_style:
+                cur_mode = "mini_image"
+            else:
+                cur_mode = "image_text"
+
+        mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
+        self._settings_tabs.blockSignals(True) # Don't trigger auto-override yet
+        self._settings_tabs.setCurrentIndex(mode_to_tab.get(cur_mode, 1))
+        self._settings_tabs.blockSignals(False)
+
+        # Position near button, but keep within window bounds
+        btn_pos = self.btn_card_settings.mapToGlobal(self.btn_card_settings.rect().bottomLeft())
+        panel_pos = self.mapFromGlobal(btn_pos)
+        
+        # Safe size retrieval for clamping
+        panel_w = self._settings_panel.width()
+        panel_h = self._settings_panel.height()
+        window_w = self.width()
+        window_h = self.height()
+        
+        # Clamp X to keep panel fully visible
+        x = panel_pos.x()
+        if x + panel_w > window_w - 10:
+            x = window_w - panel_w - 10
+        if x < 10:
+            x = 10
+            
+        # Clamp Y to keep panel fully visible
+        y = panel_pos.y()
+        if y + panel_h > window_h - 10:
+            y = window_h - panel_h - 10
+        if y < 10:
+            y = 10
+        
+        self._settings_panel.move(x, y)
+        self._settings_panel.show()
+        self._settings_panel.raise_()
+        self._settings_panel.activateWindow()
+
+
+    def _on_settings_tab_changed(self, index):
+        """Automatically switch display mode when settings tab is changed."""
+        modes = ["text_list", "mini_image", "image_text"]
+        target_mode = modes[index]
+        
+        # Determine if we are looking at Categories or Packages (or both)
+        # For simplicity, we apply to both since the panel covers both
+        # Requirement: Tab change always enforces that mode
+        self._toggle_cat_display_mode(target_mode, force=True)
+        self._toggle_pkg_display_mode(target_mode, force=True)
+
+
+
+    
+
+
+
+    
+    def _make_widget_action(self, menu, widget):
+        act = QWidgetAction(menu)
+        act.setDefaultWidget(widget)
+        return act
+    
+    def _make_slider_action(self, menu, label, min_v, max_v, value, callback):
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(min_v, max_v)
+        slider.setValue(value)
+        slider.setFixedWidth(110)
+        slider.valueChanged.connect(callback)
+        
+        h = QWidget()
+        h_layout = QHBoxLayout(h)
+        h_layout.setContentsMargins(10, 0, 5, 0)
+        h_layout.addWidget(QLabel(label))
+        h_layout.addWidget(slider)
+        
+        return self._make_widget_action(menu, h)
+    
+    def _set_card_param(self, type_, param, value):
+        """Set card parameter and update cards."""
+        attr_name = f"{type_[:3]}_{param}"
+        setattr(self, attr_name, value)
+        
+        layout = self.cat_layout if type_ == 'category' else self.pkg_layout
+        if hasattr(self, 'cat_layout' if type_ == 'category' else 'pkg_layout'):
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if hasattr(widget, 'set_card_params'):
+                    widget.set_card_params(
+                        card_w=getattr(self, f"{type_[:3]}_card_w", 100) / 100.0,
+                        card_h=getattr(self, f"{type_[:3]}_card_h", 100) / 100.0,
+                        img_w=getattr(self, f"{type_[:3]}_img_w", 100) / 100.0,
+                        img_h=getattr(self, f"{type_[:3]}_img_h", 100) / 100.0
+                    )
+
+    
+    def _update_image_scale(self, type_, scale):
+        """Update image size within cards."""
+        if type_ == 'category':
+            self.cat_img_scale = scale
+            if hasattr(self, 'cat_layout'):
+                for i in range(self.cat_layout.count()):
+                    widget = self.cat_layout.itemAt(i).widget()
+                    if hasattr(widget, 'set_image_scale'):
+                        widget.set_image_scale(scale)
+        else:
+            self.pkg_img_scale = scale
+            if hasattr(self, 'pkg_layout'):
+                for i in range(self.pkg_layout.count()):
+                    widget = self.pkg_layout.itemAt(i).widget()
+                    if hasattr(widget, 'set_image_scale'):
+                        widget.set_image_scale(scale)
+
+    
+    def _update_text_height(self, type_, height):
+        """Update text area height for cards."""
+        if type_ == 'category':
+            self.cat_text_height = height
+            if hasattr(self, 'cat_layout'):
+                for i in range(self.cat_layout.count()):
+                    widget = self.cat_layout.itemAt(i).widget()
+                    if hasattr(widget, 'set_text_height'):
+                        widget.set_text_height(height)
+        else:
+            self.pkg_text_height = height
+            if hasattr(self, 'pkg_layout'):
+                for i in range(self.pkg_layout.count()):
+                    widget = self.pkg_layout.itemAt(i).widget()
+                    if hasattr(widget, 'set_text_height'):
+                        widget.set_text_height(height)
+
+
+
+    def resizeEvent(self, event):
+        """Handle window resize and update floating panel positions."""
+        super().resizeEvent(event)
+        if hasattr(self, 'explorer_panel') and self.explorer_panel.isVisible():
+            self._update_drawer_geometry()
+        if hasattr(self, '_settings_panel') and self._settings_panel.isVisible():
+            self._show_settings_menu()  # Re-clamp position
+        if hasattr(self, 'options_window') and self.options_window:
+            self.options_window.update_size_from_parent()
+
+    def _save_last_state(self):
+        """Save current app and folder to global settings."""
+        # Phase 28: Skip saving during restore phase to prevent overwriting saved state
+        if getattr(self, '_is_restoring', False):
+            self.logger.debug("_save_last_state SKIPPED: restore in progress")
+            return
+            
+        self.logger.debug(f"_save_last_state called: view_path={getattr(self, 'current_view_path', None)}, current_path={getattr(self, 'current_path', None)}")
+        if not self.registry: return
+        try:
+            app_data = self.app_combo.currentData()
+            if app_data:
+                app_id = app_data['id']
+                self.logger.debug(f"Saving for app_id={app_id}")
+                self.registry.set_setting("last_app_id", str(app_id))
+            if app_data:
+                app_id = app_data['id']
+                self.registry.set_setting("last_app_id", str(app_id))
+                
+                # Determine if we are at root level
+                storage_root = app_data.get('storage_root', '')
+                is_at_root = (self.current_view_path == storage_root or 
+                              self.current_view_path is None or 
+                              self.current_view_path == '')
+                
+                # Save root flag
+                self.registry.set_setting(f"last_is_root_{app_id}", "1" if is_at_root else "0")
+                
+                # Save view path (even if it's storage_root for root)
+                if self.current_view_path:
+                    self.registry.set_setting(f"last_path_{app_id}", self.current_view_path)
+                elif is_at_root and storage_root:
+                    self.registry.set_setting(f"last_path_{app_id}", storage_root)
+                    
+                if self.current_path:
+                    self.registry.set_setting(f"last_subpath_{app_id}", self.current_path)
+                else:
+                    self.registry.set_setting(f"last_subpath_{app_id}", "")
+        except Exception as e:
+            self.logger.error(f"Failed to save last state: {e}")
+
+    def _restore_last_state(self):
+        """Restore last opened app and folder."""
+        self.logger.debug("_restore_last_state called")
+        # Phase 28: Set flag to prevent save calls during restore
+        self._is_restoring = True
+        if not self.registry: 
+            self._is_restoring = False
+            return
+        try:
+            last_app_id = self.registry.get_setting("last_app_id")
+            self.logger.debug(f"last_app_id={last_app_id}")
+            if last_app_id:
+                index = -1
+                for i in range(self.app_combo.count()):
+                    data = self.app_combo.itemData(i)
+                    if data and str(data['id']) == last_app_id:
+                        index = i
+                        break
+                if index != -1:
+                    self.app_combo.setCurrentIndex(index)
+                    app_data = self.app_combo.currentData()
+                    storage_root = app_data.get('storage_root', '') if app_data else ''
+                    
+                    # Check if we were at root
+                    is_at_root = self.registry.get_setting(f"last_is_root_{last_app_id}") == "1"
+                    self.logger.debug(f"is_at_root={is_at_root}, storage_root={storage_root}")
+                    
+                    if is_at_root:
+                        # Restore to root - load storage_root directly
+                        self.logger.debug(f"Restoring to root: {storage_root}")
+                        if storage_root and os.path.exists(storage_root):
+                            self._load_items_for_path(storage_root)
+                            self.current_path = None  # Clear selection
+                    else:
+                        # Restore to specific folder
+                        last_path = self.registry.get_setting(f"last_path_{last_app_id}")
+                        last_sub = self.registry.get_setting(f"last_subpath_{last_app_id}")
+                        self.logger.debug(f"Restoring to path: last_path={last_path}, last_sub={last_sub}")
+                        if last_path and os.path.exists(last_path):
+                            self._load_items_for_path(last_path)
+                        
+                        if last_sub and os.path.exists(last_sub):
+                            from PyQt6.QtCore import QTimer
+                            QTimer.singleShot(300, lambda: self._on_category_selected(last_sub))
+        except Exception as e:
+            self.logger.error(f"Failed to restore last state: {e}")
+        finally:
+            # Phase 28: Clear restore flag after a delay to allow async operations to complete
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(500, self._clear_restoring_flag)
+    
+    def _clear_restoring_flag(self):
+        """Clear the restoring flag after restore completes."""
+        self._is_restoring = False
+        self.logger.debug("_is_restoring flag cleared")
+    
+    def _open_target_folder(self):
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        # Default to primary target_root
+        target_root = app_data.get("target_root")
+        if target_root and os.path.isdir(target_root):
+            os.startfile(target_root)
+        else:
+            QMessageBox.warning(self, "Error", f"Invalid target folder: {target_root}")
+
+    def _load_apps(self):
+        apps = self.registry.get_apps()
+        self.app_combo.clear()
+        self.app_combo.addItem("Select App...", None)
+        for app in apps:
+            self.app_combo.addItem(app['name'], app)
+            
+        # Restore last opened state
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self._restore_last_state)
+
+    # --- Drag & Drop ---
+    # Import/drop methods moved to LMImportMixin
+
+    def _on_app_changed(self, index):
+        app_data = self.app_combo.currentData()
+        
+        if app_data:
+            self.current_app_id = app_data.get('id')
+            # Switch to App-Specific Database
+            self.db = get_lm_db(app_data['name'])
+            self.options_window.db = self.db # Update sub-window reference
+            self.cat_scanner_worker.set_db(self.db)  # Phase 18.13/19.x
+            self.pkg_scanner_worker.set_db(self.db)
+            
+            if self.presets_panel:
+                self.presets_panel.set_db(self.db)  # Must be called before set_app
+                self.presets_panel.set_app(self.current_app_id)
+            
+            if self.library_panel:
+                self.library_panel.set_app(self.current_app_id, self.db)
+
+            # Refresh notes and presets
+            self._update_notes_path()
+            if self.sidebar_tabs.currentIndex() == 1 and self.drawer_widget.isVisible() and self.notes_panel:
+                self.notes_panel.refresh()
+                
+            self._refresh_current_view()
+            
+            # Display cover image next to app name and in header
+            cover_img = app_data.get('cover_image')
+            if cover_img and os.path.exists(cover_img):
+                from PyQt6.QtGui import QPixmap, QIcon
+                pixmap = QPixmap(cover_img)
+                if not pixmap.isNull():
+                    icon = QIcon(pixmap.scaled(24, 24))
+                    self.app_combo.setItemIcon(index, icon)
+            
+            # Enable/Disable Buttons
+            
+            # Enable/Disable Buttons
+            self.edit_app_btn.setEnabled(True)
+            self.btn_drawer.setEnabled(True)
+
+            
+            root_path = app_data.get('storage_root')
+            if root_path and os.path.isdir(root_path):
+                self.storage_root = root_path
+                # Update Explorer Scope (with app_name for DB sync - Phase 18.13)
+                self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'])
+                try:
+                    self.explorer_panel.config_changed.disconnect()
+                except: pass
+                self.explorer_panel.config_changed.connect(lambda: self._refresh_current_view())
+                
+                # Defer Auto-registration (L1/L2) to background to speed up app switching (Save ~0.7s)
+                QTimer.singleShot(800, lambda: self._auto_register_folders(root_path))
+                
+                self._load_items_for_path(root_path)
+
+            else:
+                self.logger.warning(f"Invalid storage root: {root_path}")
+            
+            # Phase 28: REMOVED save here - save only on close and explicit navigation
+            # Saving here was overwriting the restored path before navigation completed
+
+            
+            # Load Tags
+            self._load_tags_for_app()
+            
+            # Update Executable Links (Phase 28)
+            self._update_exe_links(app_data)
+        else:
+            self.current_app_id = None
+            if self.presets_panel: self.presets_panel.set_app(None)
+            if self.library_panel: self.library_panel.set_app(None, None)
+            self.explorer_panel.set_storage_root(None)
+            
+            self.edit_app_btn.setEnabled(False)
+            self.btn_drawer.setEnabled(False)
+
+            self.tag_bar.set_tags([])
+
+    # --- Size Scanning (Phase 30) ---
+    def _start_bulk_size_check(self):
+        if not self.storage_root:
+            return
+            
+        if self.tools_panel:
+            self.tools_panel.btn_check_sizes.setEnabled(False)
+            self.tools_panel.btn_check_sizes.setText("📦 走査中...")
+        
+        self.size_worker = SizeScannerWorker(self.db, self.storage_root)
+        self.size_worker.progress.connect(self._on_size_scan_progress)
+        self.size_worker.all_finished.connect(self._on_size_scan_finished)
+        self.size_worker.start()
+
+    def _on_size_scan_progress(self, current, total):
+        if self.tools_panel:
+            self.tools_panel.btn_check_sizes.setText(f"📦 走査中 ({current}/{total})")
+    def _on_size_scan_finished(self):
+        if self.tools_panel:
+            self.tools_panel.btn_check_sizes.setEnabled(True)
+            self.tools_panel.btn_check_sizes.setText("全容量チェックを実行")
+            
+            # Phase 30: Update last check time label
+            import datetime
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.tools_panel.set_last_check_time(now_str)
+        
+        self._refresh_current_view()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "完了", "全てのパッケージ容量チェックが完了しました。")
+
+    def _auto_register_folders(self, storage_root):
+        """Auto-register folders to ensure they exist in DB, but let dynamic logic handle types."""
+        try:
+            self.logger.info(f"Auto-registering folders using DB: {self.db.db_path}")
+            registered_count = 0
+            for name in os.listdir(storage_root):
+                path = os.path.join(storage_root, name)
+                if not os.path.isdir(path): continue
+                
+                rel = name  # Level 1
+                # Standardize separators for rel path
+                rel = rel.replace('\\', '/')
+                
+                # Check if exists, if not, create entry with folder_type='category'
+                # Level 1 and Level 2 are Categories, Level 3+ are Packages
+                if not self.db.get_folder_config(rel):
+                    self.db.update_folder_display_config(rel, folder_type='category')
+                    registered_count += 1
+                    self.logger.debug(f"Registered L1: {rel}")
+                
+                # Level 2 - also category
+                try:
+                    for sub in os.listdir(path):
+                        sub_path = os.path.join(path, sub)
+                        if not os.path.isdir(sub_path): continue
+                        sub_rel = (rel + "/" + sub).replace('\\', '/')
+                        if not self.db.get_folder_config(sub_rel):
+                            self.db.update_folder_display_config(sub_rel, folder_type='category')
+                            registered_count += 1
+                            self.logger.debug(f"Registered L2: {sub_rel}")
+                except: pass
+            self.logger.info(f"Auto-registration complete. New entries: {registered_count}")
+        except Exception as e:
+            self.logger.warning(f"Auto-register failed: {e}")
+
+    def _detect_folder_type(self, path):
+        """Phase 18.11: Heuristic to detect if a folder is a CATEGORY or a PACKAGE."""
+        if not os.path.exists(path) or not os.path.isdir(path):
+            return 'category'
+
+        # 1. Manifest Check
+        manifests = ["manifest.json", "plugin.json", "config.yml", "__init__.py", "package.json"]
+        for m in manifests:
+            if os.path.exists(os.path.join(path, m)):
+                return 'package'
+
+        # 2. Naming Convention
+        pkg_exts = (".pkg", ".bundle", ".plugin", ".addon")
+        if path.lower().endswith(pkg_exts):
+            return 'package'
+
+        # 3. Content Density (Heuristic)
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if entry.is_file():
+                        # If it contains any files at the top level, it's likely a package
+                        return 'package'
+        except:
+            pass
+
+        return 'category'
+
+    # Tag methods moved to LMTagsMixin
+
+
+    def _open_external_note(self, path):
+        """Open the given note path in the default system editor."""
+        if not path or not os.path.exists(path): return
+        try:
+            os.startfile(path)
+        except Exception as e:
+            self.logger.error(f"Failed to open external note: {e}")
+
+    def _toggle_sidebar_tab(self, index):
+        """Toggle the shared sidebar drawer and switch to the specified tab (0=Library, 1=Presets, 2=Notes, 3=Tools)."""
+        is_already_open = self.drawer_widget.isVisible()
+        current_tab = self.sidebar_tabs.currentIndex()
+        
+        # Lazy Loading implementation
+        if index == 0 and self.library_panel is None:
+            self.library_panel = LibraryPanel(self, db=self.db)
+            self.library_panel.request_register_library.connect(self._register_selected_as_library)
+            self.library_panel.request_deploy_library.connect(self._deploy_single_from_rel_path)
+            self.library_panel.request_unlink_library.connect(self._unlink_single_from_rel_path)
+            self.library_panel.request_edit_properties.connect(self._open_properties_from_rel_path)
+            self.library_panel.request_view_properties.connect(self._view_properties_from_rel_path)
+            # Replace placeholder
+            old = self.sidebar_tabs.widget(0)
+            self.sidebar_tabs.removeTab(0)
+            self.sidebar_tabs.insertTab(0, self.library_panel, "Libraries")
+            if old: old.deleteLater()
+            
+            # Initial state setup for new panel
+            app_data = self.app_combo.currentData()
+            if app_data:
+                self.library_panel.set_app(self.current_app_id, self.db)
+
+        elif index == 1 and self.presets_panel is None:
+            self.presets_panel = PresetsPanel(self, db=self.db)
+            self.presets_panel.load_preset.connect(self._load_preset)
+            self.presets_panel.preview_preset.connect(self._preview_preset)
+            self.presets_panel.delete_preset.connect(self._delete_preset)
+            self.presets_panel.create_preset.connect(self._create_preset)
+            self.presets_panel.clear_filter.connect(self._clear_preset_filter)
+            self.presets_panel.unload_request_signal.connect(self._unload_active_links)
+            self.presets_panel.order_changed.connect(self._on_preset_order_changed)
+            self.presets_panel.edit_preset_properties.connect(self._show_preset_properties)
+            # Replace placeholder
+            old = self.sidebar_tabs.widget(1)
+            self.sidebar_tabs.removeTab(1)
+            self.sidebar_tabs.insertTab(1, self.presets_panel, "Presets")
+            if old: old.deleteLater()
+            
+            if self.current_app_id:
+                self.presets_panel.set_app(self.current_app_id)
+
+        elif index == 2 and self.notes_panel is None:
+            self.notes_panel = NotesPanel(self)
+            self.notes_panel.request_external_edit.connect(self._open_external_note)
+            # Replace placeholder
+            old = self.sidebar_tabs.widget(2)
+            self.sidebar_tabs.removeTab(2)
+            self.sidebar_tabs.insertTab(2, self.notes_panel, "Notes")
+            if old: old.deleteLater()
+            
+            self._update_notes_path()
+
+        elif index == 3 and self.tools_panel is None:
+            from src.ui.link_master.tools_panel import ToolsPanel
+            self.tools_panel = ToolsPanel(self)
+            self.tools_panel.request_reset_all.connect(self._reset_all_folder_attributes)
+            self.tools_panel.request_manual_rebuild.connect(self._manual_rebuild)
+            self.tools_panel.pool_size_changed.connect(self._set_pool_size)
+            self.tools_panel.search_cache_toggled.connect(self._set_search_cache_enabled)
+            self.tools_panel.request_import.connect(self._import_portability_package)
+            self.tools_panel.request_export.connect(self._export_hierarchy_current)
+            self.tools_panel.request_size_check.connect(self._start_bulk_size_check)
+            self.tools_panel.deploy_opacity_changed.connect(self._set_deploy_button_opacity)
+            # Replace placeholder
+            old = self.sidebar_tabs.widget(3)
+            self.sidebar_tabs.removeTab(3)
+            self.sidebar_tabs.insertTab(3, self.tools_panel, "Tools")
+            if old: old.deleteLater()
+            
+            # Initialize Tool values
+            if hasattr(self, 'registry') and self.registry:
+                try:
+                    saved_pool_size = self.registry.get_setting('pool_size')
+                    if saved_pool_size: self.max_pool_size = int(saved_pool_size)
+                except: pass
+            if hasattr(self, 'max_pool_size'):
+                self.tools_panel.spin_pool_size.setValue(self.max_pool_size)
+            if hasattr(self, 'search_cache_enabled'):
+                self.tools_panel.chk_search_cache.setChecked(self.search_cache_enabled)
+            if hasattr(self, 'deploy_button_opacity'):
+                 self.tools_panel.slider_deploy_opacity.setValue(int(self.deploy_button_opacity * 100))
+
+        if is_already_open and current_tab == index:
+            # Close it
+            self.drawer_widget.hide()
+            self.btn_libraries.setChecked(False)
+            self.btn_presets.setChecked(False)
+            self.btn_notes.setChecked(False)
+            self.btn_tools.setChecked(False)
+        else:
+            # Open it / Switch to it
+            self.sidebar_tabs.setCurrentIndex(index)
+            self.drawer_widget.show()
+            self.btn_libraries.setChecked(index == 0)
+            self.btn_presets.setChecked(index == 1)
+            self.btn_notes.setChecked(index == 2)
+            self.btn_tools.setChecked(index == 3)
+            
+            # Refresh content
+            if index == 0:
+                self.library_panel.refresh()
+            elif index == 1:
+                self.presets_panel.refresh()
+            elif index == 2:
+                self._update_notes_path()
+                self.notes_panel.refresh()
+            # index 2 (Tools) is static content, no refresh needed
+
+    def _register_selected_as_library(self):
+        """Registers all currently selected items as libraries (requires metadata)."""
+        if not self.selected_paths:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Library", "Please select one or more items to register.")
+            return
+        
+        # Create registration dialog with existing library dropdown
+        from src.ui.link_master.dialogs_legacy import LibraryRegistrationDialog
+        dialog = LibraryRegistrationDialog(self, self.db)
+        if not dialog.exec():
+            return
+        
+        name = dialog.get_library_name()
+        version = dialog.get_version()
+        
+        if not name:
+            return
+        
+        count = 0
+        for path in self.selected_paths:
+            try:
+                rel_path = os.path.relpath(path, self.storage_root).replace('\\', '/')
+                if rel_path == ".": rel_path = ""
+                self.db.update_folder_display_config(rel_path, is_library=1, lib_name=name, lib_version=version)
+                count += 1
+            except: pass
+            
+        if self.library_panel:
+            self.library_panel.refresh()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Library", f"Registered {count} item(s) to library: {name}")
+
+
+    def _update_notes_path(self):
+        """Set the storage path for the notes panel based on the current app."""
+        if not self.current_app_id: return
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        # Determine app folder name
+        app_name = app_data.get('name', 'Unknown')
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Notes are in the root resource/app/ dir
+        notes_path = os.path.join(project_root, "resource", "app", app_name, "notes")
+        if self.notes_panel:
+            self.notes_panel.set_app(self.current_app_id, notes_path)
+
+
+
+
+    def _toggle_presets_drawer(self, checked):
+        """Toggle the Presets side drawer."""
+        if checked:
+            self.presets_drawer.show()
+        else:
+            self.presets_drawer.hide()
+    
+
+    def _update_drawer_geometry(self):
+        """Update absolute position of the floating explorer panel."""
+        if not hasattr(self, 'explorer_panel') or not hasattr(self, 'content_wrapper'):
+            return
+        # Position at the left edge of content_wrapper, below the header
+        pos = self.content_wrapper.mapTo(self, self.content_wrapper.rect().topLeft())
+        height = self.content_wrapper.height()
+        self.explorer_panel.setGeometry(pos.x() + 20, pos.y(), 280, height)
+        self.explorer_panel.raise_()
+    
+    def _toggle_explorer(self, checked):
+        """Toggle the floating Explorer panel."""
+        if checked:
+            self.explorer_panel.show()
+            self._update_drawer_geometry()
+        else:
+            self.explorer_panel.hide()
+
+
+
+    def _on_explorer_path_selected(self, rel_path):
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        storage_root = app_data.get('storage_root')
+        full_path = os.path.join(storage_root, rel_path.replace('/', os.sep))
+        
+        self._load_items_for_path(full_path)
+
+    def _refresh_current_view(self, force=True):
+        """Reloads the currently visible folder items (Maintains state).
+        
+        Phase 28 Architecture: Avoids widget destruction during refresh.
+        - force=False: Visual-only updates (size, mode)
+        - force=True: Re-check link status and hidden state on existing cards
+                      + Update visual attributes from DB (Display Name, Icon, etc.)
+        
+        For data changes (new items added/removed), use _load_items_for_path directly.
+        """
+        # print(f"[Profiling] LinkMasterWindow._refresh_current_view (force={force}): view={getattr(self, 'current_view_path', 'None')}, sel={getattr(self, 'current_path', 'None')}")
+        
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        app_deploy_default = app_data.get('deployment_type', 'folder')
+        app_conflict_default = app_data.get('conflict_policy', 'backup')
+        app_name = app_data.get('name')
+
+        # Phase 18.15 & 24: Immediate visual feedback for display mode/size changes
+        # Always refresh existing widgets for immediate feedback even if not forcing a data re-scan.
+        for prefix, layout in [('cat', self.cat_layout), ('pkg', self.pkg_layout)]:
+            if not hasattr(self, f'{prefix}_layout'): continue
+            override = getattr(self, f'{prefix}_display_override', None)
+            
+            # Use stored persistent mode if no override, to avoid jumps
+            stored_mode = getattr(self, f'current_{prefix}_display_mode', 'mini_image')
+            active_mode = override if override is not None else stored_mode
+            
+            # Fetch scale/params
+            scale = getattr(self, f'{prefix}_{active_mode}_scale', 1.0)
+            base_w = getattr(self, f'{prefix}_{active_mode}_card_w', 160)
+            base_h = getattr(self, f'{prefix}_{active_mode}_card_h', 220)
+            base_img_w = getattr(self, f'{prefix}_{active_mode}_img_w', 140)
+            base_img_h = getattr(self, f'{prefix}_{active_mode}_img_h', 140)
+
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance(widget, ItemCard):
+                    # Only change display mode if there's an explicit override
+                    if override is not None:
+                        widget.set_display_mode(override)
+                    # Always update size params for consistency
+                    widget.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
+
+        # Phase 24 Optimization: If not forcing, we are done with visual-only updates
+        if not force:
+            return
+
+        # If we are in a search/filter view, re-run search/scan (this does need rebuild)
+        has_search = bool(self.search_bar.text().strip() or self.tag_bar.get_selected_tags())
+        has_link_filter = bool(getattr(self, 'link_filter_mode', None))
+        
+        if has_search:
+             # print("[Profiling] Triggering Search Refresh")
+             self._perform_search()
+             return
+             
+        # Trigger rebuild if link filter is active OR if we just turned it off
+        # (Since we don't track'prev_filter_state', always rebuild if force=True
+        # and current view path is set, as it's the safest way to restore all cards)
+        if hasattr(self, 'current_view_path') and self.current_view_path:
+             # print(f"[Profiling] Triggering Full Rebuild (force=True) for {self.current_view_path}")
+             self._load_items_for_path(self.current_view_path, force=True)
+             return
+
+        # Phase 28: Lightweight refresh - update attributes on existing cards, NO rebuild
+        # This updates link status (green/orange borders) and hidden state
+        # --- ENHANCED: Also update Display Name/Icon from DB ---
+        # print("[Profiling] Phase 28: Lightweight refresh (no rebuild) with metadata sync")
+        
+        # Fetch latest DB configs for merging
+        all_configs = self.db.get_all_folder_configs()
+        folder_configs = {k.replace('\\', '/'): v for k, v in all_configs.items()}
+
+        for prefix, layout in [('cat', self.cat_layout), ('pkg', self.pkg_layout)]:
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if isinstance(widget, ItemCard) and hasattr(widget, 'path'):
+                    try:
+                        rel_path = os.path.relpath(widget.path, storage_root).replace('\\', '/')
+                        cfg = folder_configs.get(rel_path, {})
+                        
+                        # Map image path (Priority: DB > Auto-scan thumb)
+                        img_path = None
+                        cfg_img = cfg.get('image_path')
+                        if cfg_img:
+                            if os.path.isabs(cfg_img):
+                                img_path = cfg_img
+                            else:
+                                img_path = os.path.join(storage_root, cfg_img)
+                        else:
+                            # Phase 28: Fallback to automatic thumbnail detection if not in DB
+                            auto_thumb = self.scanner.detect_thumbnail(widget.path)
+                            if auto_thumb:
+                                img_path = os.path.join(widget.path, auto_thumb)
+                        
+                        # Phase 28: Proper empty string handling for display_name
+                        raw_name = cfg.get('display_name')
+                        final_name = raw_name if raw_name else os.path.basename(widget.path)
+                        
+                        widget.update_data(
+                            name=final_name,
+                            image_path=img_path,
+                            is_registered=(rel_path in folder_configs),
+                            target_override=cfg.get('target_override'),
+                            deployment_rules=cfg.get('deployment_rules'),
+                            manual_preview_path=cfg.get('manual_preview_path'),
+                            is_hidden=(cfg.get('is_visible', 1) == 0),
+                            deploy_type=cfg.get('deploy_type') or app_deploy_default,
+                            conflict_policy=cfg.get('conflict_policy') or app_conflict_default,
+                            storage_root=storage_root,
+                            db=self.db,
+                            app_name=app_name,
+                            thumbnail_manager=self.thumbnail_manager
+                        )
+                    except Exception as e:
+                        # print(f"[Profiling] Metadata sync failed for {getattr(widget, 'path', '???')}: {e}")
+                        pass
+
+        self._refresh_category_cards()  # Updates category borders + package borders
+    
+    def _rebuild_current_view(self):
+        """Force full widget reconstruction. Use only when items are added/removed/moved.
+        
+        Phase 28: This is the ONLY method that triggers widget destruction.
+        Use _refresh_current_view for attribute updates (link status, visibility, etc.)
+        """
+        # print("[Profiling] _rebuild_current_view: Full reconstruction required")
+        
+        # If we are in a search/filter view, re-run search
+        if self.search_bar.text().strip() or self.tag_bar.get_selected_tags():
+             self._perform_search()
+             return
+
+        # Full reload with widget destruction
+        if hasattr(self, 'current_view_path') and self.current_view_path:
+             self._load_items_for_path(self.current_view_path, force=True)
+
+        if hasattr(self, 'current_path') and self.current_path:
+             self._load_package_contents(self.current_path)
+
+    def keyPressEvent(self, event):
+        """Phase 19.5: Support Space key deployment for selected items."""
+        if event.key() == Qt.Key.Key_Space:
+            if self.selected_paths:
+                self.logger.info(f"Space key pressed: Toggling deployment for {len(self.selected_paths)} items")
+                # Find corresponding cards and toggle
+                found_any = False
+                for layout_obj in [self.cat_layout, self.pkg_layout]:
+                    for i in range(layout_obj.count()):
+                        w = layout_obj.itemAt(i).widget()
+                        if isinstance(w, ItemCard) and w.path in self.selected_paths:
+                            if hasattr(w, 'toggle_deployment'):
+                                w.toggle_deployment()
+                                found_any = True
+                if found_any:
+                    # Final refresh after all toggles
+                    self._refresh_current_view()
+                return
+        super().keyPressEvent(event)
+
+    def mousePressEvent(self, event):
+        """Phase 28: Navigation History (Mouse Side Buttons)"""
+        # Mouse Button 4 (XButton1) is Back
+        if event.button() == Qt.MouseButton.XButton1:
+            self._navigate_back()
+            return
+        # Mouse Button 5 (XButton2) is Forward
+        elif event.button() == Qt.MouseButton.XButton2:
+            self._navigate_forward()
+            return
+
+        super().mousePressEvent(event)
+
+    def _load_items_for_path(self, path, force=False):
+        # Phase 19.x Optimization: Skip redundant scans if already at the path (e.g., clicking Home/Breadcrumb)
+        # unless force=True (used by _refresh_current_view)
+        # Phase 28: Normalize paths for reliable comparison
+        current_normalized = os.path.normpath(getattr(self, 'current_view_path', '') or '').replace('\\', '/')
+        path_normalized = os.path.normpath(path or '').replace('\\', '/')
+        is_same_path = current_normalized == path_normalized
+        
+        if not force and is_same_path:
+            self.logger.info(f"Skipping redundant scan for: {path}")
+            self.current_path = None  
+            if hasattr(self, 'selected_paths'):
+                self.selected_paths.clear()
+            
+            # Clear packages area only
+            # Phase 28: Use pooling instead of destruction
+            self._release_all_active_cards("contents")
+            self.pkg_result_label.setText("")
+            
+            # Update breadcrumbs and card highlights
+            self._update_breadcrumbs(path)
+            self._refresh_category_cards()
+            return
+
+        # Normal navigation or forced refresh
+        if not is_same_path:
+            self.current_path = None  
+            if hasattr(self, 'selected_paths'):
+                self.selected_paths.clear()
+            
+            # Phase 28: Navigation History Recording
+            # Avoid recording if we are navigating history itself
+            if not getattr(self, '_is_navigating_history', False):
+                if self.nav_index < len(self.nav_history) - 1:
+                    # Branching: If we were back in time and navigated to a NEW place, 
+                    # prune all forward history.
+                    self.nav_history = self.nav_history[:self.nav_index + 1]
+                
+                # Append only if it's a new unique step
+                if not self.nav_history or self.nav_history[-1] != path:
+                    self.nav_history.append(path)
+                
+                self.nav_index = len(self.nav_history) - 1
+                self._update_nav_buttons()
+        
+        self._nav_start_t = time.time()
+        
+        self.current_view_path = path
+        # Phase 28: REMOVED automatic override reset on navigation
+        # Overrides now persist until user explicitly changes them via buttons
+        # Old behavior: reset on every navigation (is_same_path=False)
+        
+        # Phase 28: Save last state on every navigation for startup restoration
+        self._save_last_state()
+        
+        self._update_breadcrumbs(path)
+        
+        # Phase 28: Use pooling instead of destruction
+        self._release_all_active_cards("all")
+        
+        # Trigger Asynchronous Scan
+        self._show_search_indicator()
+        
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data['storage_root']
+        target_root = app_data.get(self.current_target_key)
+        
+        self.cat_scanner_worker.set_params(path, target_root, storage_root, context="view")
+        from PyQt6.QtCore import QMetaObject, Qt
+        QMetaObject.invokeMethod(self.cat_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
+
+    def _on_category_selected(self, path, force=False):
+        """Called when a category card is clicked. Loads its contents into the bottom area asynchronously."""
+        # Phase 28: Skip if already showing this category's contents (unless forced)
+        if not force and getattr(self, 'current_path', None) == path:
+            print(f"[Debug] Skipping redundant category selection: {path}")
+            return
+            
+        self._nav_start_t = time.time()
+            
+        # Update Breadcrumbs to show the selected package as a leaf
+        if hasattr(self, 'current_view_path'):
+             self._update_breadcrumbs(self.current_view_path, active_selection=path)
+        
+        # Load contents into bottom area (Async)
+        self._load_package_contents(path)
+        for i in range(self.cat_layout.count()):
+            widget = self.cat_layout.itemAt(i).widget()
+            if isinstance(widget, ItemCard):
+                widget.set_selected(widget.path == path)
+        
+        # Phase 19: Unified Focus tree on selected folder
+        app_data = self.app_combo.currentData()
+        if app_data:
+            storage_root = app_data.get('storage_root')
+            try:
+                rel_path = os.path.relpath(path, storage_root).replace('\\', '/')
+                if rel_path == ".": rel_path = ""
+                self.explorer_panel.focus_on_path(rel_path)
+            except:
+                pass
+
+
+    def _load_package_contents(self, path):
+        self.current_path = path
+        # Phase 28: Save last state on every category selection for startup restoration
+        self._save_last_state()
+        # Phase 28: Use pooling instead of destruction
+        self._release_all_active_cards("contents")
+        
+        # Phase 19.x: Also update breadcrumbs leaf highlight
+        if hasattr(self, 'current_view_path'):
+            self._update_breadcrumbs(self.current_view_path, active_selection=path)
+
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data['storage_root']
+        target_root = app_data.get(self.current_target_key)
+        
+        # Async Scan for packages only
+        self.pkg_scanner_worker.set_params(path, target_root, storage_root, context="contents")
+        from PyQt6.QtCore import QMetaObject, Qt
+        QMetaObject.invokeMethod(self.pkg_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
+
+    def _is_package_auto(self, abs_path):
+        """Heuristic: Check if folder contains package-like config files."""
+        if not abs_path or not os.path.isdir(abs_path):
+            return False
+            
+        package_indicators = {'.json', '.ini', '.yaml', '.toml', '.yml'}
+        try:
+            with os.scandir(abs_path) as it:
+                for entry in it:
+                    if entry.is_file():
+                        ext = os.path.splitext(entry.name)[1].lower()
+                        if ext in package_indicators:
+                            return True
+        except:
+            pass
+        return False
+
+    def _handle_tree_navigation(self, rel_path, is_double_click=False):
+        """Unified TreeView navigation handler.
+        Supports Auto-Package detection and Contextual Backtracking for categories.
+        """
+        if not self.storage_root:
+            return
+            
+        # 1. Root handling
+        if not rel_path:
+            if is_double_click: 
+                self._load_items_for_path(self.storage_root)
+            else:
+                self.current_path = None
+                self._load_items_for_path(self.storage_root)
+            return
+
+        # 2. Folder Type Detection (Priority: DB > Auto-Heuristic)
+        abs_path = os.path.join(self.storage_root, rel_path)
+        config = self.db.get_folder_config(rel_path) or {}
+        
+        # Determine Folder Type
+        config_type = config.get('folder_type', 'auto')
+        if config_type == 'auto':
+            folder_type = 'package' if self._is_package_auto(abs_path) else 'category'
+        else:
+            folder_type = config_type
+        
+        if folder_type == 'package':
+            # Multi-level focus: View Grandparent, Select Parent, Highlight self
+            parent_abs = os.path.dirname(abs_path)
+            grandparent_abs = os.path.dirname(parent_abs)
+            
+            # 1. Top context (View Root)
+            if getattr(self, 'current_view_path', None) != grandparent_abs:
+                self._load_items_for_path(grandparent_abs)
+            
+            # 2. Mid context (Selected Category)
+            if getattr(self, 'current_path', None) != parent_abs:
+                self._on_category_selected(parent_abs)
+            
+            # 3. Bottom context (Highlighted Package)
+            self.selected_paths = {abs_path}
+            self._update_selection_visuals()
+            
+        else:
+            # Category behavior
+            if is_double_click:
+                self._load_items_for_path(abs_path)
+            else:
+                # Requirement: Use Contextual Backtracking like Breadcrumbs
+                # If we are ALREADY in the folder, or deep inside, click in tree should trace back
+                parent_abs = os.path.dirname(abs_path)
+                
+                # 1. Top view (Navigator) to parent level
+                self._load_items_for_path(parent_abs)
+                
+                # 2. Select the clicked segment in that view
+                self._on_category_selected(abs_path)
+
+
+    # Scan result methods moved to LMScanHandlerMixin
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+
+    # --- Selection & Batch Methods moved to: lm_selection.py, lm_batch_ops.py ---
+
+
+
+    def _delete_preset(self, preset_id):
+        try:
+            self.db.delete_preset(preset_id)
+            if self.presets_panel:
+                self.presets_panel.refresh()
+            # Clear highlights if the deleted preset was active
+            self._clear_item_highlights()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def _on_preset_order_changed(self, order_list):
+        """Persist new preset order to DB."""
+        if not self.db: return
+        try:
+            self.db.update_preset_order(order_list)
+        except Exception as e:
+            self.logger.error(f"Failed to update preset order: {e}")
+
+    def _show_preset_properties(self, preset_id):
+        """Show dialog to edit preset name and description."""
+        presets = self.db.get_presets()
+        preset = next((p for p in presets if p['id'] == preset_id), None)
+        if not preset: return
+        
+        from src.ui.link_master.dialogs import PresetPropertiesDialog
+        dialog = PresetPropertiesDialog(self, name=preset['name'], description=preset.get('description', ''))
+        if dialog.exec():
+            data = dialog.get_data()
+            try:
+                self.db.update_preset(preset_id, **data)
+                if self.presets_panel:
+                    self.presets_panel.refresh()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def _open_register_dialog(self):
+        from src.ui.link_master.dialogs import AppRegistrationDialog
+        dialog = AppRegistrationDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            if not data['name'] or not data['storage_root']:
+                QMessageBox.warning(self, "Error", "Name and Storage Root are required.")
+                return
+            
+            try:
+                # Add to Registry
+                new_id = self.registry.add_app(data)
+                self._load_apps()
+                
+                # Auto-select
+                for i in range(self.app_combo.count()):
+                    item = self.app_combo.itemData(i)
+                    if item and item.get('id') == new_id:
+                        self.app_combo.setCurrentIndex(i)
+                        break
+                
+                QMessageBox.information(self, "Success", f"Registered {data['name']}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def toggle_pin_click(self):
+        """Toggle always-on-top using flicker-free Win32 implementation and persist state."""
+        try:
+            is_pinned = self.pin_btn.toggle()
+            self._always_on_top = is_pinned
+            self.set_always_on_top(is_pinned) # Win32 flicker-free call
+            if hasattr(self, 'options_window') and self.options_window:
+                self.options_window.update_state_from_parent(is_pinned)
+            self.save_options("link_master")
+            self.logger.info(f"Pin Toggled: {is_pinned}")
+        except Exception as e:
+            self.logger.error(f"Pin Error: {e}")
+            
+    def set_pin_state(self, is_pinned: bool):
+        """External entry point to set pin state (e.g. from OptionsWindow)."""
+        if self.pin_btn.toggled_state != is_pinned:
+            self.pin_btn.toggle()
+        self._always_on_top = is_pinned
+        self.set_always_on_top(is_pinned)
+        if hasattr(self, 'options_window') and self.options_window:
+            self.options_window.update_state_from_parent(is_pinned)
+        self.save_options("link_master")
+        
+    def toggle_options(self):
+        try:
+            self.logger.info("Toggle Options Clicked")
+            is_open = self.opt_btn.toggle()
+            if is_open:
+                self.options_window.move(self.x() + 10, self.y() + 40)
+                self.options_window.show()
+                self.options_window.activateWindow()
+                self.options_window.raise_()
+                self.logger.info(f"Options Window Geometry: {self.options_window.geometry()}, Visible: {self.options_window.isVisible()}")
+            else:
+                self.options_window.hide()
+        except Exception as e:
+            self.logger.error(f"Options Error: {e}")
+            QMessageBox.critical(self, "Error", f"Options Window Error: {e}")
+            
+    
+    # --- Phase 25: Settings Handlers ---
+    def _on_display_lock_toggled(self, checked):
+        """Handler for 'Lock Display Mode' checkbox.
+        
+        Only sets a flag - does NOT change any display behavior.
+        The flag is used on close to decide whether to save current overrides.
+        """
+        self.display_mode_locked = checked
+        # No view refresh - this just sets the flag
+
+    def _on_options_window_closed(self):
+        """Reset options toggle button when window is closed via X."""
+        if self.opt_btn.toggled_state:
+            self.opt_btn.toggle()  # Reset toggle state
+    
+    def _on_help_window_closed(self):
+        """Reset help toggle button when window is closed via X."""
+        if self.help_btn.toggled_state:
+            self.help_btn.toggle()  # Reset toggle state
+
+
+    def _show_app_preview(self):
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        img_path = app_data.get('cover_image')
+        if not img_path or not os.path.exists(img_path):
+            QMessageBox.information(self, "App Preview", f"No cover image set for {app_data['name']}")
+            return
+            
+        # Show Dialog
+        d = QDialog(self)
+        d.setWindowTitle(f"Preview: {app_data['name']}")
+        d.setModal(True)
+        layout = QVBoxLayout(d)
+        
+        lbl = QLabel()
+        pix = QPixmap(img_path)
+        if not pix.isNull():
+            # Scale if too big?
+            if pix.width() > 800 or pix.height() > 600:
+                pix = pix.scaled(800, 600, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            lbl.setPixmap(pix)
+            
+        layout.addWidget(lbl)
+        d.exec()
+
+    def _open_preferred_url(self):
+        """Open the preferred URL of the currently selected app in the browser."""
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            return
+            
+        url_list_json = app_data.get('url_list', '[]') or '[]'
+        
+        from src.utils.url_utils import open_first_working_url, URL_OPEN_MANAGER, URL_NO_URLS
+        result = open_first_working_url(url_list_json, parent=self)
+        
+        # If user chose to open manager, or no URLs exist, open the dialog
+        if result in (URL_OPEN_MANAGER, URL_NO_URLS):
+            self._open_app_url_manager()
+    
+    def _open_app_url_manager(self):
+        """Open URL management dialog for the current app."""
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            return
+            
+        from src.ui.link_master.dialogs_legacy import URLListDialog
+        current_json = app_data.get('url_list', '[]') or '[]'
+        
+        dialog = URLListDialog(self, url_list_json=current_json)
+        if dialog.exec():
+            new_json = dialog.get_data()
+            
+            # Save to registry
+            app_id = app_data['id']
+            self.registry.update_app(app_id, {'url_list': new_json})
+            
+            # Refresh app_combo data
+            self._load_apps()
+            
+            # Re-select the same app
+            for i in range(self.app_combo.count()):
+                item = self.app_combo.itemData(i)
+                if item and item.get('id') == app_id:
+                    self.app_combo.setCurrentIndex(i)
+                    break
+
+    def _open_edit_dialog(self):
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        # Pass existing data to dialog
+        from src.ui.link_master.dialogs import AppRegistrationDialog
+        dialog = AppRegistrationDialog(self, app_data=app_data)
+        if dialog.exec():
+            data = dialog.get_data()
+            if not data['name'] or not data['storage_root']:
+                QMessageBox.warning(self, "Error", "Name and Storage Root are required.")
+                return
+            
+            # Update Registry
+            self.registry.update_app(self.current_app_id, data)
+            self._load_apps()
+            
+            # Re-select to trigger refresh
+            for i in range(self.app_combo.count()):
+                item = self.app_combo.itemData(i)
+                if item and item.get('id') == self.current_app_id:
+                    self.app_combo.setCurrentIndex(i)
+                    break
+            
+            try:
+                # Handle Image Processing (Resize & Save to App Folder)
+                img_path = data.get('cover_image')
+                storage_root = data.get('storage_root')
+                
+                if img_path and os.path.exists(img_path) and storage_root and os.path.exists(storage_root):
+                    # Check if it's already the processed one to avoid re-processing if not changed?
+                    # But simpler to just process if it's not the destination file.
+                    dest_path = os.path.join(storage_root, "app_icon.png")
+                    
+                    if os.path.normpath(img_path) != os.path.normpath(dest_path):
+                        from PIL import Image
+                        try:
+                            with Image.open(img_path) as img:
+                                img = img.resize((80, 80), Image.Resampling.LANCZOS)
+                                img.save(dest_path, "PNG")
+                            data['cover_image'] = dest_path
+                        except ImportError:
+                            # Fallback if PIL not available (though it should be)
+                            import shutil
+                            shutil.copy2(img_path, dest_path)
+                            data['cover_image'] = dest_path
+                        except Exception as e:
+                            self.logger.error(f"Failed to process app icon: {e}")
+                            # Keep original path if fail
+                
+                # Update DB
+                self.registry.update_app(app_data['id'], data)
+                
+                # Reload Apps but keep selection
+                current_id = app_data['id']
+                self._load_apps()
+                
+                # Re-select
+                for i in range(self.app_combo.count()):
+                    if self.app_combo.itemData(i) and self.app_combo.itemData(i)['id'] == current_id:
+                        self.app_combo.setCurrentIndex(i)
+                        break
+                        
+                QMessageBox.information(self, "Success", f"Updated {data['name']}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def _icon_mouse_press(self, event):
+        # Handle Alt+Click for Debug
+        if event.button() == Qt.MouseButton.LeftButton and (event.modifiers() & Qt.KeyboardModifier.AltModifier):
+            self._open_debug_window()
+        else:
+            # Pass to parent (Drag moves window)
+            event.ignore() 
+
+    def _open_debug_window(self):
+        from src.ui.link_master.debug_window import LinkMasterDebugWindow
+        
+        # Get Current App Data
+        app_data = self.app_combo.currentData()
+        
+        self.debug_window = LinkMasterDebugWindow(parent=self, app_data=app_data)
+        self.debug_window.move(self.x() + 50, self.y() + 50)
+        self.debug_window.show()
+    
+    # --- Trash Methods moved to: lm_trash.py ---
+    # Tag methods moved to LMTagsMixin
+
+    def _create_item_context_menu(self, rel_path):
+        """Centralized factory to create a context menu for any item (Category or Package).
+        Used by ItemCard, ExplorerPanel, and Breadcrumbs.
+        """
+        if not self.storage_root: return None
+        full_src = os.path.join(self.storage_root, rel_path)
+        if not os.path.exists(full_src): return None
+        
+        config = self.db.get_folder_config(rel_path) or {}
+        is_trash_view = "_Trash" in rel_path.replace('\\', '/')
+        
+        menu = QMenu(self)
+        menu.setStyleSheet(self._menu_style())
+        
+        folder_name = os.path.basename(rel_path) if rel_path else _("Root")
+        menu.addAction(_("Folder: {name}").format(name=folder_name)).setEnabled(False)
+        menu.addSeparator()
+
+        # 1. Deployment Actions (or Restore if in Trash)
+        if is_trash_view:
+            act_restore = menu.addAction(_("📦 Restore to Original"))
+            act_restore.triggered.connect(lambda: self._on_package_restore(full_src))
+        else:
+            app_data = self.app_combo.currentData()
+            target_dir = app_data.get(self.current_target_key) if app_data else None
+            
+            if self.deployer and target_dir:
+                target_link = config.get('target_override') or os.path.join(target_dir, folder_name)
+                status_res = self.deployer.get_link_status(target_link, expected_source=full_src)
+                status = status_res.get('status', 'none')
+                
+                # Phase 28: Check Tag Conflict
+                tag_conflict = self._check_tag_conflict(rel_path, config, app_data)
+                
+                if status == 'linked':
+                    act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))
+                    act_rem.triggered.connect(lambda: self._handle_unlink_single(rel_path))
+                elif status == 'conflict':
+                    menu.addAction(_("⚠ Conflict: File Exists")).setEnabled(False)
+                    act_swap = menu.addAction(_("🔄 Overwrite Target with Link"))
+                    act_swap.setToolTip(_("Delete the conflicting file in target and create a symlink to this source."))
+                    act_swap.triggered.connect(lambda: self._handle_conflict_swap(rel_path, target_link))
+                elif tag_conflict:
+                    # Phase 28: Tag Conflict Menu
+                    menu.addAction(_("⚠ Conflict: Tag '{tag}'").format(tag=tag_conflict['tag'])).setEnabled(False)
+                    act_swap = menu.addAction(_("🔄 Overwrite Target (Swap)"))
+                    act_swap.setToolTip(_("Disable '{name}' and enable this item.").format(name=tag_conflict['name']))
+                    # Route to _handle_deploy_single which now has the Swap Dialog
+                    act_swap.triggered.connect(lambda: self._handle_deploy_single(rel_path))
+                else:
+                    act_dep = menu.addAction(_("🚀 Deploy Link"))
+                    act_dep.triggered.connect(lambda: self._handle_deploy_single(rel_path))
+
+        # 2. Visibility
+        if not is_trash_view:
+            is_hidden = (config.get('is_visible', 1) == 0)  # is_visible=0 means hidden
+            if is_hidden:
+                act_vis = menu.addAction(_("👁 Show Item"))
+                act_vis.triggered.connect(lambda: self._update_folder_visibility(rel_path, False))
+            else:
+                act_vis = menu.addAction(_("👻 Hide Item"))
+                act_vis.triggered.connect(lambda: self._update_folder_visibility(rel_path, True))
+
+        menu.addSeparator()
+        
+        # 3. Properties & Explorer
+        act_props_view = menu.addAction(_("📋 View Properties"))
+        act_props_view.triggered.connect(lambda: self._show_property_view_for_card(full_src))
+
+        act_props = menu.addAction(_("📝 Edit Properties"))
+        # Phase 28: Use centralized pinpoint property edit
+        # Note: _batch_edit_properties_selected uses current selection (which is set before menu shows)
+        act_props.triggered.connect(self._batch_edit_properties_selected)
+        
+        act_files = menu.addAction(_("🛠 Manage Files (Exclude/Move)..."))
+        act_files.triggered.connect(lambda: self._open_file_management(rel_path))
+        
+        menu.addSeparator()
+        
+        act_explore = menu.addAction(_("📁 Open in Explorer"))
+        act_explore.triggered.connect(lambda: self._open_path_in_explorer(full_src))
+
+        menu.addSeparator()
+        
+        # 4. Trash / Restore (Bottom section)
+        if rel_path:
+            if not is_trash_view:
+                act_trash = menu.addAction(_("🗑 Move to Trash"))
+                act_trash.triggered.connect(lambda: self._on_package_move_to_trash(full_src))
+            else:
+                # Optionally add "Delete Permanently" here if trash view logic matures
+                pass
+            
+        return menu
+
+    def _open_path_in_explorer(self, path):
+        import subprocess
+        import sys
+        if sys.platform == 'win32':
+            subprocess.Popen(['explorer', path.replace('/', os.sep)])
+
+    def _update_folder_visibility(self, rel_path, hide):
+        """Helper to toggle visibility for a single folder.
+        
+        Uses _set_visibility_single for partial update (no full rebuild).
+        """
+        # Use batch ops method which does partial update (no full rebuild)
+        self._set_visibility_single(rel_path, visible=(not hide), update_ui=True)
+
+    def _show_full_preview_for_path(self, video_path, folder_path=None, folder_config=None):
+        """Phase 16.5: Open preview window for a folder's preview files."""
+        if not video_path: return
+        
+        from src.ui.link_master.preview_window import PreviewWindow
+        
+        # Convert single path to list if needed
+        if isinstance(video_path, str):
+            paths = [video_path]
+        elif isinstance(video_path, list):
+            paths = video_path
+        else:
+            paths = list(video_path) if video_path else []
+        
+        # Filter to existing files
+        paths = [p for p in paths if p and os.path.exists(p)]
+        if not paths:
+            QMessageBox.warning(self, "Preview", "No valid preview files found.")
+            return
+        
+        # Get storage root
+        app_data = self.app_combo.currentData()
+        storage_root = app_data.get('storage_root') if app_data else None
+        
+        # We need to maintain a reference to avoid GC
+        if not hasattr(self, '_preview_windows'):
+             self._preview_windows = []
+        
+        # Cleanup closed windows
+        self._preview_windows = [w for w in self._preview_windows if w.isVisible()]
+        
+        preview_win = PreviewWindow(
+            paths, self,
+            folder_path=folder_path,
+            folder_config=folder_config or {},
+            db=self.db,
+            storage_root=storage_root,
+            deployer=self.deployer,
+            target_dir=app_data.get(self.current_target_key) if app_data else None
+        )
+        if hasattr(preview_win, 'property_changed'):
+            preview_win.property_changed.connect(self._on_pinpoint_property_changed)
+
+        self._preview_windows.append(preview_win)
+        preview_win.show()
+    
+    def _show_property_view_for_card(self, folder_path):
+        """Phase 28: Open property view for a card (package or category)."""
+        if not folder_path or not os.path.exists(folder_path):
+            return
+        
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            return
+        
+        storage_root = app_data.get('storage_root')
+        if not storage_root:
+            return
+        
+        # Get folder config
+        rel_path = os.path.relpath(folder_path, storage_root).replace('\\', '/')
+        if rel_path == '.':
+            rel_path = ''
+        
+        folder_config = self.db.get_folder_config(rel_path) if self.db else {}
+        
+        # Get preview paths - check for manual_preview_path in config
+        preview_paths = []
+        if folder_config:
+            manual_preview = folder_config.get('manual_preview_path')
+            if manual_preview:
+                if isinstance(manual_preview, str):
+                    # Phase 28 FIX: Split by semicolon for multi-previews
+                    raw_paths = [p.strip() for p in manual_preview.split(';') if p.strip()]
+                    preview_paths = [p for p in raw_paths if os.path.exists(p)]
+                elif isinstance(manual_preview, list):
+                    preview_paths = [p for p in manual_preview if p and os.path.exists(p)]
+        
+        # Import and create property view
+        from src.ui.link_master.preview_window import PreviewWindow
+        
+        if not hasattr(self, '_preview_windows'):
+            self._preview_windows = []
+        
+        # Cleanup closed windows
+        self._preview_windows = [w for w in self._preview_windows if w.isVisible()]
+        
+        preview_win = PreviewWindow(
+            preview_paths, self,
+            folder_path=folder_path,
+            folder_config=folder_config or {},
+            db=self.db,
+            storage_root=storage_root,
+            deployer=self.deployer,
+            target_dir=app_data.get(self.current_target_key) if app_data else None
+        )
+        if hasattr(preview_win, 'property_changed'):
+            preview_win.property_changed.connect(self._on_pinpoint_property_changed)
+
+        self._preview_windows.append(preview_win)
+        preview_win.show()
+
+    def _on_pinpoint_property_changed(self, update_kwargs):
+        """Phase 28: Update a single card immediately when properties change."""
+        # Note: PreviewWindow usually provides relateve path info or we have to use folder_path
+        # The sender (PreviewWindow) knows the absolute path.
+        sender = self.sender()
+        if not sender or not hasattr(sender, 'folder_path'):
+            return
+            
+        path = sender.folder_path
+        card = self._get_active_card_by_path(path)
+        if card:
+            # Update the widget data directly
+            card.update_data(**update_kwargs)
+            # Force style update for conflicts etc.
+            if hasattr(card, '_update_style'):
+                card._update_style()
+                
+            # Phase 28: If tag or scope changed, re-run visual conflict detection 
+            # as it might affect other visible cards (or resolve them)
+            if 'conflict_tag' in update_kwargs or 'conflict_scope' in update_kwargs:
+                if hasattr(self, '_refresh_tag_conflicts_visual'):
+                    self._refresh_tag_conflicts_visual()
+
+    def _handle_explorer_properties_edit(self, abs_paths):
+        """Handle property edit requests from ExplorerPanel by syncing selection first."""
+        if not abs_paths: return
+        self.selected_paths = set(abs_paths)
+        self._last_selected_path = abs_paths[0]
+        # Trigger the consolidated pinpoint update method
+        if hasattr(self, '_batch_edit_properties_selected'):
+            self._batch_edit_properties_selected()
+
+    def _get_app_menu_style(self):
+        return """
+            QMenu { background-color: #2b2b2b; border: 1px solid #555; }
+            QMenu::item { padding: 5px 20px; color: #ddd; }
+            QMenu::item:selected { background-color: #3498db; color: white; }
+            QMenu::item:disabled { color: #555; }
+        """
+
+    def _menu_style(self):
+        return """
+            QMenu { background-color: #2b2b2b; border: 1px solid #555; }
+            QMenu::item { padding: 5px 20px; color: #ddd; }
+            QMenu::item:selected { background-color: #3498db; color: white; }
+            QMenu::item:disabled { color: #555; }
+        """
+
+    def _handle_deploy_single(self, rel_path):
+        """Deploy a single item from context menu."""
+        if not self._deploy_single(rel_path, update_ui=True):
+            QMessageBox.warning(self, "Deploy Error", f"Failed to deploy {rel_path}")
+
+    def _handle_unlink_single(self, rel_path):
+        """Unlink a single item from context menu."""
+        self._unlink_single(rel_path, update_ui=True)
+
+    def _handle_conflict_swap(self, rel_path, target_link):
+        """Force deploy by removing conflict."""
+        reply = QMessageBox.warning(self, "Conflict Swap", 
+                                    f"Overwrite target?\n{target_link}\n\nThis will DELETE the existing file.",
+                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                if os.path.islink(target_link) or os.path.isfile(target_link):
+                    os.remove(target_link)
+                elif os.path.isdir(target_link):
+                    import shutil
+                    shutil.rmtree(target_link)
+                
+                # Now deploy
+                self._deploy_items([rel_path])
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Swap failed: {e}")
+
+    # --- Search Methods moved to: lm_search.py ---
+    
+    # --- Preset Filter Methods moved to: lm_presets.py ---
+
+    def _reset_all_folder_attributes(self):
+        """Reset all folder configuration for the current app."""
+        if not self.current_app_id: return
+        self.logger.info("Resetting all folder attributes for current app.")
+        self.db.reset_app_folder_configs()
+        self._refresh_current_view()
+        QMessageBox.information(self, "Success", "All folder attributes have been reset.")
+
+    def _export_hierarchy_current(self):
+        """Export properties starting from the current view level."""
+        if not self.storage_root or not self.current_view_path: return
+        try:
+            rel_path = os.path.relpath(self.current_view_path, self.storage_root).replace('\\', '/')
+            if rel_path == ".": rel_path = ""
+            self._export_hierarchy(rel_path)
+        except:
+            self._export_hierarchy("")
+
+    def _manual_rebuild(self):
+        """Forces a full re-scan and cache refresh."""
+        if not self.storage_root: return
+        self.logger.info("Triggering manual rebuild (Full Re-scan).")
+        
+        # Phase 22: Clear any internal cache in workers/scanner
+        # Both workers rely on the same scanner instance, we just force a scan.
+        self._load_items_for_path(self.storage_root, force=True)
+        
+        # If a category is selected, refresh its contents too
+        if hasattr(self, 'current_path') and self.current_path:
+             self._load_package_contents(self.current_path)
+             
+        QMessageBox.information(self, "Manual Rebuild", "再構築が完了しました。")
+
+
+    def _update_exe_links(self, app_data: dict):
+        """Update executable link buttons in title bar center based on app settings."""
+        import json
+        import subprocess
+        
+        # Clear existing buttons from title bar center
+        while self.title_bar_center_layout.count():
+            item = self.title_bar_center_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        if not app_data:
+            return
+        
+        exe_json = app_data.get('executables', '[]')
+        try:
+            executables = json.loads(exe_json) if exe_json else []
+        except:
+            executables = []
+        
+        for exe in executables:
+            name = exe.get('name', 'Unknown')
+            path = exe.get('path', '')
+            args = exe.get('args', '')
+            
+            btn = QPushButton(f"▶ {name}")
+            btn.setToolTip(f"Launch: {path}\nArgs: {args}" if args else f"Launch: {path}")
+            
+            # Phase 28: Apply custom styling
+            bg_color = exe.get('btn_color', '#3498db')
+            tx_color = exe.get('text_color', '#ffffff')
+            
+            # Helper for hover/pressed effects (simplified)
+            from PyQt6.QtGui import QColor
+            base_q = QColor(bg_color)
+            hover_q = base_q.lighter(120).name()
+            press_q = base_q.darker(120).name()
+            
+            btn.setStyleSheet(f"""
+                QPushButton {{ 
+                    background-color: {bg_color}; 
+                    color: {tx_color}; 
+                    border: none; 
+                    padding: 4px 10px; 
+                    border-radius: 4px;
+                    font-size: 11px;
+                }}
+                QPushButton:hover {{ background-color: {hover_q}; }}
+                QPushButton:pressed {{ background-color: {press_q}; }}
+            """)
+            
+            # Capture path/args for lambda
+            def make_launcher(p, a):
+                def launch():
+                    try:
+                        if not p: return
+                        if a:
+                            subprocess.Popen([p] + a.split())
+                        else:
+                            subprocess.Popen([p])
+                    except Exception as e:
+                        from PyQt6.QtWidgets import QMessageBox
+                        QMessageBox.warning(self, "Error", f"Failed to launch: {e}")
+                return launch
+            
+            btn.clicked.connect(make_launcher(path, args))
+            self.title_bar_center_layout.addWidget(btn)
+
+    def _open_executables_editor(self):
+        """Open dialog to edit executables for the current app."""
+        import json
+        from src.ui.link_master.dialogs_legacy import ExecutablesManagerDialog
+        
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            QMessageBox.warning(self, "Error", "アプリを選択してください。")
+            return
+        
+        exe_json = app_data.get('executables', '[]')
+        try:
+            executables = json.loads(exe_json) if exe_json else []
+        except:
+            executables = []
+        
+        dialog = ExecutablesManagerDialog(self, executables)
+        if dialog.exec():
+            new_executables = dialog.get_executables()
+            
+            # Save to DB
+            self.registry.update_app(app_data['id'], {'executables': json.dumps(new_executables)})
+            
+            # Update local data and refresh title bar
+            app_data['executables'] = json.dumps(new_executables)
+            self._update_exe_links(app_data)
+
+    def _register_sticky_help(self):
+        """Register key UI elements for the Sticky Help system."""
+        self.help_manager.register_sticky("target_app", self.app_combo)
+        self.help_manager.register_sticky("tag_bar", self.tag_bar)
+        self.help_manager.register_sticky("search_bar", self.search_bar)
+        self.help_manager.register_sticky("explorer_btn", self.btn_drawer)
+        self.help_manager.register_sticky("sidebar_strip", self.sidebar_tabs)
+        self.help_manager.register_sticky("presets_btn", self.btn_presets)
+        self.help_manager.register_sticky("notes_btn", self.btn_notes)
+        self.help_manager.register_sticky("tools_btn", self.btn_tools)
+        self.help_manager.register_sticky("search_logic", self.search_logic)
+        
+        # Load any existing sticky data (including free ones)
+        self.help_manager.load_all()
+
+    def _show_help_button_menu(self, pos):
+        """Show context menu for the Help button (Only in active Edit Mode)."""
+        if not self.help_manager.is_help_visible or not self.help_manager.is_edit_mode:
+            return
+
+        menu = QMenu(self)
+        add_sticky_action = menu.addAction("Add New Help Note")
+        
+        # Import all help data from other language
+        from src.core.lang_manager import get_lang_manager
+        lang_manager = get_lang_manager()
+        import_menu = menu.addMenu("Import All from Language...")
+        import_actions = {}
+        for lang_code, lang_name in lang_manager.get_available_languages():
+            if lang_code != lang_manager.current_language:
+                action = import_menu.addAction(f"{lang_name} ({lang_code})")
+                import_actions[action] = lang_code
+        
+        menu.addSeparator()
+        cancel_edit_action = menu.addAction("Cancel (Exit Edit Mode)")
+        
+        # Calculate global position for context menu
+        global_pos = self.help_btn.mapToGlobal(pos)
+        action = menu.exec(global_pos)
+        
+        if action == add_sticky_action:
+            self.help_manager.add_free_sticky()
+            self.help_btn._force_state(True)
+        elif action == cancel_edit_action:
+            # 変更を破棄してEdit Modeを抜ける
+            self.help_manager.cancel_all_edits()
+            self.help_btn._force_state(self.help_manager.is_help_visible)
+        elif action in import_actions:
+            # Bulk import all help data from selected language
+            source_lang = import_actions[action]
+            self._import_all_help_from_language(source_lang)
+    
+    def _import_all_help_from_language(self, source_lang_code):
+        """Import all help data from another language."""
+        from src.core.lang_manager import get_lang_manager
+        lang_manager = get_lang_manager()
+        
+        # Load all help data from source language
+        source_help = lang_manager._load_help_yaml(source_lang_code)
+        source_notes = source_help.get("help_notes", {})
+        
+        if not source_notes:
+            QMessageBox.information(self, "Import", f"No help data found in {source_lang_code}.")
+            return
+        
+        # Apply to all registered stickies
+        imported_count = 0
+        for eid, sticky in self.help_manager.stickies.items():
+            if eid in source_notes:
+                note_data = lang_manager._to_regular_dict(source_notes[eid])
+                sticky.from_dict(note_data)
+                imported_count += 1
+        
+        # Save imported data to current language
+        self.help_manager.save_all()
+        
+        QMessageBox.information(self, "Import Complete", 
+            f"Imported {imported_count} help notes from {source_lang_code}.")
+
+    def toggle_help(self):
+        """Toggle Sticky Help. Alt+Click triggers Edit Mode."""
+        modifiers = QApplication.keyboardModifiers()
+        is_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
+        
+        self.logger.info(f"[HelpProfile] UI toggle_help: is_alt={is_alt}")
+        self.help_manager.toggle_help(edit_mode=is_alt)
+        
+        # Sync title bar button state
+        self.help_btn._force_state(self.help_manager.is_help_visible)
+
+    def _on_help_window_closed(self):
+        # Legacy cleanup or internal sync
+        if hasattr(self, 'help_btn'):
+            self.help_btn._force_state(False)

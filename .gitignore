@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs and DBs
+*.log
+*.sqlite
+config/global.db
+**/dyonis.db
+logs/
+
+# Compiled translations (generated from .po)
+*.mo
+
+# Backup directories (local development)
+backups/
+
+# User-specific config files
+config/window.json
+
+# User-specific resource data
+resource/app/
+resource/tag_icons/
+
+# Debug and development scripts
+debug_*.py
+fix_*.py
+generate_ico.py
+
+# Legacy and experimental
+legacy_testing/
+docs/
+ex/
+
+# Agent/AI directories
+.agent/
+.git/
+ai_rules/

@@ -1,0 +1,751 @@
+# Link Master - English Translation (Base)
+# Copyright (C) 2024
+# This file is distributed under the same license as the LinkMaster package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: LinkMaster 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-12-30 00:30+0900\n"
+"PO-Revision-Date: 2024-12-30 00:30+0900\n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+# Main Window
+msgid "LinkMaster"
+msgstr "LinkMaster"
+
+msgid "Back"
+msgstr "Back"
+
+msgid "Root"
+msgstr "Root"
+
+# Sidebar
+msgid "Library"
+msgstr "Library"
+
+msgid "Presets"
+msgstr "Presets"
+
+msgid "Notes"
+msgstr "Notes"
+
+msgid "Tools"
+msgstr "Tools"
+
+# Common Dialogs
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Confirm"
+msgstr "Confirm"
+
+msgid "Yes"
+msgstr "Yes"
+
+msgid "No"
+msgstr "No"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Close"
+msgstr "Close"
+
+msgid "Apply"
+msgstr "Apply"
+
+# URL Management
+msgid "Open related URL"
+msgstr "Open related URL"
+
+msgid "Help text here..."
+msgstr "Help text here..."
+
+msgid "Reset Anchor (Jump Out)"
+msgstr "Reset Anchor (Jump Out)"
+
+msgid "Change Background Color"
+msgstr "Change Background Color"
+
+msgid "Change Text Color"
+msgstr "Change Text Color"
+
+msgid "Delete (Clear Content)"
+msgstr "Delete (Clear Content)"
+
+msgid "Select Background Color"
+msgstr "Select Background Color"
+
+msgid "Select Text Color"
+msgstr "Select Text Color"
+
+msgid "Manage URLs"
+msgstr "Manage URLs"
+
+msgid "Add"
+msgstr "Add"
+
+msgid "Test All & Open First Working"
+msgstr "Test All & Open First Working"
+
+msgid "Clear All"
+msgstr "Clear All"
+
+msgid "Active"
+msgstr "Active"
+
+msgid "Priority"
+msgstr "Priority"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Link"
+msgstr "Link"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "No active URLs (all disabled)."
+msgstr "No active URLs (all disabled)."
+
+msgid "Could not connect to registered URLs."
+msgstr "Could not connect to registered URLs."
+
+msgid "URL Connection"
+msgstr "URL Connection"
+
+msgid "What would you like to do?"
+msgstr "What would you like to do?"
+
+msgid "Force Open"
+msgstr "Force Open"
+
+msgid "Open URL Manager"
+msgstr "Open URL Manager"
+
+msgid "Auto-mark last accessed URL"
+msgstr "Auto-mark last accessed URL"
+
+# App Registration
+msgid "Edit"
+msgstr "Edit"
+
+msgid "Register New"
+msgstr "Register New"
+
+msgid "{mode} Application"
+msgstr "{mode} Application"
+
+msgid "App Name:"
+msgstr "App Name:"
+
+msgid "e.g. Minecraft"
+msgstr "e.g. Minecraft"
+
+msgid " Browse "
+msgstr " Browse "
+
+msgid "Storage Path:"
+msgstr "Storage Path:"
+
+msgid "Target A (Primary):"
+msgstr "Target A (Primary):"
+
+msgid "Target B (Optional):"
+msgstr "Target B (Optional):"
+
+msgid "Default Folder Property Settings"
+msgstr "Default Folder Property Settings"
+
+msgid "Deploy Type:"
+msgstr "Deploy Type:"
+
+msgid "Conflict Policy:"
+msgstr "Conflict Policy:"
+
+msgid "Category Style:"
+msgstr "Category Style:"
+
+msgid "Package Style:"
+msgstr "Package Style:"
+
+msgid "Cover Image:"
+msgstr "Cover Image:"
+
+msgid "Optional: Select cover image for app"
+msgstr "Optional: Select cover image for app"
+
+msgid "✂ Edit Region"
+msgstr "✂ Edit Region"
+
+msgid "Select custom region from image"
+msgstr "Select custom region from image"
+
+msgid "📋 Paste"
+msgstr "📋 Paste"
+
+msgid "Paste image from clipboard"
+msgstr "Paste image from clipboard"
+
+msgid "No Image"
+msgstr "No Image"
+
+msgid "Preview:"
+msgstr "Preview:"
+
+msgid "🚀 Manage Executables..."
+msgstr "🚀 Manage Executables..."
+
+msgid "Executables:"
+msgstr "Executables:"
+
+msgid "🌐 Manage URLs..."
+msgstr "🌐 Manage URLs..."
+
+msgid "URLs:"
+msgstr "URLs:"
+
+msgid "Register"
+msgstr "Register"
+
+msgid "Select Storage Root"
+msgstr "Select Storage Root"
+
+msgid "Select Target Install Root A"
+msgstr "Select Target Install Root A"
+
+msgid "Select Target Install Root B"
+msgstr "Select Target Install Root B"
+
+msgid "Select Cover Image"
+msgstr "Select Cover Image"
+
+msgid "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
+msgstr "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
+
+# Debug Window
+msgid "LinkMaster Debug"
+msgstr "LinkMaster Debug"
+
+msgid "Core Security Check"
+msgstr "Core Security Check"
+
+msgid "Backup Management"
+msgstr "Backup Management"
+
+msgid "Source Code Backup (Versioning)"
+msgstr "Source Code Backup (Versioning)"
+
+msgid "UI Debug"
+msgstr "UI Debug"
+
+msgid "Language Settings"
+msgstr "Language Settings"
+
+msgid "Current Language:"
+msgstr "Current Language:"
+
+msgid "Switch Language"
+msgstr "Switch Language"
+
+# Help System
+msgid "Import from other language"
+msgstr "Import from other language"
+
+msgid "Import from English"
+msgstr "Import from English"
+
+msgid "Import from Japanese"
+msgstr "Import from Japanese"
+
+msgid "Target App:"
+msgstr "Target App:"
+
+msgid "Edit"
+msgstr "Edit"
+
+msgid "Search by name or tags..."
+msgstr "Search by name or tags..."
+
+msgid "OR"
+msgstr "OR"
+
+msgid "AND"
+msgstr "AND"
+
+msgid "📦 All Packages"
+msgstr "📦 All Packages"
+
+msgid "📁 Categories Only"
+msgstr "📁 Categories Only"
+
+msgid "📁+📦 Cats with Pkgs"
+msgstr "📁+📦 Cats with Pkgs"
+
+msgid "Global"
+msgstr "Global"
+
+msgid "Toggle Explorer Panel"
+msgstr "Toggle Explorer Panel"
+
+msgid "Library Management"
+msgstr "Library Management"
+
+msgid "Toggle Presets"
+msgstr "Toggle Presets"
+
+msgid "Toggle Quick Notes"
+msgstr "Toggle Quick Notes"
+
+msgid "📚 Library Management"
+msgstr "📚 Library Management"
+
+msgid "Library Name"
+msgstr "Library Name"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Latest"
+msgstr "Latest"
+
+msgid "Priority"
+msgstr "Priority"
+
+msgid "Deps"
+msgstr "Deps"
+
+msgid "🚀 Deploy"
+msgstr "🚀 Deploy"
+
+msgid "🌐 URL"
+msgstr "🌐 URL"
+
+msgid "⚙ Settings"
+msgstr "⚙ Settings"
+
+msgid "📋 Properties"
+msgstr "📋 Properties"
+
+msgid "📦 Check Deps"
+msgstr "📦 Check Deps"
+
+msgid "🗑 Unregister"
+msgstr "🗑 Unregister"
+
+msgid "👁 Hide"
+msgstr "👁 Hide"
+
+msgid "🏷 Register Selected Package"
+msgstr "🏷 Register Selected Package"
+
+msgid "Open URL in Browser"
+msgstr "Open URL in Browser"
+
+msgid "Open properties of priority version"
+msgstr "Open properties of priority version"
+
+msgid "Unregister selected version from library"
+msgstr "Unregister selected version from library"
+
+msgid "Hide from library list"
+msgstr "Hide from library list"
+
+msgid "Register the selected folder as a library."
+msgstr "Register the selected folder as a library."
+
+msgid "Conflict (Occupied by another package)"
+msgstr "Conflict (Occupied by another package)"
+
+msgid "Deployed (Link normal)"
+msgstr "Deployed (Link normal)"
+
+msgid "Not Deployed (Inactive)"
+msgstr "Not Deployed (Inactive)"
+
+msgid "🔄 Latest"
+msgstr "🔄 Latest"
+
+msgid "🔍 {n} hit(s)"
+msgstr "🔍 {n} hit(s)"
+
+msgid "🔍 0 hits"
+msgstr "🔍 0 hits"
+
+msgid "No categories match: {q}"
+msgstr "No categories match: {q}"
+
+msgid "No packages match: {q}"
+msgstr "No packages match: {q}"
+
+msgid "🔍 Searching"
+msgstr "🔍 Searching"
+
+msgid "🔍 Searching{dots}"
+msgstr "🔍 Searching{dots}"
+
+msgid "Loading..."
+msgstr "Loading..."
+
+msgid "Open related URL"
+msgstr "Open related URL"
+
+msgid "[Conflict] {name}"
+msgstr "[Conflict] {name}"
+
+msgid "Help text here..."
+msgstr "Help text here..."
+
+msgid "Reset Anchor (Jump Out)"
+msgstr "Reset Anchor (Jump Out)"
+
+msgid "Change Background Color"
+msgstr "Change Background Color"
+
+msgid "Change Text Color"
+msgstr "Change Text Color"
+
+msgid "Delete (Clear Content)"
+msgstr "Delete (Clear Content)"
+
+msgid "Select Background Color"
+msgstr "Select Background Color"
+
+msgid "Select Text Color"
+msgstr "Select Text Color"
+
+# Tooltips - Main Window
+msgid "Show linked categories/packages"
+msgstr "Show linked categories/packages"
+
+msgid "Show unlinked categories/packages"
+msgstr "Show unlinked categories/packages"
+
+msgid "Unlink All Active Links"
+msgstr "Unlink All Active Links"
+
+msgid "Open Trash"
+msgstr "Open Trash"
+
+msgid "Import Folder or Zip to Categories"
+msgstr "Import Folder or Zip to Categories"
+
+msgid "Import Folder or Zip to Packages"
+msgstr "Import Folder or Zip to Packages"
+
+msgid "Show/Hide hidden folders"
+msgstr "Show/Hide hidden folders"
+
+msgid "Card Size Settings"
+msgstr "Card Size Settings"
+
+msgid "Toggle Explorer Panel"
+msgstr "Toggle Explorer Panel"
+
+msgid "Library Management"
+msgstr "Library Management"
+
+msgid "Toggle Presets"
+msgstr "Toggle Presets"
+
+msgid "Toggle Quick Notes"
+msgstr "Toggle Quick Notes"
+
+msgid "Special Actions"
+msgstr "Special Actions"
+
+msgid "Edit Frequent Tags"
+msgstr "Edit Frequent Tags"
+
+# Card Settings Panel
+msgid "<b>📓 Card Settings</b>"
+msgstr "<b>📓 Card Settings</b>"
+
+msgid "Reset"
+msgstr "Reset"
+
+msgid "Lock Display Mode (Persist)"
+msgstr "Lock Display Mode (Persist)"
+
+msgid "👁 <b>Display Settings</b>"
+msgstr "👁 <b>Display Settings</b>"
+
+msgid "  <font color='#888'>Link Button (🌐)</font>"
+msgstr "  <font color='#888'>Link Button (🌐)</font>"
+
+msgid "Show in Category"
+msgstr "Show in Category"
+
+msgid "Show in Package"
+msgstr "Show in Package"
+
+msgid "  <font color='#888'>Deploy Button (🔵)</font>"
+msgstr "  <font color='#888'>Deploy Button (🔵)</font>"
+
+# Library Panel
+msgid "📚 Library Management"
+msgstr "📚 Library Management"
+
+msgid "Library Name"
+msgstr "Library Name"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Latest"
+msgstr "Latest"
+
+msgid "Deps"
+msgstr "Deps"
+
+msgid "🚀 Deploy"
+msgstr "🚀 Deploy"
+
+msgid "🌐 URL"
+msgstr "🌐 URL"
+
+msgid "Open URL in Browser"
+msgstr "Open URL in Browser"
+
+msgid "⚙ Settings"
+msgstr "⚙ Settings"
+
+msgid "📋 Properties"
+msgstr "📋 Properties"
+
+msgid "Open properties of priority version"
+msgstr "Open properties of priority version"
+
+msgid "📦 Check Deps"
+msgstr "📦 Check Deps"
+
+msgid "🗑 Unregister"
+msgstr "🗑 Unregister"
+
+msgid "Unregister selected version from library"
+msgstr "Unregister selected version from library"
+
+msgid "👁 Hide"
+msgstr "👁 Hide"
+
+msgid "Hide from library list"
+msgstr "Hide from library list"
+
+msgid "🏷 Register Selected Package"
+msgstr "🏷 Register Selected Package"
+
+msgid "Register the selected folder as a library."
+msgstr "Register the selected folder as a library."
+
+# Presets Panel
+msgid "<b>Presets</b>"
+msgstr "<b>Presets</b>"
+
+msgid "Refresh Presets"
+msgstr "Refresh Presets"
+
+msgid "Create New Preset from Current Links"
+msgstr "Create New Preset from Current Links"
+
+msgid "📁 Folder"
+msgstr "📁 Folder"
+
+msgid "🗑 Delete"
+msgstr "🗑 Delete"
+
+msgid "🔓 Unlink"
+msgstr "🔓 Unlink"
+
+msgid "Remove all active links for this app"
+msgstr "Remove all active links for this app"
+
+msgid "🔓 Clear Filter"
+msgstr "🔓 Clear Filter"
+
+msgid "Create Folder"
+msgstr "Create Folder"
+
+msgid "Folder Name:"
+msgstr "Folder Name:"
+
+# Notes Panel
+msgid "<b>Quick Notes</b>"
+msgstr "<b>Quick Notes</b>"
+
+msgid "Add New Note"
+msgstr "Add New Note"
+
+msgid "Select a note to edit..."
+msgstr "Select a note to edit..."
+
+msgid "💾 Save"
+msgstr "💾 Save"
+
+msgid "🚀 Open Externally"
+msgstr "🚀 Open Externally"
+
+# Tools Panel
+msgid "<b>Special Tools</b>"
+msgstr "<b>Special Tools</b>"
+
+msgid "🔧 Special Actions"
+msgstr "🔧 Special Actions"
+
+msgid "Manual Rebuild"
+msgstr "Manual Rebuild"
+
+msgid "Clear cache and rescan all folders to ensure data integrity."
+msgstr "Clear cache and rescan all folders to ensure data integrity."
+
+msgid "Run Manual Rebuild"
+msgstr "Run Manual Rebuild"
+
+msgid "UI Performance Settings"
+msgstr "UI Performance Settings"
+
+msgid "Adjust widget pooling settings."
+msgstr "Adjust widget pooling settings."
+
+msgid "Pool Size:"
+msgstr "Pool Size:"
+
+msgid "Enable Search Result Caching"
+msgstr "Enable Search Result Caching"
+
+msgid "Import/Export (Portability)"
+msgstr "Import/Export (Portability)"
+
+msgid "Export/Import current app settings and images as .dioco files."
+msgstr "Export/Import current app settings and images as .dioco files."
+
+msgid "📤 Export"
+msgstr "📤 Export"
+
+msgid "📥 Import"
+msgstr "📥 Import"
+
+msgid "📦 Package Size Management"
+msgstr "📦 Package Size Management"
+
+msgid "Recalculate disk usage for all packages. Useful for verifying actual size when managing large mods."
+msgstr "Recalculate disk usage for all packages. Useful for verifying actual size when managing large mods."
+
+msgid "Run All Size Checks"
+msgstr "Run All Size Checks"
+
+msgid "Last check: Not run"
+msgstr "Last check: Not run"
+
+msgid "🎨 Display Settings"
+msgstr "🎨 Display Settings"
+
+msgid "Deploy Button Opacity:"
+msgstr "Deploy Button Opacity:"
+
+msgid "⚠ Reset All Folder Attributes"
+msgstr "⚠ Reset All Folder Attributes"
+
+msgid "Bulk delete all folder settings (type, display, tags) for the current app and reset to initial state."
+msgstr "Bulk delete all folder settings (type, display, tags) for the current app and reset to initial state."
+
+msgid "⚠ Reset All Attributes"
+msgstr "⚠ Reset All Attributes"
+
+# Context Menu - Main Window
+msgid "Folder: {name}"
+msgstr "Folder: {name}"
+
+msgid "📦 Restore to Original"
+msgstr "📦 Restore to Original"
+
+msgid "🔗 Unlink (Remove Safe)"
+msgstr "🔗 Unlink (Remove Safe)"
+
+msgid "⚠ Conflict: File Exists"
+msgstr "⚠ Conflict: File Exists"
+
+msgid "🔄 Overwrite Target with Link"
+msgstr "🔄 Overwrite Target with Link"
+
+msgid "Delete the conflicting file in target and create a symlink to this source."
+msgstr "Delete the conflicting file in target and create a symlink to this source."
+
+msgid "⚠ Conflict: Tag '{tag}'"
+msgstr "⚠ Conflict: Tag '{tag}'"
+
+msgid "🔄 Overwrite Target (Swap)"
+msgstr "🔄 Overwrite Target (Swap)"
+
+msgid "Disable '{name}' and enable this item."
+msgstr "Disable '{name}' and enable this item."
+
+msgid "🚀 Deploy Link"
+msgstr "🚀 Deploy Link"
+
+msgid "👁 Show Item"
+msgstr "👁 Show Item"
+
+msgid "👻 Hide Item"
+msgstr "👻 Hide Item"
+
+msgid "📋 View Properties"
+msgstr "📋 View Properties"
+
+msgid "📝 Edit Properties"
+msgstr "📝 Edit Properties"
+
+msgid "🛠 Manage Files (Exclude/Move)..."
+msgstr "🛠 Manage Files (Exclude/Move)..."
+
+msgid "📁 Open in Explorer"
+msgstr "📁 Open in Explorer"
+
+msgid "🗑 Move to Trash"
+msgstr "🗑 Move to Trash"
+
+# Presets Context Menu
+msgid "✏️ Rename"
+msgstr "✏️ Rename"
+
+msgid "Rename Folder"
+msgstr "Rename Folder"
+
+msgid "New Name:"
+msgstr "New Name:"
+
+msgid "📁 Move to Folder"
+msgstr "📁 Move to Folder"
+
+msgid "(Root)"
+msgstr "(Root)"
+
+msgid "⏫ Move to Top"
+msgstr "⏫ Move to Top"
+
+msgid "⏬ Move to Bottom"
+msgstr "⏬ Move to Bottom"
+
+msgid "Delete Folder"
+msgstr "Delete Folder"
+
+msgid "Delete folder '{folder_name}'?\n(Presets inside will be moved to root)"
+msgstr "Delete folder '{folder_name}'?\n(Presets inside will be moved to root)"
+
+msgid "Delete Preset"
+msgstr "Delete Preset"
+
+msgid "Delete '{preset_name}'?"
+msgstr "Delete '{preset_name}'?"
+
+msgid "📝 Properties"
+msgstr "📝 Properties"

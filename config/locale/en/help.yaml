@@ -1,0 +1,136 @@
+# =============================================================================
+# LinkMaster - English Help Content
+# =============================================================================
+# This file stores help sticky note positions, sizes, and content.
+# Each language can have different settings.
+# =============================================================================
+
+# Help note data
+# Saved per element_id
+# Example:
+# btn_add:
+#   content: "Add new item"
+#   body_size: [160, 90]
+#   offset: [50, 50]
+#   tail_target: [0, 0]
+#   bg_style: 4294967040  # RGBA as integer
+#   text_style: 4278190080
+
+help_notes:
+  target_app:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  tag_bar:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  search_bar:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 47
+    - 51
+    tail_target:
+    - 4
+    - 40
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: test
+  explorer_btn:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  sidebar_strip:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  presets_btn:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  notes_btn:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  tools_btn:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...
+  search_logic:
+    body_size:
+    - 160
+    - 40
+    offset:
+    - 50
+    - 50
+    tail_target:
+    - 0
+    - 0
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: Help text here...

@@ -1,0 +1,148 @@
+from PyQt6.QtCore import QObject, pyqtSignal
+import os
+from src.core.link_master.database import LinkMasterDB
+
+class TagConflictWorker(QObject):
+    """
+    Background worker to calculate Tag Conflicts to avoid UI freeze.
+    Fetches DB configs and builds an active tag map.
+    Phase 28.5: Uses isolated DB connection to avoid Threading crashes.
+    """
+    finished = pyqtSignal(object) # returns dict { 'active_tags_map': ..., 'all_configs': ... }
+    
+    def __init__(self, db_path, storage_root, target_root=None):
+        super().__init__()
+        self.db_path = db_path
+        self.storage_root = storage_root
+        self.target_root = target_root
+        
+    def run(self):
+        import time
+        start_t = time.time()
+        try:
+            # Create ISOLATED DB instance for this thread
+            local_db = LinkMasterDB(db_path=self.db_path)
+            
+            # 1. Build Index of Active States
+            all_configs = local_db.get_all_folder_configs()
+            active_tags_map = {}
+            active_library_names = set()
+            active_targets_map = {} # norm_target -> rel_path
+            tag_conflicted_categories = set()
+            
+            # Step 1: Collect Active State (Linked items) and Library Names
+            linked_count = 0
+            for p, cfg in all_configs.items():
+                if cfg.get('last_known_status') == 'linked':
+                    linked_count += 1
+                    # Library tracking
+                    if cfg.get('is_library', 0):
+                        lib_name = cfg.get('lib_name')
+                        if lib_name:
+                            active_library_names.add(lib_name.strip().lower())
+
+                    # Occupied Target Tracking (Global)
+                    if self.target_root:
+                        folder_name = os.path.basename(p)
+                        target_path = cfg.get('target_override') or os.path.join(self.target_root, folder_name)
+                        norm_target = target_path.replace('\\', '/').lower()
+                        active_targets_map[norm_target] = p
+
+                    # Tag tracking (Index ALL linked tags)
+                    if cfg.get('conflict_scope', 'disabled') != 'disabled':
+                        t = cfg.get('conflict_tag')
+                        if t:
+                            t = t.strip()
+                            rel_p = p
+                            if os.path.isabs(p):
+                                try: rel_p = os.path.relpath(p, self.storage_root)
+                                except: pass
+                            
+                            cat_path = os.path.dirname(rel_p).replace('\\', '/')
+                            if t not in active_tags_map: active_tags_map[t] = []
+                            active_tags_map[t].append({
+                                'path': p,
+                                'scope': cfg.get('conflict_scope', 'disabled'),
+                                'cat': cat_path
+                            })
+
+            print(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
+
+            # Step 2: Identify Conflicts and Library Alts for ALL items
+            conflict_count = 0
+            alt_count = 0
+            for p, cfg in all_configs.items():
+                rel_p = p
+                if os.path.isabs(p):
+                    try: rel_p = os.path.relpath(p, self.storage_root)
+                    except: pass
+                my_cat = os.path.dirname(rel_p).replace('\\', '/')
+                
+                has_logical_conflict = False
+                is_library_alt_version = False
+                
+                status = cfg.get('last_known_status', 'none')
+                is_linked = (status == 'linked')
+
+                # A. Library Alt Version Check
+                if cfg.get('is_library', 0) and not is_linked:
+                    lib_name = cfg.get('lib_name')
+                    if lib_name and lib_name.strip().lower() in active_library_names:
+                        is_library_alt_version = True
+                        alt_count += 1
+                
+                # B. Tag Match Conflict
+                tag = cfg.get('conflict_tag')
+                scope = cfg.get('conflict_scope', 'disabled')
+                if tag and scope != 'disabled':
+                    tag = tag.strip()
+                    matches = active_tags_map.get(tag, [])
+                    
+                    for m in matches:
+                        # Skip if it is me
+                        if m.get('path') == p:
+                            continue
+                            
+                        if scope == 'global' or m['scope'] == 'global':
+                            has_logical_conflict = True
+                            break
+                        if scope == 'category' and m['cat'] == my_cat:
+                            has_logical_conflict = True
+                            break
+                
+                # C. Global Physical Occupancy Check (Simulation)
+                if not has_logical_conflict and self.target_root:
+                    folder_name = os.path.basename(p)
+                    target_path = cfg.get('target_override') or os.path.join(self.target_root, folder_name)
+                    norm_target = target_path.replace('\\', '/').lower()
+                    if norm_target in active_targets_map and active_targets_map[norm_target] != p:
+                        has_logical_conflict = True
+                
+                # D. Physical status override
+                if not has_logical_conflict and status == 'conflict':
+                    has_logical_conflict = True
+
+                # Step 2.6: Persistent marking for this run
+                cfg['has_logical_conflict'] = has_logical_conflict
+                cfg['is_library_alt_version'] = is_library_alt_version
+                if has_logical_conflict:
+                    conflict_count += 1
+                    tag_conflicted_categories.add(my_cat)
+
+            print(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
+            
+            # 3. Return results
+            result = {
+                'active_tags_map': active_tags_map,
+                'active_library_names': list(active_library_names),
+                'active_targets_map': active_targets_map,
+                'tag_conflicted_categories': list(tag_conflicted_categories),
+                'all_configs': all_configs
+            }
+            self.finished.emit(result)
+            
+        except Exception as e:
+            import traceback
+            print(f"TagConflictWorker Error: {e}")
+            traceback.print_exc()
+            self.finished.emit(None)
