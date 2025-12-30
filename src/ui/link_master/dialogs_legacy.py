@@ -16,6 +16,26 @@ from src.core.link_master.utils import format_size
 from src.core.lang_manager import _
 import os
 import subprocess
+import shutil
+
+class TagIconLineEdit(QLineEdit):
+    """QLineEdit that accepts image drag and drop."""
+    file_dropped = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setPlaceholderText(_("Icon Path (Optional) - Drag image here"))
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls and urls[0].toLocalFile().lower().endswith(('.png', '.jpg', '.jpeg', '.ico', '.svg', '.webp')):
+                event.acceptProposedAction()
+    
+    def dropEvent(self, event):
+        path = event.mimeData().urls()[0].toLocalFile()
+        self.file_dropped.emit(path)
 
 class AppRegistrationDialog(QDialog):
     def __init__(self, parent=None, app_data=None):
@@ -243,7 +263,7 @@ class AppRegistrationDialog(QDialog):
         if path: self.target_edit_2.setText(path)
     
     def _browse_cover(self):
-        path, _ = QFileDialog.getOpenFileName(self, _("Select Cover Image"), "", 
+        path, _filter = QFileDialog.getOpenFileName(self, _("Select Cover Image"), "", 
                                                _("Images (*.png *.jpg *.jpeg *.bmp *.webp)"))
         if path: 
             self.cover_edit.setText(path)
@@ -483,7 +503,7 @@ class ExecutablesManagerDialog(QDialog):
             self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
 
     def _browse_exe(self):
-        path, _ = QFileDialog.getOpenFileName(self, _("Select Executable"), "", _("Executables (*.exe);;All Files (*)"))
+        path, _filter = QFileDialog.getOpenFileName(self, _("Select Executable"), "", _("Executables (*.exe);;All Files (*)"))
         if path:
             self.path_edit.setText(path)
 
@@ -624,12 +644,14 @@ class LibraryDependencyDialog(QDialog):
         
         self.lib_combo = QComboBox()
         self.lib_combo.setMinimumWidth(150)
+        self.lib_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         self._load_available_libraries()
         add_form.addWidget(self.lib_combo)
         
         self.ver_combo = QComboBox()
         self.ver_combo.addItem(_("Preferred"), None)
         self.ver_combo.setMinimumWidth(100)
+        self.ver_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         add_form.addWidget(self.ver_combo)
         
         self.lib_combo.currentIndexChanged.connect(self._on_lib_selected)
@@ -791,7 +813,7 @@ class LibraryRegistrationDialog(QDialog):
         self.lib_combo.setEditable(True)
         self.lib_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.lib_combo.lineEdit().setPlaceholderText(_("Enter new library name"))
-        self.lib_combo.setStyleSheet("color: white;")
+        self.lib_combo.setStyleSheet("color: white; QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         
         # Load existing libraries (but don't select any)
         self._load_existing_libraries()
@@ -933,7 +955,7 @@ class PreviewItemWidget(QWidget):
             layout.addWidget(crop_btn)
         else:
             # Spacers for alignment
-            for _ in range(2):
+            for i in range(2): # 💡 FIX: Use 'i' instead of '_' to avoid shadowing translation function
                 spacer = QWidget()
                 spacer.setFixedWidth(28)
                 layout.addWidget(spacer)
@@ -962,8 +984,8 @@ class PreviewItemWidget(QWidget):
         layout.addWidget(del_btn)
     
     def _sync_to_icon(self):
-        if self.parent_dialog and hasattr(self.parent_dialog, '_sync_to_icon'):
-            self.parent_dialog._sync_to_icon(self.path)
+        if self.parent_dialog and hasattr(self.parent_dialog, '_sync_icon_from_preview'):
+            self.parent_dialog._sync_icon_from_preview(self.path)
     
     def _crop_image(self):
         if self.parent_dialog and hasattr(self.parent_dialog, '_crop_image'):
@@ -1122,7 +1144,7 @@ class PreviewTableDialog(QDialog):
         self.list_widget.setCurrentRow(self.list_widget.count() - 1)
 
     def _add_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, _("Add Preview File"), "", 
+        file_path, _filter = QFileDialog.getOpenFileName(self, _("Add Preview File"), "", 
                                                   _("Videos/Images (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;All Files (*.*)"))
         if file_path:
             if file_path not in self.paths:
@@ -1900,6 +1922,7 @@ class FolderPropertiesDialog(QDialog):
                 background-color: #3b3b3b; color: #ffffff; 
                 border: 1px solid #555; padding: 4px; border-radius: 4px;
             }
+            QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }
             QCheckBox { color: #cccccc; }
             QPushButton {
                 background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
@@ -2002,9 +2025,9 @@ class FolderPropertiesDialog(QDialog):
         
         # Display Name (Alias)
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Leave empty to use folder name")
+        self.name_edit.setPlaceholderText(_("Leave empty to use folder name"))
         if self.batch_mode:
-             self.name_edit.setPlaceholderText("Leave empty to keep original names")
+             self.name_edit.setPlaceholderText(_("Leave empty to keep original names"))
              
         self.name_edit.setText(self.current_config.get('display_name') or '')
         display_form.addRow(_("Display Name:"), self.name_edit)
@@ -2056,7 +2079,7 @@ class FolderPropertiesDialog(QDialog):
         self.image_btn = QPushButton(_("Browse"))
         self.image_btn.clicked.connect(self._browse_image)
         
-        self.crop_btn = QPushButton("✂ Edit Region")
+        self.crop_btn = QPushButton(_("✂ Edit Region"))
         self.crop_btn.clicked.connect(self._crop_image)
         
         self.paste_btn = QPushButton(_("📋 Paste"))
@@ -2136,6 +2159,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Folder Type
         self.type_combo = QComboBox()
+        self.type_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
             self.type_combo.addItem(_("--- No Change ---"), None)
             
@@ -2162,6 +2186,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Display Style
         self.style_combo = QComboBox()
+        self.style_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
             self.style_combo.addItem(_("--- No Change ---"), None)
             
@@ -2182,6 +2207,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Package Display Style (separate from category)
         self.style_combo_pkg = QComboBox()
+        self.style_combo_pkg.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
             self.style_combo_pkg.addItem(_("--- No Change ---"), None)
             
@@ -2239,11 +2265,31 @@ class FolderPropertiesDialog(QDialog):
                 for t in frequent_tags:
                     if t.get('is_sep'): continue
                     name = t.get('name')
-                    btn = QPushButton(t.get('emoji', name))
+                    mode = t.get('display_mode', 'text')
+                    emoji = t.get('emoji', '')
+                    
+                    # 💡 RESPECT display_mode as requested by user
+                    btn_text = ""
+                    if mode == 'symbol' and emoji:
+                        btn_text = emoji
+                    elif mode == 'text_symbol' and emoji:
+                        btn_text = f"{emoji} {name}"
+                    elif mode == 'image':
+                        btn_text = "" # Text hidden for image-only
+                    elif mode == 'image_text':
+                        btn_text = name # Icon + Text
+                    else: # 'text' or fallback
+                        btn_text = name
+                        
+                    btn = QPushButton(btn_text)
                     btn.setCheckable(True)
                     
-                    # Add Icon (Priority)
-                    if t.get('icon') and os.path.exists(t.get('icon')):
+                    # Add Icon if mode allows or as default
+                    show_icon = (mode == 'image' or mode == 'image_text' or mode == 'text')
+                    if show_icon and t.get('icon') and os.path.exists(t.get('icon')):
+                         btn.setIcon(QIcon(t.get('icon')))
+                    elif mode not in ['symbol', 'text_symbol'] and t.get('icon') and os.path.exists(t.get('icon')):
+                         # Fallback for complex modes
                          btn.setIcon(QIcon(t.get('icon')))
 
                     current_tags = [p.strip().lower() for p in (self.current_config.get('tags', '') or '').split(',') if p.strip()]
@@ -2255,8 +2301,8 @@ class FolderPropertiesDialog(QDialog):
                         
                     # Use toggled signal for reliable checked state tracking
                     btn.toggled.connect(lambda checked, n=name: self._on_tag_toggled(n, checked))
-                    self.tag_panel_layout.addWidget(btn)
                     self.tag_buttons[name.lower()] = btn
+                    self.tag_panel_layout.addWidget(btn)
 
         except: pass
         
@@ -2296,6 +2342,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Phase 18.15: Deploy/Conflict Overrides
         self.deploy_override_combo = QComboBox()
+        self.deploy_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
             self.deploy_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
@@ -2313,6 +2360,7 @@ class FolderPropertiesDialog(QDialog):
         adv_form.addRow(_("Deploy Type:"), self.deploy_override_combo)
 
         self.conflict_override_combo = QComboBox()
+        self.conflict_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
             self.conflict_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
@@ -2474,7 +2522,7 @@ class FolderPropertiesDialog(QDialog):
 
     def _browse_image(self):
         from PyQt6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(self, "Select Icon Image", "", "Images (*.png *.jpg *.jpeg *.gif *.webp)")
+        path, _filter = QFileDialog.getOpenFileName(self, _("Select Icon Image"), "", _("Images (*.png *.jpg *.jpeg *.gif *.webp)"))
         if path:
             self.pending_icon_path = path
             self.pending_icon_pixmap = None # Clear crop if any
@@ -2551,7 +2599,7 @@ class FolderPropertiesDialog(QDialog):
 
     def _browse_preview_file(self):
         from PyQt6.QtWidgets import QFileDialog
-        paths, _ = QFileDialog.getOpenFileNames(self, "Select Preview Files", "", "All Files (*.*)")
+        paths, _filter = QFileDialog.getOpenFileNames(self, _("Select Preview Files"), "", _("All Files (*.*)"))
         if paths:
             existing = [p.strip() for p in self.full_preview_edit.text().split(';') if p.strip()]
             new_list = sorted(list(set(existing + paths)))
@@ -2655,15 +2703,8 @@ class FolderPropertiesDialog(QDialog):
             # Try managed thumbnail (the effective icon shown in preview)
             source = self.managed_thumb_edit.text() if hasattr(self, 'managed_thumb_edit') else ""
         
-        if not source or not os.path.exists(source):
-            # Try first preview path
-            preview_str = self.full_preview_edit.text()
-            previews = [p.strip() for p in preview_str.split(';') if p.strip()]
-            if previews and os.path.exists(previews[0]):
-                source = previews[0]
-        
         if not source or not os.path.exists(source) or os.path.isdir(source):
-            path, _ = QFileDialog.getOpenFileName(self, _("Select Image to Crop"), "", _("Images (*.png *.jpg *.jpeg *.webp)"))
+            path, _filter = QFileDialog.getOpenFileName(self, _("Select Image to Crop"), "", _("Images (*.png *.jpg *.jpeg *.webp)"))
             if not path: return
             source = path
             
@@ -2691,7 +2732,7 @@ class FolderPropertiesDialog(QDialog):
         
         if not previews:
             # No previews, allow user to browse
-            path, _ = QFileDialog.getOpenFileName(self, _("Select Image to Crop"), "", _("Images (*.png *.jpg *.jpeg *.gif *.webp)"))
+            path, _filter = QFileDialog.getOpenFileName(self, _("Select Image to Crop"), "", _("Images (*.png *.jpg *.jpeg *.gif *.webp)"))
             if not path: return
             source = path
         elif len(previews) == 1:
@@ -2922,22 +2963,22 @@ class TagManagerDialog(QDialog):
         self.db = db
         self.setWindowTitle(_("Manage Frequent Tags"))
         self.resize(500, 400)
-        self.tags = [] # List of dicts: {name, icon, emoji}
-        self._dirty = False  # Track unsaved changes
-        self._loading = False  # Prevent dirty during load
+        self.tags = [] 
+        self._dirty = False 
+        self._loading = False 
         
         self._init_ui()
         self._load_tags()
-        self._dirty = False  # Reset after initial load
+        self._dirty = False 
         
     def _init_ui(self):
-        from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QAbstractItemView, QLabel, QVBoxLayout, QWidget
-        from PyQt6.QtGui import QIcon
-        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QHeaderView, QFormLayout, QLineEdit, QComboBox, QCheckBox, QPushButton
+        from PyQt6.QtGui import QIcon, QColor, QPixmap
+        from PyQt6.QtCore import Qt, QRect
         
         layout = QHBoxLayout(self)
         
-        # Left: List
+        # Left: Table
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -2946,18 +2987,33 @@ class TagManagerDialog(QDialog):
         hint_label.setStyleSheet("color: #888; font-style: italic;")
         left_layout.addWidget(hint_label)
         
-        self.tag_list = QListWidget()
-        self.tag_list.itemClicked.connect(self._on_item_clicked)
-        # Enable Reordering
-        self.tag_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.tag_list.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.tag_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tag_list.setAcceptDrops(True)
-        self.tag_list.setDragEnabled(True)
-        self.tag_list.setDropIndicatorShown(True)
+        self.tag_table = QTableWidget()
+        self.tag_table.setColumnCount(5)
+        self.tag_table.setHorizontalHeaderLabels([
+            _("Icon"), _("Symbol"), _("Tag Name"), _("Inherit"), _("Display Mode")
+        ])
         
-        left_layout.addWidget(self.tag_list)
-        layout.addWidget(left_panel, 1)
+        self.tag_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tag_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tag_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tag_table.verticalHeader().setVisible(False)
+        self.tag_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tag_table.horizontalHeader().setStretchLastSection(True)
+        self.tag_table.setColumnWidth(0, 40)
+        self.tag_table.setColumnWidth(1, 40)
+        self.tag_table.setColumnWidth(3, 40)
+        
+        self.tag_table.itemClicked.connect(self._on_table_clicked)
+        self.tag_table.setDragEnabled(True)
+        self.tag_table.setAcceptDrops(True)
+        self.tag_table.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.tag_table.setDefaultDropAction(Qt.DropAction.MoveAction)
+        
+        # Sync tags after manual reorder
+        self.tag_table.model().rowsMoved.connect(self._on_rows_moved)
+        
+        left_layout.addWidget(self.tag_table)
+        layout.addWidget(left_panel, 2)
         
         # Right: Edit Area
         self.right_panel = QWidget()
@@ -2965,16 +3021,14 @@ class TagManagerDialog(QDialog):
         self.right_panel.setStyleSheet("#tagEditPanel { background-color: #252525; border-radius: 8px; }")
         right_layout = QVBoxLayout(self.right_panel)
         
-        # Empty State Placeholder
         self.empty_placeholder = QLabel(_("👈 Select a tag or click 'Add New Tag' to start editing."))
         self.empty_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_placeholder.setStyleSheet("color: #888; font-style: italic; background: transparent; padding: 20px;")
         self.empty_placeholder.setWordWrap(True)
         right_layout.addWidget(self.empty_placeholder)
 
-        # Edit Container (Shown only when tag is selected)
         self.edit_container = QWidget()
-        self.edit_container.setStyleSheet("background: transparent;") # Parent right_panel has the background
+        self.edit_container.setStyleSheet("background: transparent;")
         edit_layout = QVBoxLayout(self.edit_container)
         edit_layout.setContentsMargins(10, 10, 10, 10)
         
@@ -2989,26 +3043,31 @@ class TagManagerDialog(QDialog):
         self.emoji_edit.setPlaceholderText(_("e.g. 🎨"))
         self.emoji_edit.setMaxLength(4) 
         self.emoji_edit.textChanged.connect(self._on_data_changed)
-        self.emoji_edit.setFixedWidth(50)
         
-        self.prefer_emoji_check = QCheckBox(_("Prefer Emoji over Icon"))
-        self.prefer_emoji_check.stateChanged.connect(self._on_data_changed)
-        
+        self.display_mode_combo = QComboBox()
+        from PyQt6.QtWidgets import QListView
+        self.display_mode_combo.setView(QListView())
+        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #2b2b2b; color: #fff; selection-background-color: #3498db; }")
+        self.display_mode_combo.addItem(_("Text"), "text")
+        self.display_mode_combo.addItem(_("Symbol"), "symbol")
+        self.display_mode_combo.addItem(_("Symbol + Text"), "text_symbol")
+        self.display_mode_combo.addItem(_("Image"), "image")
+        self.display_mode_combo.addItem(_("Image + Text"), "image_text")
+        self.display_mode_combo.currentIndexChanged.connect(self._on_data_changed)
+        form.addRow(_("Display Mode:"), self.display_mode_combo)
+
         emoji_h = QHBoxLayout()
         emoji_h.addWidget(self.emoji_edit)
-        emoji_h.addWidget(self.prefer_emoji_check)
         emoji_h.addStretch()
         form.addRow(_("Symbol (Display):"), emoji_h)
 
-        # Inheritance (Phase 18.9)
         self.inheritable_check = QCheckBox(_("Inherit to subfolders"))
         self.inheritable_check.setChecked(True)
         self.inheritable_check.stateChanged.connect(self._on_data_changed)
         form.addRow(_("Inheritance:"), self.inheritable_check)
         
-        # Icon Path
-        self.icon_edit = QLineEdit()
-        self.icon_edit.setPlaceholderText(_("Icon Path (Optional)"))
+        self.icon_edit = TagIconLineEdit()
+        self.icon_edit.file_dropped.connect(self._on_icon_dropped_to_edit)
         self.icon_edit.textChanged.connect(self._on_data_changed)
         self.icon_btn = QPushButton("...")
         self.icon_btn.setFixedWidth(30)
@@ -3025,13 +3084,18 @@ class TagManagerDialog(QDialog):
         self.edit_container.setVisible(False)
         right_layout.addWidget(self.edit_container)
         
-        # Buttons (Always partially visible? or at bottom?)
-        # Let's keep Add buttons separate
+        # Buttons
         btn_group = QWidget()
         btn_layout = QVBoxLayout(btn_group)
         btn_layout.setContentsMargins(0, 0, 0, 0)
-        self.add_btn = QPushButton(_("Add New Tag"))
-        self.add_btn.clicked.connect(self._add_tag)
+        
+        self.overwrite_btn = QPushButton(_("Overwrite Current"))
+        self.overwrite_btn.clicked.connect(self._save_current_item_data)
+        self.overwrite_btn.setStyleSheet("background-color: #2980b9; color: white;")
+        
+        self.add_btn = QPushButton(_("新規追加"))
+        self.add_btn.clicked.connect(self._add_tag_default)
+        self.add_btn.setStyleSheet("background-color: #e67e22; color: white;")
         
         self.add_sep_btn = QPushButton(_("Add Separator"))
         self.add_sep_btn.clicked.connect(self._add_sep)
@@ -3041,208 +3105,248 @@ class TagManagerDialog(QDialog):
         self.remove_btn.clicked.connect(self._remove_tag)
         self.remove_btn.setStyleSheet("background-color: #c0392b; color: white;")
         
-        self.save_btn = QPushButton(_("Save & Close"))
+        self.save_btn = QPushButton(_("Confirm"))
         self.save_btn.clicked.connect(self._save_and_close)
         self.save_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; margin-top: 10px;")
         
+        btn_layout.addWidget(self.overwrite_btn)
         btn_layout.addWidget(self.add_btn)
         btn_layout.addWidget(self.add_sep_btn)
         btn_layout.addWidget(self.remove_btn)
         btn_layout.addWidget(self.save_btn)
         
         right_layout.addWidget(btn_group)
-        
         layout.addWidget(self.right_panel, 1)
         
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLineEdit { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; }
             QLineEdit:disabled { background-color: #222; color: #777; }
-            QListWidget { background-color: #333; color: #ffffff; border: 1px solid #555; }
-            QListWidget::item:selected { background-color: #2980b9; color: #ffffff; }
+            QTableWidget { background-color: #333; color: #ffffff; border: 1px solid #555; gridline-color: #444; }
+            QTableWidget::item:selected { background-color: #2980b9; color: #ffffff; }
+            QHeaderView::section { background-color: #252525; color: #fff; padding: 4px; border: 1px solid #444; }
             QPushButton { background-color: #444; color: #ffffff; padding: 6px; border-radius: 4px; border: none; }
             QPushButton:hover { background-color: #555; }
-            QGroupBox { color: #ffffff; border: 1px solid #555; margin-top: 10px; font-weight: bold; }
-            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 3px; color: #ffffff; }
             QLabel { color: #ffffff; }
-            QCheckBox { color: #ffffff; }
-            QCheckBox::indicator { border: 1px solid #555; background: #3b3b3b; width: 14px; height: 14px; }
-            QCheckBox::indicator:checked { background: #3498db; }
+            QCheckBox { color: #ffffff; padding: 4px; }
+            QCheckBox::indicator { border: 1px solid #555; background: #3b3b3b; width: 18px; height: 18px; border-radius: 3px; }
+            QCheckBox::indicator:unchecked:hover { border-color: #3498db; }
+            QCheckBox::indicator:checked { 
+                background-color: #3498db; border-color: #3498db;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik05IDE2LjE3TDQuODMgMTJsLTEuNDIgMS40MUw5IDE5IDIxIDdsLTEuNDEtMS40MXoiLz48L3N2Zz4=");
+            }
+            QComboBox { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; }
+            QComboBox QAbstractItemView, QListView { background-color: #2b2b2b; color: #ffffff; selection-background-color: #3498db; outline: none; border: 1px solid #555; }
         """)
 
     def _load_tags(self):
         if not self.db: return
-        import json
-        raw = self.db.get_setting('frequent_tags_config', '[]')
+        self._loading = True
         try:
-            self.tags = json.loads(raw)
-            if not isinstance(self.tags, list): self.tags = []
-        except:
-            old_csv = self.db.get_setting('frequent_tags', '')
-            if old_csv:
-                parts = [t.strip() for t in old_csv.split(',') if t.strip()]
-                self.tags = [{"name": t, "icon": "", "emoji": "", "is_sep": False} for t in parts]
-            else:
+            import json
+            raw = self.db.get_setting('frequent_tags_config', '[]')
+            try:
+                self.tags = json.loads(raw)
+                if not isinstance(self.tags, list): self.tags = []
+            except:
                 self.tags = []
-        self._refresh_list()
+            self._refresh_table()
+        finally:
+            self._loading = False
         
-        # Select first item by default
-        if self.tag_list.count() > 0:
-            self.tag_list.setCurrentRow(0)
-            self._on_item_clicked(self.tag_list.item(0))
+        if self.tag_table.rowCount() > 0:
+            self.tag_table.selectRow(0)
+            self._on_table_clicked(self.tag_table.item(0, 0))
         else:
-            # If no tags, ensure edit container is hidden
             self.edit_container.setVisible(False)
             self.empty_placeholder.setVisible(True)
         
     def _refresh_list(self):
-        self.tag_list.clear()
+        self._refresh_table()
+
+    def _refresh_table(self):
+        self.tag_table.setRowCount(0)
         from PyQt6.QtGui import QIcon, QColor
-        from PyQt6.QtCore import Qt
         import os
         for idx, tag in enumerate(self.tags):
-            if tag.get('name') == '|' or tag.get('is_sep'):
-                 item = QListWidgetItem(_("|--- Separator ---|"))
-                 item.setForeground(QColor("#888"))
-                 item.setData(Qt.ItemDataRole.UserRole, tag)
+            self.tag_table.insertRow(idx)
+            is_sep = tag.get('name') == '|' or tag.get('is_sep')
+            if is_sep:
+                # Store data in Column 0 even for separators to ensure sync/saving works
+                sep_data_item = QTableWidgetItem()
+                sep_data_item.setData(Qt.ItemDataRole.UserRole, tag)
+                self.tag_table.setItem(idx, 0, sep_data_item)
+                
+                sep_item = QTableWidgetItem(_("|--- Separator ---|"))
+                sep_item.setForeground(QColor("#888"))
+                self.tag_table.setItem(idx, 2, sep_item)
+                # Ensure other columns 1, 3, 4 are empty
+                for col in [1, 3, 4]:
+                    self.tag_table.setItem(idx, col, QTableWidgetItem(""))
             else:
-                name = tag.get('name', '???')
-                emoji = tag.get('emoji', '')
-                label = f"{emoji} {name}" if emoji else name
-                item = QListWidgetItem(label)
-                # Icon in list?
                 icon_path = tag.get('icon')
+                icon_item = QTableWidgetItem()
                 if icon_path and os.path.exists(icon_path):
-                     # from PyQt6.QtGui import QIcon
-                     # Resize for list view? 28x28
-                     pix = QIcon(icon_path).pixmap(28, 28)
-                     item.setIcon(QIcon(pix))
-                item.setData(Qt.ItemDataRole.UserRole, tag) # Link to dict
+                     icon_item.setIcon(QIcon(icon_path))
+                icon_item.setData(Qt.ItemDataRole.UserRole, tag)
+                self.tag_table.setItem(idx, 0, icon_item)
+                self.tag_table.setItem(idx, 1, QTableWidgetItem(tag.get('emoji', '')))
+                self.tag_table.setItem(idx, 2, QTableWidgetItem(tag.get('name', '???')))
+                inherit = "Yes" if tag.get('is_inheritable', True) else "No"
+                self.tag_table.setItem(idx, 3, QTableWidgetItem(_(inherit)))
+                mode_map = {
+                    'text': _("Text"),
+                    'symbol': _("Symbol"),
+                    'text_symbol': _("Symbol + Text"),
+                    'image': _("Image"),
+                    'image_text': _("Image + Text")
+                }
+                mode_label = mode_map.get(tag.get('display_mode', 'text'), tag.get('display_mode', 'text'))
+                self.tag_table.setItem(idx, 4, QTableWidgetItem(mode_label))
             
-            # Explicit flags for drag/drop
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            self.tag_list.addItem(item)
-        
-        if self.tag_list.count() == 0:
+            for col in range(5):
+                item = self.tag_table.item(idx, col)
+                if item:
+                    item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+
+        if self.tag_table.rowCount() == 0:
             self.edit_container.setVisible(False)
             self.empty_placeholder.setVisible(True)
             self.current_tag_ref = None
         else:
-            # If there are items, but nothing is selected, select the first one
-            if self.tag_list.currentRow() == -1:
-                self.tag_list.setCurrentRow(0)
-                # Ensure we actually select it if count > 0
-                item = self.tag_list.item(0)
-                if item:
-                    self._on_item_clicked(item)
-            else:
-                # If an item is already selected, ensure edit container is visible
-                self.edit_container.setVisible(True)
-                self.empty_placeholder.setVisible(False)
+            self.empty_placeholder.setVisible(False)
+            self.edit_container.setVisible(True)
+            if self.tag_table.currentRow() == -1:
+                self.tag_table.selectRow(0)
+                item = self.tag_table.item(0, 0)
+                if item: self._on_table_clicked(item)
             
+    def _on_table_clicked(self, item):
+        if not item: return
+        row = self.tag_table.row(item)
+        main_item = self.tag_table.item(row, 0)
+        self._on_item_clicked(main_item)
+
     def _on_item_clicked(self, item):
         if not item:
             self.edit_container.setVisible(False)
             self.empty_placeholder.setVisible(True)
             self.current_tag_ref = None
             return
-            
         tag = item.data(Qt.ItemDataRole.UserRole)
+        if tag is None:
+            self.edit_container.setVisible(False)
+            self.empty_placeholder.setVisible(True)
+            self.current_tag_ref = None
+            return
+
         self.current_tag_ref = tag
-        self._loading = True # Block signals while loading data to edits
-        
-        # Show edit container
+        self._loading = True
         self.edit_container.setVisible(True)
         self.empty_placeholder.setVisible(False)
-        
         self.name_edit.setText(tag.get('name', ''))
         self.emoji_edit.setText(tag.get('emoji', ''))
-        self.prefer_emoji_check.setChecked(tag.get('prefer_emoji', False))
+        mode = tag.get('display_mode', 'text')
+        idx = self.display_mode_combo.findData(mode)
+        if idx >= 0: self.display_mode_combo.setCurrentIndex(idx)
+        else: self.display_mode_combo.setCurrentIndex(0)
         self.icon_edit.setText(tag.get('icon', ''))
         self.inheritable_check.setChecked(bool(tag.get('is_inheritable', True)))
-        
         self._loading = False
-        
         is_sep = tag.get('name') == '|' or tag.get('is_sep')
         self.name_edit.setEnabled(not is_sep)
         self.emoji_edit.setEnabled(not is_sep)
+        self.display_mode_combo.setEnabled(not is_sep)
         self.icon_edit.setEnabled(not is_sep)
         self.inheritable_check.setEnabled(not is_sep)
             
     def _on_data_changed(self):
-        # Update our reference (which is a dict in self.tags)
-        if self._loading or not hasattr(self, 'current_tag_ref') or not self.current_tag_ref:
-            return
-            
-        tag = self.current_tag_ref
-        if tag.get('is_sep'): return 
-        
-        # Verify that the current item in the list matches our reference to avoid cross-contamination
-        item = self.tag_list.currentItem()
-        if not item or item.data(Qt.ItemDataRole.UserRole) is not tag:
-            return
-            
-        tag['name'] = self.name_edit.text()
-        tag['emoji'] = self.emoji_edit.text()
-        tag['prefer_emoji'] = self.prefer_emoji_check.isChecked()
-        tag['icon'] = self.icon_edit.text()
-        tag['is_inheritable'] = self.inheritable_check.isChecked()
-        
-        # Sync to list item visually
-        emoji = tag['emoji']
-        name = tag['name']
-        item.setText(f"{emoji} {name}" if emoji else name)
-        
-        if tag['icon'] and os.path.exists(tag['icon']):
-             pix = QIcon(tag['icon']).pixmap(28, 28)
-             item.setIcon(QIcon(pix))
-        else:
-             item.setIcon(QIcon())
-                 
-        self._dirty = True
-        # Explicitly save to DB for frequent tags? 
-        # No, wait for Save & Close usually, but since it's a dialog let's stick to _dirty.
+        pass
 
-    def _add_tag(self):
-        # Save current selection's data first
-        self._save_current_item_data()
-        
-        new_tag = {"name": _("New Tag"), "emoji": "", "icon": "", "is_sep": False}
+    def _on_rows_moved(self, parent, start, end, destination, row):
+        """Handle synchronization after the row move is visually complete."""
+        # Using a timer to ensure the move is finished in the model
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._sync_tags_from_table)
+        self._dirty = True
+
+    def _sync_tags_from_table(self):
+        """Update self.tags list from the current order of the table."""
+        if self._loading: return
+        new_tags = []
+        for i in range(self.tag_table.rowCount()):
+            item = self.tag_table.item(i, 0)
+            if item:
+                tag_data = item.data(Qt.ItemDataRole.UserRole)
+                if tag_data:
+                    new_tags.append(tag_data)
+        self.tags = new_tags
+        print(f"[TagManager] tags synchronized from table ({len(self.tags)} items)")
+
+    def _add_tag_default(self):
+        name = "Tag"
+        new_tag = {
+            "name": name, "value": name, "emoji": "", "icon": "", 
+            "display_mode": "text", "is_sep": False, "is_inheritable": True
+        }
         self.tags.append(new_tag)
         self._refresh_list()
-        self.tag_list.setCurrentRow(len(self.tags)-1)
-        self._on_item_clicked(self.tag_list.item(len(self.tags)-1))
+        self.tag_table.selectRow(self.tag_table.rowCount()-1)
+        self._on_table_clicked(self.tag_table.item(self.tag_table.rowCount()-1, 0))
         self._dirty = True
     
     def _save_current_item_data(self):
-        """Save edits to the currently selected item before switching."""
-        row = self.tag_list.currentRow()
-        if row >= 0 and row < len(self.tags):
-            tag = self.tags[row]
+        row = self.tag_table.currentRow()
+        if row >= 0:
+            # Get the actual tag dictionary stored in the item (robust to reordering)
+            item0 = self.tag_table.item(row, 0)
+            if not item0: return
+            tag = item0.data(Qt.ItemDataRole.UserRole)
+            if not tag: return
+            
             if not tag.get('is_sep'):
                 tag['name'] = self.name_edit.text().strip() or 'Unnamed'
+                tag['value'] = tag['name'] 
                 tag['emoji'] = self.emoji_edit.text().strip()
                 tag['icon'] = self.icon_edit.text().strip()
-                tag['prefer_emoji'] = self.prefer_emoji_check.isChecked()
+                tag['display_mode'] = self.display_mode_combo.currentData()
+                tag['is_inheritable'] = self.inheritable_check.isChecked()
+                item0 = self.tag_table.item(row, 0)
+                if item0:
+                    item0.setData(Qt.ItemDataRole.UserRole, tag)
+                    if tag['icon'] and os.path.exists(tag['icon']):
+                        from PyQt6.QtGui import QIcon
+                        item0.setIcon(QIcon(tag['icon']))
+                    else:
+                        item0.setIcon(QIcon())
+                self.tag_table.setItem(row, 1, QTableWidgetItem(tag['emoji']))
+                self.tag_table.setItem(row, 2, QTableWidgetItem(tag['name']))
+                inherit = "Yes" if tag['is_inheritable'] else "No"
+                self.tag_table.setItem(row, 3, QTableWidgetItem(_(inherit)))
+                mode_map = {
+                    'text': _("Text"), 'symbol': _("Symbol"), 'text_symbol': _("Symbol + Text"),
+                    'image': _("Image"), 'image_text': _("Image + Text")
+                }
+                mode_label = mode_map.get(tag['display_mode'], tag['display_mode'])
+                self.tag_table.setItem(row, 4, QTableWidgetItem(mode_label))
+                for col in range(5):
+                    it = self.tag_table.item(row, col)
+                    if it: it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+            self._dirty = True
         
     def _add_sep(self):
-        # Save current selection's data first
-        self._save_current_item_data()
-        
-        new_tag = {"name": "|", "emoji": "", "icon": "", "is_sep": True}
+        new_tag = {"name": "|", "value": "|", "emoji": "", "icon": "", "is_sep": True, "is_inheritable": True}
         self.tags.append(new_tag)
-        self._refresh_list()
-        self.tag_list.setCurrentRow(len(self.tags)-1)
+        self._refresh_table()
+        self.tag_table.selectRow(self.tag_table.rowCount()-1)
         self._dirty = True
 
     def _remove_tag(self):
-        row = self.tag_list.currentRow()
+        row = self.tag_table.currentRow()
         if row >= 0:
-            self._loading = True # Pause data sync during list change
+            self._loading = True
             self.current_tag_ref = None
             self.tags.pop(row)
-            # Optimization: If we deleted the current row, just refresh
-            # self._refresh_list will handle selecting the next one or showing placeholder
             self._refresh_list()
             self._loading = False
             self._dirty = True
@@ -3250,74 +3354,63 @@ class TagManagerDialog(QDialog):
     def _clear_icon(self):
         self.icon_edit.clear()
 
-    def _browse_icon(self):
-        path, _ = QFileDialog.getOpenFileName(self, _("Select Icon"), "", _("Images (*.png *.ico *.svg *.jpg)"))
-        if path:
-            # Resize and Save logic
+    def _on_icon_dropped_to_edit(self, path):
+        self._process_and_set_icon(path)
+
+    def _process_and_set_icon(self, path):
+        try:
+            from PyQt6.QtGui import QImage
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-            res_dir = os.path.join(project_root, "resources", "tags")
+            res_dir = os.path.join(project_root, "resource", "tags")
             os.makedirs(res_dir, exist_ok=True)
-            
-            dest_name = f"{os.path.basename(path)}"
-            dest_path = os.path.join(res_dir, dest_name)
-            
-            try:
-                from PIL import Image
-                with Image.open(path) as img:
-                    img = img.resize((28, 28), Image.Resampling.LANCZOS)
-                    img.save(dest_path)
-                self.icon_edit.setText(dest_path)
-            except Exception as e:
-                print(f"Icon process error: {e}")
-                self.icon_edit.setText(path) # Fallback
+            dest_path = os.path.join(res_dir, os.path.basename(path))
+            img = QImage(path)
+            if not img.isNull():
+                img = img.scaled(28, 28, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                img.save(dest_path)
+            else:
+                import shutil
+                shutil.copy2(path, dest_path)
+            self.icon_edit.setText(dest_path)
+        except Exception as e:
+            self.icon_edit.setText(path)
+
+    def _browse_icon(self):
+        from PyQt6.QtWidgets import QFileDialog
+        path, _filter = QFileDialog.getOpenFileName(self, _("Select Icon"), "", _("Images (*.png *.ico *.svg *.jpg)"))
+        if path: self._process_and_set_icon(path)
 
     def _save_and_close(self):
+        self._save_current_item_data()
         import json
         if self.db:
-            # Reconstruct tags from ListWidget order
             new_tags = []
-            for i in range(self.tag_list.count()):
-                item = self.tag_list.item(i)
+            for i in range(self.tag_table.rowCount()):
+                item = self.tag_table.item(i, 0)
                 tag_data = item.data(Qt.ItemDataRole.UserRole)
-                if tag_data:
-                    new_tags.append(tag_data)
-            
-            # Save
+                if tag_data: new_tags.append(tag_data)
             try:
                 self.db.set_setting('frequent_tags_config', json.dumps(new_tags))
-                # Legacy CSV (excluding separators)
                 names = [t['name'] for t in new_tags if t.get('name') != '|']
                 self.db.set_setting('frequent_tags', ",".join(names))
-            except Exception as e:
-                print(f"Error saving tags: {e}")
+            except: pass
         self._dirty = False
         self.accept()
 
     def closeEvent(self, event):
-        """Show confirmation if there are unsaved changes."""
         if self._dirty:
             from PyQt6.QtWidgets import QMessageBox
-            reply = QMessageBox.question(
-                self, _("Unsaved Changes"),
-                _("You have unsaved changes. Do you want to save them?"),
-                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
-            )
+            reply = QMessageBox.question(self, _("Unsaved Changes"), _("You have unsaved changes. Do you want to save them?"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Save:
                 self._save_and_close()
                 event.accept()
-            elif reply == QMessageBox.StandardButton.Discard:
-                event.accept()
-            else:
-                event.ignore()
-        else:
-            event.accept()
+            elif reply == QMessageBox.StandardButton.Discard: event.accept()
+            else: event.ignore()
+        else: event.accept()
 
     def keyPressEvent(self, event):
-        """Handle Escape key with unsaved changes check."""
-        if event.key() == Qt.Key.Key_Escape:
-            self.close()  # Will trigger closeEvent
-        else:
-            super().keyPressEvent(event)
+        if event.key() == Qt.Key.Key_Escape: self.close()
+        else: super().keyPressEvent(event)
 
 
 class TagCreationDialog(QDialog):
@@ -3335,20 +3428,30 @@ class TagCreationDialog(QDialog):
         form.addRow(_("Tag:"), self.name_edit)
         
         self.emoji_edit = QLineEdit()
-        self.emoji_edit.setPlaceholderText(_("Emoji (e.g. ⭐)"))
+        self.emoji_edit.setPlaceholderText(_("e.g. 🎨"))
+        self.emoji_edit.setMaxLength(4) 
         
-        self.prefer_emoji_check = QCheckBox("Prefer Emoji over Icon")
-        self.prefer_emoji_check.setChecked(False)
+        # Display Mode Combo (Match TagManagerDialog)
+        self.display_mode_combo = QComboBox()
+        from PyQt6.QtWidgets import QListView
+        self.display_mode_combo.setView(QListView()) # FORCE QSS on windows
+        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #2b2b2b; color: #fff; selection-background-color: #3498db; }")
+        self.display_mode_combo.addItem(_("Text"), "text")
+        self.display_mode_combo.addItem(_("Symbol"), "symbol")
+        self.display_mode_combo.addItem(_("Symbol + Text"), "text_symbol")
+        self.display_mode_combo.addItem(_("Image"), "image")
+        self.display_mode_combo.addItem(_("Image + Text"), "image_text")
         
         emoji_h = QHBoxLayout()
         emoji_h.addWidget(self.emoji_edit)
-        emoji_h.addWidget(self.prefer_emoji_check)
         emoji_h.addStretch()
         
+        form.addRow(_("Display Mode:"), self.display_mode_combo)
         form.addRow(_("Symbol (Display):"), emoji_h)
         
-        # Icon Path (Added)
-        self.icon_edit = QLineEdit()
+        # Icon Path (DnD Enabled)
+        self.icon_edit = TagIconLineEdit()
+        self.icon_edit.file_dropped.connect(self._on_icon_dropped_to_edit)
         self.icon_edit.setPlaceholderText(_("Icon Path (Optional)"))
         self.icon_btn = QPushButton("...")
         self.icon_btn.setFixedWidth(30)
@@ -3358,6 +3461,11 @@ class TagCreationDialog(QDialog):
         h.addWidget(self.icon_edit)
         h.addWidget(self.icon_btn)
         form.addRow(_("Icon:"), h)
+        
+        # Inheritance (Phase 18.9 compatibility)
+        self.inheritable_check = QCheckBox(_("Inherit to subfolders"))
+        self.inheritable_check.setChecked(True)
+        form.addRow(_("Inheritance:"), self.inheritable_check)
         
         self.is_sep_check = QCheckBox(_("Is Separator (|)"))
         self.is_sep_check.toggled.connect(self._on_sep_toggled)
@@ -3381,13 +3489,21 @@ class TagCreationDialog(QDialog):
             QPushButton { background-color: #444; color: #ffffff; padding: 6px; border-radius: 4px; border: none; }
             QPushButton:hover { background-color: #555; }
             QLabel { color: #ffffff; }
-            QCheckBox { color: #ffffff; }
+            QCheckBox { color: #ffffff; padding: 4px; }
+            QCheckBox::indicator { border: 1px solid #555; background: #3b3b3b; width: 18px; height: 18px; border-radius: 3px; }
+            QCheckBox::indicator:unchecked:hover { border-color: #3498db; }
+            QCheckBox::indicator:checked { 
+                background-color: #3498db; border-color: #3498db;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik05IDE2LjE3TDQuODMgMTJsLTEuNDIgMS40MUw5IDE5IDIxIDdsLTEuNDEtMS40MXoiLz48L3N2Zz4=");
+            }
+            QComboBox { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; }
+            QComboBox QAbstractItemView, QListView { background-color: #2b2b2b; color: #ffffff; selection-background-color: #3498db; outline: none; border: 1px solid #555; }
         """)
 
     def _on_sep_toggled(self, checked):
         self.name_edit.setEnabled(not checked)
         self.emoji_edit.setEnabled(not checked)
-        self.prefer_emoji_check.setEnabled(not checked)
+        self.display_mode_combo.setEnabled(not checked)
         self.icon_edit.setEnabled(not checked)
         self.icon_btn.setEnabled(not checked)
         
@@ -3396,32 +3512,45 @@ class TagCreationDialog(QDialog):
         else:
             if self.name_edit.text() == "|": self.name_edit.clear()
 
-    def _browse_icon(self):
-        from PyQt6.QtWidgets import QFileDialog
-        import os
-        path, _ = QFileDialog.getOpenFileName(self, _("Select Icon"), "", _("Images (*.png *.ico *.svg *.jpg)"))
-        if path:
-            # Resize and Save logic (Global)
+    def _on_icon_dropped_to_edit(self, path):
+        """Handle image drop into the LineEdit."""
+        self._process_and_set_icon(path)
+
+    def _process_and_set_icon(self, path):
+        """Resize and copy image to resource dir, then set value."""
+        try:
+            from PyQt6.QtGui import QImage
+            from PyQt6.QtCore import Qt
+            import shutil
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-            res_dir = os.path.join(project_root, "resources", "tags")
+            res_dir = os.path.join(project_root, "resource", "tags")
             os.makedirs(res_dir, exist_ok=True)
             
             dest_name = f"{os.path.basename(path)}"
             dest_path = os.path.join(res_dir, dest_name)
             
-            try:
-                from PIL import Image
-                with Image.open(path) as img:
-                    img = img.resize((28, 28), Image.Resampling.LANCZOS)
-                    img.save(dest_path)
-                self.icon_edit.setText(dest_path)
-            except Exception as e:
-                print(f"Icon process error: {e}")
-                self.icon_edit.setText(path)
+            img = QImage(path)
+            if not img.isNull():
+                img = img.scaled(28, 28, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                img.save(dest_path)
+            else:
+                shutil.copy2(path, dest_path)
+            self.icon_edit.setText(dest_path)
+        except Exception as e:
+            print(f"Icon process error: {e}")
+            self.icon_edit.setText(path)
+
+    def _browse_icon(self):
+        from PyQt6.QtWidgets import QFileDialog
+        from src.core.lang_manager import _
+        path, _filter = QFileDialog.getOpenFileName(self, _("Select Icon"), "", _("Images (*.png *.ico *.svg *.jpg)"))
+        if path:
+            self._process_and_set_icon(path)
 
     def _on_ok(self):
         if self.is_sep_check.isChecked():
-            self.result_data = {"name": "|", "emoji": "", "icon": "", "prefer_emoji": False}
+            # 💡 Consistent identifier 'value' for separators
+            self.result_data = {"name": "|", "value": "|", "emoji": "", "icon": "", "prefer_emoji": False, "is_inheritable": True, "is_sep": True}
             self.accept()
             return
         
@@ -3431,9 +3560,13 @@ class TagCreationDialog(QDialog):
             
         self.result_data = {
             "name": name,
+            "value": name, # 💡 Add identifier key for DB consistency
             "emoji": self.emoji_edit.text().strip(),
-            "prefer_emoji": self.prefer_emoji_check.isChecked(),
-            "icon": self.icon_edit.text().strip()
+            "display_mode": self.display_mode_combo.currentData(),
+            "prefer_emoji": (self.display_mode_combo.currentData() != "image"),
+            "icon": self.icon_edit.text().strip(),
+            "is_inheritable": self.inheritable_check.isChecked(),
+            "is_sep": False
         }
         self.accept()
 

@@ -82,13 +82,14 @@ class LMSelectionMixin:
         if not self.selected_paths: return
 
         menu = QMenu()
-        menu.setStyleSheet("""
-            QMenu { background-color: #2b2b2b; color: white; border: 1px solid #444; }
-            QMenu::item:selected { background-color: #3498db; }
-        """)
+        menu.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        
+        from src.ui.styles import MenuStyles
+        menu.setStyleSheet(MenuStyles.CONTEXT)
         
         count = len(self.selected_paths)
-        menu.addAction(f"Selected: {count} item(s)").setEnabled(False)
+        from src.core.lang_manager import _
+        menu.addAction(_("Selected: {count} item(s)").format(count=count)).setEnabled(False)
         menu.addSeparator()
 
         active_card = None
@@ -126,25 +127,30 @@ class LMSelectionMixin:
             # Removed Move to Top/Bottom for folders
 
         else:
+            from src.core.lang_manager import _
+            from src.ui.styles import MenuStyles
+
             menu = QMenu()
-            menu.setStyleSheet(self._menu_style())
+            menu.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            menu.setStyleSheet(MenuStyles.CONTEXT)
+            
             count = len(self.selected_paths)
-            menu.addAction(f"Batch Edit ({count} items)").setEnabled(False)
+            menu.addAction(_("Batch Edit ({count} items)").format(count=count)).setEnabled(False)
             menu.addSeparator()
             
-            act_deploy = menu.addAction("🚀 Batch Deploy (Links)")
+            act_deploy = menu.addAction(_("🚀 Batch Deploy (Links)"))
             act_deploy.triggered.connect(self._batch_deploy_selected)
             
-            act_separate = menu.addAction("🔗 Batch Separate (Remove Links)")
+            act_separate = menu.addAction(_("🔗 Batch Separate (Remove Links)"))
             act_separate.triggered.connect(self._batch_separate_selected)
             
             menu.addSeparator()
             
             # Visibility actions
-            act_show = menu.addAction("👁 Show All")
+            act_show = menu.addAction(_("👁 Show All"))
             act_show.triggered.connect(lambda: self._batch_visibility_selected(True))
             
-            act_hide = menu.addAction("👻 Hide All")
+            act_hide = menu.addAction(_("👻 Hide All"))
             act_hide.triggered.connect(lambda: self._batch_visibility_selected(False))
             
             menu.addSeparator()
@@ -160,16 +166,20 @@ class LMSelectionMixin:
                     if w.is_misplaced: any_misplaced = True
         
         if any_misplaced and not any_in_trash:
-            act_unclass = menu.addAction("📦 Move Selected to Unclassified")
+            act_unclass = menu.addAction(_("📦 Move Selected to Unclassified"))
             act_unclass.triggered.connect(self._batch_unclassified_selected)
             menu.addSeparator()
 
         # Phase 19.x Fix: Only add batch-specific items if multiple items selected
         if not active_card:
-            act_batch = menu.addAction("📝 Batch Edit Properties...")
+            # Need strict import inside method to avoid circ import if needed, 
+            # though _ is usually safe. Redundant import safe here.
+            from src.core.lang_manager import _
+            
+            act_batch = menu.addAction(_("📝 Batch Edit Properties..."))
             act_batch.triggered.connect(self._batch_edit_properties_selected)
             
-            act_explorer = menu.addAction("📂 Open Selected in Explorer")
+            act_explorer = menu.addAction(_("📂 Open Selected in Explorer"))
             act_explorer.triggered.connect(self._batch_open_in_explorer)
             menu.addSeparator()
         
@@ -178,11 +188,11 @@ class LMSelectionMixin:
                 # Restore to original already exists in factory, but let's ensure consistency or remove here
                 pass
             else:
-                act_restore = menu.addAction("📦 Restore Selected")
+                act_restore = menu.addAction(_("📦 Restore Selected"))
                 act_restore.triggered.connect(self._batch_restore_selected)
         else:
             if not active_card:
-                act_trash = menu.addAction("🗑 Move Selected to Trash")
+                act_trash = menu.addAction(_("🗑 Move Selected to Trash"))
                 act_trash.triggered.connect(self._batch_trash_selected)
 
         menu.exec(global_pos)

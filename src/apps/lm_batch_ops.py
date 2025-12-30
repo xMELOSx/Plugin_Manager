@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QMessageBox
 from src.ui.link_master.item_card import ItemCard
 from PyQt6.QtCore import QThread
 from .lm_batch_ops_worker import TagConflictWorker
+from src.core.lang_manager import _
 
 
 class LMBatchOpsMixin:
@@ -217,8 +218,8 @@ class LMBatchOpsMixin:
         if not self.selected_paths: return
         
         msg = QMessageBox(self)
-        msg.setWindowTitle("Batch Trash")
-        msg.setText(f"Move {len(self.selected_paths)} items to trash?")
+        msg.setWindowTitle(_("Batch Trash"))
+        msg.setText(_("Move {count} items to trash?").format(count=len(self.selected_paths)))
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if msg.exec() != QMessageBox.StandardButton.Yes: return
         

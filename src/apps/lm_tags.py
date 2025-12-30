@@ -36,7 +36,11 @@ class LMTagsMixin:
         from src.ui.link_master.dialogs import TagManagerDialog
         d = TagManagerDialog(self, self.db)
         if d.exec():
+            print("[LMTagsMixin] Tag Manager closed. Refreshing UI...")
             self._load_tags_for_app()
+            # 💡 Also trigger tag bar refresh explicitly
+            if hasattr(self.tag_bar, 'refresh_tags'):
+                self.tag_bar.refresh_tags()
 
     def _load_frequent_tags(self):
         """Load frequent tags from DB, supporting both JSON config and CSV fallback."""
@@ -47,24 +51,25 @@ class LMTagsMixin:
             if isinstance(tags_data, list) and tags_data:
                 results = []
                 for t in tags_data:
+                    if not isinstance(t, dict): continue
+                    
                     # Handle Separator
-                    if t.get('name') == '|':
-                        results.append({'name': '|', 'display': '|', 'value': '|', 'icon': '', 'emoji': '', 'is_sep': True})
-                        continue
+                    if t.get('name') == '|' or t.get('is_sep'):
+                         results.append({'name': '|', 'display': '|', 'value': '|', 'icon': '', 'emoji': '', 'is_sep': True, 'is_inheritable': True})
+                         continue
                         
                     name = t.get('name', '')
                     if name:
-                        emoji = t.get('emoji', '')
-                        icon = t.get('icon', '')
-                        prefer_emoji = t.get('prefer_emoji', False)
-                        display = f"{emoji} {name}" if emoji else name
+                        # Load ALL relevant fields for full consistency
                         results.append({
                             'name': name,
-                            'display': display,
-                            'value': name, 
-                            'icon': icon,
-                            'emoji': emoji,
-                            'prefer_emoji': prefer_emoji,
+                            'display': t.get('display', name), # Fallback to name
+                            'value': t.get('value', name),
+                            'icon': t.get('icon', ''),
+                            'emoji': t.get('emoji', ''),
+                            'display_mode': t.get('display_mode', 'text'),
+                            'prefer_emoji': t.get('prefer_emoji', True),
+                            'is_inheritable': t.get('is_inheritable', True),
                             'is_sep': False
                         })
                 return results
@@ -102,6 +107,9 @@ class LMTagsMixin:
                 item = self.cat_layout.itemAt(i)
                 if item and item.widget():
                     item.widget().setVisible(True)
+            self.cat_layout.invalidate()
+            if self.cat_layout.parentWidget():
+                self.cat_layout.parentWidget().updateGeometry()
             self.cat_result_label.setText("")
             return
         
@@ -110,7 +118,8 @@ class LMTagsMixin:
         storage_root = app_data.get('storage_root')
         folder_configs = self.db.get_all_folder_configs()
         
-        selected_set = {t.lower() for t in selected_tags}
+        # Phase 20: Segment-based logic
+        selected_segments = self.tag_bar.get_selected_segments()
         visible_count = 0
         
         for i in range(self.cat_layout.count()):
@@ -125,15 +134,25 @@ class LMTagsMixin:
                 config = folder_configs.get(rel_path, {})
                 cat_tags = {t.strip().lower() for t in (config.get('tags') or '').split(',') if t.strip()}
                 
-                # Match if ANY selected tag is in category's tags (OR logic)
-                match = bool(selected_set & cat_tags)
+                # Match logic: (Segment1-Tag1 OR Segment1-Tag2) AND (Segment2-Tag1) ...
+                match = True
+                for segment in selected_segments:
+                    if not any(tag in cat_tags for tag in segment):
+                        match = False
+                        break
+                
                 card.setVisible(match)
                 if match:
                     visible_count += 1
             except:
                 card.setVisible(True)
         
-        self.cat_result_label.setText(f"🏷️ {visible_count} カテゴリ (タグフィルター)")
+        # Force layout update to ensure cards are reflowed (left-aligned) correctly
+        self.cat_layout.invalidate()
+        if self.cat_layout.parentWidget():
+            self.cat_layout.parentWidget().updateGeometry()
+            
+        self.cat_result_label.setText(f"🏷️ {visible_count} カテゴリ (タグフィルター: セグメントAND)")
 
     def _get_non_inheritable_tags_from_json(self):
         """Parse frequent_tags_config to find tags marked as non-inheritable."""

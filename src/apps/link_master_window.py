@@ -56,7 +56,7 @@ from src.apps.lm_file_management import LMFileManagementMixin
 
 class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPortabilityMixin, LMImportMixin, LMScanHandlerMixin, LMNavigationMixin, LMDisplayMixin, LMCardSettingsMixin, LMBatchOpsMixin, LMPresetsMixin, LMTrashMixin, LMSearchMixin, LMSelectionMixin, FramelessWindow, OptionsMixin):
     def __init__(self):
-        self._init_start_t = time.time()
+        self._init_start_t = time.perf_counter()
         super().__init__()
         self.logger = logging.getLogger("LinkMasterWindow")
         self.registry = get_lm_registry()
@@ -146,14 +146,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # self.help_window.setParent(self, self.help_window.windowFlags())
         # self.help_window.closed.connect(self._on_help_window_closed)
 
-        t0 = time.time()
+        t_load = time.perf_counter()
         self._load_apps()
         # Connect to language change signal for real-time translation
         from src.core.lang_manager import get_lang_manager
         get_lang_manager().language_changed.connect(self.retranslate_ui)
         
-        self.logger.info(f"[Profile] _load_apps took {time.time()-t0:.3f}s")
-        self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.time()-self._init_start_t :.3f}s")
+        self.logger.info(f"[Profile] _load_apps took {time.perf_counter()-t_load:.3f}s")
+        self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.perf_counter()-self._init_start_t :.3f}s")
         
         # Centralized Card Settings State (Phase 19.x)
         self.card_settings = {}
@@ -173,6 +173,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Restore window/view state (Phase 18.12 + 25)
         self._always_on_top = False # Initialize state
         self.load_options("link_master")
+        self._restore_ui_state()
+        
+        t_init_end = time.perf_counter()
+        self.logger.info(f"[Profile] _init_ui total took {t_init_end - self._init_start_t:.3f}s")
         
         # Navigation History (Phase 28)
         self.nav_history = []
@@ -305,18 +309,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     
     
     def closeEvent(self, event):
-        """Save geometry on close and close subwindows."""
-        # Phase 19.x: Save last viewed app/path
+        """Save geometry and UI state on close, and close subwindows."""
+        # 1. Save last viewed app/path
         self._save_last_state()
         
-        # Save category view height
+        # 2. Save category view height (Persistent per system)
         if hasattr(self, '_category_fixed_height'):
             self.registry.set_global("category_view_height", self._category_fixed_height)
         
-        # Phase 18.12: Save persistent window state
+        # 3. Save persistent window options (JSON)
         self.save_options("link_master")
         
-        # Close subwindows
+        # 4. Save UI layout states (Splitters, Panel columns) to DB
+        self._save_ui_state()
+        
+        # 5. Close help (and save help data via help_manager if needed)
+        if hasattr(self, 'help_manager'):
+            if self.help_manager.is_edit_mode:
+                self.help_manager.save_all()
+            self.help_manager.hide_all()
+
+        # 6. Close subwindows
         if hasattr(self, 'options_window') and self.options_window:
             self.options_window.close()
         if hasattr(self, 'help_window') and self.help_window:
@@ -399,6 +412,41 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.help_btn.customContextMenuRequested.connect(self._show_help_button_menu)
         self.add_title_bar_button(self.help_btn, index=1)
 
+
+    def _restore_ui_state(self):
+        """Restore UI persistent state (splitters, panels)."""
+        if not self.db: return
+        try:
+            # Restore Sidebar Splitter
+            splitter_state = self.db.get_setting('sidebar_splitter_state')
+            if splitter_state and hasattr(self, 'sidebar_splitter'):
+                from PyQt6.QtCore import QByteArray
+                self.sidebar_splitter.restoreState(QByteArray.fromHex(splitter_state.encode()))
+            
+            # Restore Library Panel
+            if hasattr(self, 'library_panel') and self.library_panel is not None:
+                self.library_panel.restore_state()
+                
+        except Exception as e:
+            self.logger.error(f"Failed to restore UI state: {e}")
+
+    def _save_ui_state(self):
+        """Save UI persistent state (splitters, panels)."""
+        if not self.db: return
+        try:
+            # Save Sidebar Splitter
+            if hasattr(self, 'sidebar_splitter'):
+                state = self.sidebar_splitter.saveState().toHex().data().decode()
+                self.db.set_setting('sidebar_splitter_state', state)
+            
+            # Save Library Panel
+            if hasattr(self, 'library_panel') and self.library_panel is not None:
+                self.library_panel.save_state()
+                
+            self.logger.info("Saved UI state (splitter/columns).")
+        except Exception as e:
+            self.logger.error(f"Failed to save UI state: {e}")
+
     def _init_ui(self):
         main_widget = QWidget()
         main_widget.setStyleSheet("""
@@ -421,9 +469,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.app_combo.setMouseTracking(True)
         self.app_combo.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.app_combo.currentIndexChanged.connect(self._on_app_changed)
-        target_app_lbl = QLabel(_("Target App:"))
-        target_app_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        header_layout.addWidget(target_app_lbl)
+        self.target_app_lbl = QLabel(_("Target App:"))
+        self.target_app_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        header_layout.addWidget(self.target_app_lbl)
         header_layout.addWidget(self.app_combo)
         
         self.edit_app_btn = QPushButton(_("Edit"))
@@ -487,7 +535,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.search_bar.setPlaceholderText(_("Search by name or tags..."))
         self.search_bar.setFixedWidth(300) # Shorten search bar as requested (was expanding before)
         
-        self.logger.info(f"[Profile] _init_ui took {time.time()-self._init_start_t if hasattr(self, '_init_start_t') else 0:.3f}s")
+        self.logger.info(f"[Profile] _init_ui took {time.perf_counter()-self._init_start_t if hasattr(self, '_init_start_t') else 0:.3f}s")
         self.search_bar.setMouseTracking(True)
         self.search_bar.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.search_bar.returnPressed.connect(self._perform_search)
@@ -849,7 +897,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         cat_header.addWidget(self.btn_show_hidden)
         
         # Store for translation
-        self.target_app_lbl = target_app_lbl
+        # self.target_app_lbl = target_app_lbl # This line is now redundant as target_app_lbl is already an attribute
         
         sep2 = QLabel("|")
         sep2.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -1012,51 +1060,52 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Initial translation
         self.retranslate_ui()
         
+        # Restore UI state (splitters, panels)
+        self._restore_ui_state()
+        
     def retranslate_ui(self):
-        """Update all UI strings logic."""
+        """Update all UI strings when language changes."""
         # Header
-        self.target_app_lbl.setText(_("Target App:"))
-        self.edit_app_btn.setText(_("Edit"))
-        self.web_btn.setToolTip(_("Open Preferred URL in Browser"))
-        self.register_app_btn.setToolTip(_("Register New App"))
+        if hasattr(self, 'target_app_lbl'): self.target_app_lbl.setText(_("Target App:"))
+        if hasattr(self, 'edit_app_btn'): self.edit_app_btn.setText(_("Edit"))
+        if hasattr(self, 'register_app_btn'): self.register_app_btn.setToolTip(_("Register New App"))
         
         # Search
-        self.search_logic.setItemText(0, _("OR"))
-        self.search_logic.setItemText(1, _("AND"))
-        self.search_bar.setPlaceholderText(_("Search by name or tags..."))
-        self.search_mode.setItemText(0, _("📦 All Packages"))
-        self.search_mode.setItemText(1, _("📁 Categories Only"))
-        self.search_mode.setItemText(2, _("📁+📦 Cats with Pkgs"))
-        self.search_global_chk.setText(_("Global"))
+        if hasattr(self, 'search_logic'):
+            self.search_logic.setItemText(0, _("OR"))
+            self.search_logic.setItemText(1, _("AND"))
+        if hasattr(self, 'search_bar'): self.search_bar.setPlaceholderText(_("Search by name or tags..."))
+        if hasattr(self, 'search_global_chk'): self.search_global_chk.setText(_("Global"))
         
         # Sidebar Toggles
-        self.btn_drawer.setToolTip(_("Toggle Explorer Panel"))
-        self.btn_libraries.setToolTip(_("Library Management"))
-        self.btn_presets.setToolTip(_("Toggle Presets"))
-        self.btn_notes.setToolTip(_("Toggle Quick Notes"))
-        self.btn_tools.setToolTip(_("Special Actions"))
+        if hasattr(self, 'btn_drawer'): self.btn_drawer.setToolTip(_("Toggle Explorer Panel"))
+        if hasattr(self, 'btn_libraries'): self.btn_libraries.setToolTip(_("Library Management"))
+        if hasattr(self, 'btn_presets'): self.btn_presets.setToolTip(_("Toggle Presets"))
+        if hasattr(self, 'btn_notes'): self.btn_notes.setToolTip(_("Toggle Quick Notes"))
+        if hasattr(self, 'btn_tools'): self.btn_tools.setToolTip(_("Special Actions"))
         
         # Nav etc
-        self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
-        self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
-        self.btn_unlink_all.setToolTip(_("Unlink All"))
-        self.btn_trash.setToolTip(_("Open Trash"))
+        if hasattr(self, 'btn_filter_linked'): self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
+        if hasattr(self, 'btn_filter_unlinked'): self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
+        if hasattr(self, 'btn_unlink_all'): self.btn_unlink_all.setToolTip(_("Unlink All"))
+        if hasattr(self, 'btn_trash'): self.btn_trash.setToolTip(_("Open Trash"))
         
         # Main Area
-        self.cat_title_lbl.setText(_("<b>Categories</b>"))
-        self.btn_import_cat.setToolTip(_("Import Folder or Zip to Categories"))
-        self.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
-        self.btn_card_settings.setToolTip(_("Card Size Settings"))
+        if hasattr(self, 'cat_title_lbl'): self.cat_title_lbl.setText(_("<b>Categories</b>"))
+        if hasattr(self, 'btn_import_cat'): self.btn_import_cat.setToolTip(_("Import Folder or Zip to Categories"))
+        if hasattr(self, 'btn_show_hidden'): self.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
+        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setToolTip(_("Card Size Settings"))
         
-        self.pkg_title_lbl.setText(_("<b>Packages</b>"))
-        self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
+        if hasattr(self, 'pkg_title_lbl'): self.pkg_title_lbl.setText(_("<b>Packages</b>"))
+        if hasattr(self, 'btn_import_pkg'): self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
         
-        self.total_link_count_label.setToolTip(_("Total Link Count"))
-        self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
-        self.pkg_result_label.setToolTip(_("Package Count"))
-        
-        # Refresh current count labels (which contain translated "Total links:" bits)
-        self._update_total_link_count()
+        if hasattr(self, 'total_link_count_label'):
+            self.total_link_count_label.setToolTip(_("Total Link Count"))
+            # We need to maintain the current count
+            count = getattr(self, '_last_total_links', 0)
+            self.total_link_count_label.setText(_("Total Links: {count}").format(count=count))
+        if hasattr(self, 'pkg_link_count_label'): self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
+        if hasattr(self, 'pkg_result_label'): self.pkg_result_label.setToolTip(_("Package Count"))
         
         # Update panels if they exist
         if self.library_panel: self.library_panel.retranslate_ui()
@@ -1064,9 +1113,20 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if self.notes_panel: self.notes_panel.retranslate_ui()
         if self.tools_panel: self.tools_panel.retranslate_ui()
         
-        # Re-render search result label if query exists
-        if hasattr(self, 'search_bar') and self.search_bar.text():
-            self._perform_search()
+        # Search & Logic
+        if hasattr(self, 'search_bar'):
+            self.search_bar.setPlaceholderText(_("Search by name or tags..."))
+            if self.search_bar.text():
+                self._perform_search()
+        
+        if hasattr(self, 'search_logic'):
+            self.search_logic.setItemText(0, _("OR"))
+            self.search_logic.setItemText(1, _("AND"))
+            
+        if hasattr(self, 'search_mode'):
+            self.search_mode.setItemText(0, _("📦 All Packages"))
+            self.search_mode.setItemText(1, _("📁 Categories Only"))
+            self.search_mode.setItemText(2, _("📁+📦 Cats with Pkgs"))
         
         # Update explorer panel if it exists
         if hasattr(self, 'explorer_panel'):
@@ -1074,39 +1134,46 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _on_tag_icon_updated(self, tag_value: str, image_path: str):
         """Persist tag icon change to the database and optionally copy/resize image."""
-        if not self.current_app_id or not self.db:
+        if not self.db:
             return
         
-        # Get all tags for the current app
-        tags = self.db.get_all_tags(self.current_app_id) or []
-        
-        # Find and update the matching tag
+        import json
+        config_str = self.db.get_setting('frequent_tags_config', '[]')
+        try:
+            tags = json.loads(config_str)
+        except:
+            tags = []
+            
+        updated = False
         for tag in tags:
-            if tag.get('value') == tag_value:
-                # Optionally copy to resource/tag_icons/ and resize
-                from src.core.file_handler import FileHandler
-                fh = FileHandler()
-                tag_icon_dir = os.path.join(fh.project_root, "resource", "tag_icons")
-                os.makedirs(tag_icon_dir, exist_ok=True)
-                
-                # Resize and save
-                from PyQt6.QtGui import QImage, QPixmap
-                img = QImage(image_path)
-                if not img.isNull():
-                    scaled = img.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    dest_name = f"{tag_value}_{os.path.basename(image_path)}"
-                    dest_path = os.path.join(tag_icon_dir, dest_name)
-                    scaled.save(dest_path)
-                    tag['icon'] = dest_path
-                else:
+            # FIX: Use name as fallback if value is missing for backward compatibility
+            vid = tag.get('value') or tag.get('name')
+            if vid == tag_value:
+                # Update image path
+                if image_path:
+                    # EXE compatibility: copy to resource if not already there? 
+                    # For now just record the absolute path as requested.
                     tag['icon'] = image_path
                 
-                tag['prefer_emoji'] = False  # Using icon over emoji
+                # We need to find the widget to get its current display_mode/prefer_emoji state
+                if hasattr(self, 'tag_bar') and tag_value in self.tag_bar.widget_map:
+                    w = self.tag_bar.widget_map[tag_value]
+                    # FIX: Sync both path AND mode
+                    tag['icon'] = image_path
+                    tag['prefer_emoji'] = (getattr(w, 'display_mode', 'text') == 'text')
+                
+                updated = True
                 break
         
-        # Save updated tags
-        self.db.set_tags(self.current_app_id, tags)
-        self.logger.info(f"[TagIcon] Updated icon for tag '{tag_value}' to: {tag.get('icon', image_path)}")
+        if updated:
+            self.db.set_setting('frequent_tags_config', json.dumps(tags))
+            self.logger.info(f"[TagIcon] Persisted icon/mode for tag '{tag_value}'")
+            # Signal change to registry for other windows if necessary
+            self.registry.set_setting('frequent_tags_config', json.dumps(tags))
+        
+        # Refresh tag bar if available
+        if hasattr(self, 'tag_bar'):
+            self.tag_bar.refresh_tags()
 
     def _show_settings_menu(self):
         """Show/toggle settings panel with size sliders."""
@@ -1875,7 +1942,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.presets_drawer.hide()
     
 
-    def _update_drawer_geometry(self):
+    def _update_drawer_geometry(self,):
         """Update absolute position of the floating explorer panel."""
         if not hasattr(self, 'explorer_panel') or not hasattr(self, 'content_wrapper'):
             return

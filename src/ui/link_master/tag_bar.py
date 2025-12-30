@@ -20,15 +20,10 @@ class TagWidget(QLabel):
             emoji = tag_data.get('emoji', '')
             icon_path = tag_data.get('icon', '')
             
-            if emoji:
-                if not prefer_emoji and icon_path and os.path.exists(icon_path):
-                     self.setText("") 
-                else:
-                     self.setText(emoji)
-            elif icon_path and os.path.exists(icon_path):
-                self.setText("") 
+            if not prefer_emoji and icon_path and os.path.exists(icon_path):
+                self.setText("")
             else:
-                self.setText(tag_data.get('name', ''))
+                self.setText(emoji or tag_data.get('name', ''))
             
         self.selected = False
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -40,6 +35,13 @@ class TagWidget(QLabel):
                  self._set_icon(icon_path)
 
         if not is_special_btn:
+             # display_mode can be: 'text', 'text_symbol', 'symbol', 'image'
+             self.display_mode = tag_data.get('display_mode', 'text')
+             # Backward compatibility: prefer_emoji=False used to mean 'image' if icon exists
+             if 'display_mode' not in tag_data and not tag_data.get('prefer_emoji', True) and self.tag_data.get('icon'):
+                 self.display_mode = 'image'
+             
+             self._update_display()
              self.update_style()
              
         self.setMouseTracking(True)
@@ -49,10 +51,32 @@ class TagWidget(QLabel):
         if not is_special_btn:
             self.setAcceptDrops(True)
 
+    def _update_display(self):
+        """Update label content based on display_mode."""
+        if self.is_special_btn: return
+        
+        mode = self.display_mode
+        name = self.tag_data.get('name', '')
+        emoji = self.tag_data.get('emoji', '')
+        icon_path = self.tag_data.get('icon', '')
+        
+        self.setPixmap(QPixmap()) # Clear icon first
+        
+        if mode == 'image' and icon_path and os.path.exists(icon_path):
+            self.setText("")
+            self._set_icon(icon_path)
+        elif mode == 'symbol' and emoji:
+            self.setText(emoji)
+        elif mode == 'text_symbol' and emoji:
+            self.setText(f"{emoji} {name}")
+        else: # 'text' or fallback
+            self.setText(name)
+            
     def _set_icon(self, path):
         pix = QPixmap(path)
         if not pix.isNull():
-            pix = pix.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # Resize icon for better visibility (22x22)
+            pix = pix.scaled(22, 22, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.setPixmap(pix)
             self.setToolTip(self.tag_data.get('name'))
             self.setMinimumWidth(28)
@@ -89,6 +113,8 @@ class TagWidget(QLabel):
     def mousePressEvent(self, event: QMouseEvent):
         if self.tag_data.get('is_sep'): return
         is_right = event.button() == Qt.MouseButton.RightButton
+        # User requested: "Right-click is for exclusive selection (one method)"
+        # We restore the original clicked emission where is_right determines behavioral branch in TagBar
         self.clicked.emit(self.tag_data.get('value'), is_right)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -99,7 +125,7 @@ class TagWidget(QLabel):
         if mime.hasUrls():
             for url in mime.urls():
                 path = url.toLocalFile()
-                if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+                if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg')):
                     event.acceptProposedAction()
                     return
         event.ignore()
@@ -112,13 +138,64 @@ class TagWidget(QLabel):
         if mime.hasUrls():
             for url in mime.urls():
                 path = url.toLocalFile()
-                if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
-                    self.icon_dropped.emit(self.tag_data.get('value'), path)
-                    self._set_icon(path)
-                    event.acceptProposedAction()
-                    return
+                if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg')):
+                    # User requested: "Videos/Images accepted and resized to icon"
+                    # Replacing PIL with PyQt6 QImage for environment stability
+                    try:
+                        from PyQt6.QtGui import QImage
+                        import os
+                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                        res_dir = os.path.join(project_root, "resource", "tags")
+                        if not os.path.exists(res_dir): os.makedirs(res_dir)
+                        
+                        tag_val = self.tag_data.get('value', 'unknown')
+                        dest_name = f"tag_{tag_val}_{os.path.basename(path)}"
+                        dest_path = os.path.join(res_dir, dest_name)
+                        
+                        # Use QImage instead of PIL
+                        img = QImage(path)
+                        if not img.isNull():
+                            img = img.scaled(28, 28, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            img.save(dest_path)
+                        else:
+                            # Fallback to copy if QImage failed but path exists
+                            import shutil
+                            shutil.copy2(path, dest_path)
+                        
+                        # Update tag data and visuals
+                        self.tag_data['icon'] = dest_path
+                        self.tag_data['prefer_emoji'] = False # This is for backward compatibility
+                        self.tag_data['display_mode'] = 'image' # Set new display mode
+                        self.display_mode = 'image'
+                        self.icon_dropped.emit(self.tag_data.get('value'), dest_path)
+                        self._update_display() # Use the new update display method
+                        self.update_style()
+                        event.acceptProposedAction()
+                        return
+                    except Exception as e:
+                        print(f"Tag DnD Drop processing error: {e}")
         event.ignore()
+        
+    def toggle_display_mode(self):
+        """Cycle through 5 display modes."""
+        if self.is_special_btn or self.tag_data.get('is_sep'): return
+        
+        modes = ['text', 'text_symbol', 'symbol', 'image', 'image_text']
+        idx = modes.index(self.display_mode) if self.display_mode in modes else 0
+        self.display_mode = modes[(idx + 1) % len(modes)]
+        
+        # Ensure 'image' / 'image_text' is skipped if no icon exists
+        if (self.display_mode == 'image' or self.display_mode == 'image_text') and (not self.tag_data.get('icon') or not os.path.exists(self.tag_data.get('icon'))):
+            self.display_mode = 'text'
 
+        self.tag_data['display_mode'] = self.display_mode
+        # Maintain prefer_emoji for backward compatibility
+        self.tag_data['prefer_emoji'] = (self.display_mode != 'image')
+        
+        self._update_display()
+        self.update_style()
+        self.icon_dropped.emit(self.tag_data.get('value'), self.tag_data.get('icon') or '')
+            
 class TagBar(QWidget):
     tags_changed = pyqtSignal(list)
     request_add_tag = pyqtSignal()
@@ -183,6 +260,10 @@ class TagBar(QWidget):
             )
             return True
         return super().eventFilter(obj, event)
+        
+    def refresh_tags(self):
+        """Refresh visuals for current tags."""
+        self.set_tags(self.tags)
 
     def set_tags(self, tags: list):
         # Clear
@@ -251,6 +332,29 @@ class TagBar(QWidget):
 
     def get_selected_tags(self):
         return list(self.selected_tags)
+
+    def get_selected_segments(self):
+        """
+        Return selected tags grouped by separators.
+        Example: [[TagA, TagB], [TagC]] means (TagA OR TagB) AND (TagC)
+        """
+        segments = []
+        current_segment = []
+        
+        for w in self.tag_widgets:
+            if w.tag_data.get('is_sep'):
+                if current_segment:
+                    segments.append(current_segment)
+                    current_segment = []
+            else:
+                val = w.tag_data.get('value')
+                if val in self.selected_tags:
+                    current_segment.append(val.lower())
+                    
+        if current_segment:
+            segments.append(current_segment)
+            
+        return segments
 
     def clear_selection(self):
         self.selected_tags.clear()

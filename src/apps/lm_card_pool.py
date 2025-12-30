@@ -89,6 +89,9 @@ class LMCardPoolMixin:
             candidate = pool.pop()
             if not sip.isdeleted(candidate):
                 card = candidate
+                # Phase 28 Fix: Reset Visual State on reuse
+                if hasattr(card, 'set_selected'):
+                    card.set_selected(False, False)
                 break
         
         if not card:

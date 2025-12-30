@@ -19,6 +19,7 @@ class LMSearchMixin:
         """
         start_t = time.time()
         query = self.search_bar.text().strip().lower()
+        selected_segments = self.tag_bar.get_selected_segments()
         selected_tags = {t.lower() for t in self.tag_bar.get_selected_tags()}
         logic = self.search_logic.currentData() or 'or'
         search_mode = getattr(self, 'search_mode', None)
@@ -139,7 +140,8 @@ class LMSearchMixin:
                                     # Check if package matches
                                     pkg_matches = self._check_match(
                                         pkg_entry.name, pkg_config, pkg_effective_tags,
-                                        terms, not_terms, include_tags, exclude_tags, logic
+                                        terms, not_terms, include_tags, exclude_tags, logic,
+                                        selected_segments=selected_segments
                                     )
                                     
                                     if pkg_matches:
@@ -215,15 +217,21 @@ class LMSearchMixin:
 
         self._display_search_results(cat_results, pkg_results)
     
-    def _check_match(self, name, config, effective_tags, terms, not_terms, include_tags, exclude_tags, logic):
+    def _check_match(self, name, config, effective_tags, terms, not_terms, include_tags, exclude_tags, logic, selected_segments=None):
         """Helper to check if an item matches search criteria."""
         # Tag matching (for explicit tag selection via tag bar)
         tag_match = True
-        if include_tags:
-            if logic == 'and':
-                tag_match = include_tags.issubset(effective_tags)
-            else:
-                tag_match = bool(include_tags & effective_tags)
+        
+        # Phase 20: Segment-based logic (OR within separator, AND between separators)
+        if selected_segments:
+            for segment in selected_segments:
+                # Each segment (OR-group) must have at least one match in effective_tags
+                if not any(tag in effective_tags for tag in segment):
+                    tag_match = False
+                    break
+        elif include_tags:
+            # Fallback for simple flat tag sets
+            tag_match = bool(include_tags & effective_tags)
         
         if exclude_tags and tag_match:
             if exclude_tags & effective_tags:
@@ -433,6 +441,16 @@ class LMSearchMixin:
             self.pkg_layout.addWidget(lbl)
         
         self._hide_search_indicator()
+        
+        # Phase 28: Force layout refresh to avoid overlapping/alignment issues
+        if hasattr(self, 'cat_layout'):
+            self.cat_layout.invalidate()
+            if self.cat_layout.parentWidget():
+                self.cat_layout.parentWidget().updateGeometry()
+        if hasattr(self, 'pkg_layout'):
+            self.pkg_layout.invalidate()
+            if self.pkg_layout.parentWidget():
+                self.pkg_layout.parentWidget().updateGeometry()
         
         # Refresh orange borders for categories with linked packages
         self._refresh_category_cards()

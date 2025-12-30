@@ -93,7 +93,7 @@ class LMImportMixin:
             if result == "folder":
                 path = QFileDialog.getExistingDirectory(self, f"Select Folder to Import as {target_type}")
             elif result == "zip":
-                path, _ = QFileDialog.getOpenFileName(self, f"Select Zip to Import as {target_type}", "", "Zip Files (*.zip);;All Files (*.*)")
+                path, _filter = QFileDialog.getOpenFileName(self, f"Select Zip to Import as {target_type}", "", "Zip Files (*.zip);;All Files (*.*)")
             else:
                 return
 

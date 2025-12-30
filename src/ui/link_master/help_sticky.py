@@ -39,6 +39,9 @@ class StickyHelpWidget(QWidget):
         self._drag_start_pos = QPoint()
         self._start_body_size = QSize()
         
+        # アンカーモード: 0=比例(Center), 1=固定(TopLeft), 2=追従(Full/Delta)
+        self.anchor_mode = 0 # 0=Center, 1=TopLeft, 2=BottomRight/Full
+        
         # UI
         self._init_ui()
         self.resize(150, 80)
@@ -82,11 +85,21 @@ class StickyHelpWidget(QWidget):
         if not self.target_widget or not self.parent_window:
             return
             
-        # 1. 本体の中心（グローバル）を計算
+        # 1. 基準点の計算
         target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
-        center_x = target_global.x() + self.target_widget.width() // 2
-        center_y = target_global.y() + self.target_widget.height() // 2
-        body_center_g = QPoint(center_x + self.offset.x(), center_y + self.offset.y())
+        
+        if self.anchor_mode == 1: # TopLeft 固定
+            base_g = target_global
+        elif self.anchor_mode == 2: # BottomRight / Window相対 (サイズ変更と同じ量移動)
+            # ターゲットの右下を基準にする
+            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
+        else: # 0 = Center (比例)
+            center_x = target_global.x() + self.target_widget.width() // 2
+            center_y = target_global.y() + self.target_widget.height() // 2
+            base_g = QPoint(center_x, center_y)
+            
+        # 本体の中心（グローバル）を計算
+        body_center_g = base_g + self.offset
         
         # 2. しっぽの先端（グローバル）を計算
         tail_tip_g = body_center_g + self.tail_target_offset
@@ -120,9 +133,17 @@ class StickyHelpWidget(QWidget):
         
         # 本体の中心（ローカル座標）
         target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
-        center_x = target_global.x() + self.target_widget.width() // 2
-        center_y = target_global.y() + self.target_widget.height() // 2
-        body_center_g = QPoint(center_x + self.offset.x(), center_y + self.offset.y())
+        
+        if self.anchor_mode == 1:
+            base_g = target_global
+        elif self.anchor_mode == 2:
+            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
+        else:
+            center_x = target_global.x() + self.target_widget.width() // 2
+            center_y = target_global.y() + self.target_widget.height() // 2
+            base_g = QPoint(center_x, center_y)
+            
+        body_center_g = base_g + self.offset
         
         # Calculate local positions mathematically to avoid mapFromGlobal reliability issues
         widget_topLeft = self.geometry().topLeft()
@@ -203,9 +224,17 @@ class StickyHelpWidget(QWidget):
             return
             
         target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
-        center_x = target_global.x() + self.target_widget.width() // 2
-        center_y = target_global.y() + self.target_widget.height() // 2
-        body_center_g = QPoint(center_x + self.offset.x(), center_y + self.offset.y())
+        
+        if self.anchor_mode == 1:
+            base_g = target_global
+        elif self.anchor_mode == 2:
+            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
+        else:
+            center_x = target_global.x() + self.target_widget.width() // 2
+            center_y = target_global.y() + self.target_widget.height() // 2
+            base_g = QPoint(center_x, center_y)
+            
+        body_center_g = base_g + self.offset
         
         widget_topLeft = self.geometry().topLeft()
         local_body_center = body_center_g - widget_topLeft
@@ -285,9 +314,17 @@ class StickyHelpWidget(QWidget):
         elif self._dragging_tail:
             # 本体の中心（グローバル）を基準にオフセットを再計算
             target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
-            center_x = target_global.x() + self.target_widget.width() // 2
-            center_y = target_global.y() + self.target_widget.height() // 2
-            body_center_g = QPoint(center_x + self.offset.x(), center_y + self.offset.y())
+            
+            if self.anchor_mode == 1:
+                base_g = target_global
+            elif self.anchor_mode == 2:
+                base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
+            else:
+                center_x = target_global.x() + self.target_widget.width() // 2
+                center_y = target_global.y() + self.target_widget.height() // 2
+                base_g = QPoint(center_x, center_y)
+                
+            body_center_g = base_g + self.offset
             
             # 新しいオフセット = マウスのグローバル位置 - 本体のグローバル中心
             self.tail_target_offset = event.globalPosition().toPoint() - body_center_g
@@ -310,6 +347,12 @@ class StickyHelpWidget(QWidget):
         menu = QMenu(self)
         
         reset_anchor_action = menu.addAction(_("Reset Anchor (Jump Out)"))
+        
+        mode_menu = menu.addMenu(_("Follow Mode"))
+        m0 = mode_menu.addAction(_("Proportional (Center)"))
+        m1 = mode_menu.addAction(_("Fixed (Top-Left)"))
+        m2 = mode_menu.addAction(_("Full Follow (Size Delta)"))
+        
         change_bg_action = menu.addAction(_("Change Background Color"))
         change_text_action = menu.addAction(_("Change Text Color"))
         
@@ -321,6 +364,18 @@ class StickyHelpWidget(QWidget):
             # アンカーを本体の右側に飛ばす
             self.tail_target_offset = QPoint(self.body_size.width() // 2 + 50, 0)
             self.update_position()
+            self.data_changed.emit()
+        elif action == m0:
+            self.anchor_mode = 0
+            self._recalc_offset_after_mode_change()
+            self.data_changed.emit()
+        elif action == m1:
+            self.anchor_mode = 1
+            self._recalc_offset_after_mode_change()
+            self.data_changed.emit()
+        elif action == m2:
+            self.anchor_mode = 2
+            self._recalc_offset_after_mode_change()
             self.data_changed.emit()
         elif action == change_bg_action:
             color = QColorDialog.getColor(self.bg_color, self, _("Select Background Color"), QColorDialog.ColorDialogOption.ShowAlphaChannel)
@@ -337,6 +392,33 @@ class StickyHelpWidget(QWidget):
         elif action == delete_action:
             self.text_edit.clear()
 
+    def _recalc_offset_after_mode_change(self):
+        """モード変更時に見た目の位置が変わらないように offset を再計算する。"""
+        if not self.target_widget: return
+        
+        # 現在のグローバル位置を取得
+        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+        
+        # 現在の「本体中心グリッド」を以前のモード計算で出す
+        # (すでに update_position で計算されているはずだが、正確を期すため self.offset はそのまま使い、
+        # 逆算して新しいオフセットを求める)
+        
+        # 現在の本体中心(Global)
+        current_rect_g = self.geometry().adjusted(30, 30, -30, -30) # margin=30
+        current_body_center_g = current_rect_g.center()
+        
+        if self.anchor_mode == 1: # 新しいモードが TopLeft
+            new_base_g = target_global
+        elif self.anchor_mode == 2: # 新しいモードが BottomRight
+            new_base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
+        else: # 0 = Center
+            center_x = target_global.x() + self.target_widget.width() // 2
+            center_y = target_global.y() + self.target_widget.height() // 2
+            new_base_g = QPoint(center_x, center_y)
+            
+        self.offset = current_body_center_g - new_base_g
+        self.update_position()
+
     def to_dict(self):
         return {
             "body_size": [self.body_size.width(), self.body_size.height()],
@@ -344,7 +426,8 @@ class StickyHelpWidget(QWidget):
             "tail_target": [self.tail_target_offset.x(), self.tail_target_offset.y()],
             "bg_style": self.bg_color.rgba(),
             "text_style": self.text_color.rgba(),
-            "content": self.text_content
+            "content": self.text_content,
+            "anchor_mode": self.anchor_mode
         }
 
     def from_dict(self, data):
@@ -363,6 +446,8 @@ class StickyHelpWidget(QWidget):
             self._update_text_style()
         if "content" in data:
             self.text_content = data["content"]
+        if "anchor_mode" in data:
+            self.anchor_mode = data["anchor_mode"]
         
         self.text_edit.setPlainText(self.text_content)
         self.update_position()

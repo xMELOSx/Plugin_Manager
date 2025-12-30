@@ -63,61 +63,102 @@ msgstr "閉じる"
 msgid "Apply"
 msgstr "適用"
 
-# URL Management
-msgid "Manage URLs"
-msgstr "URL管理"
+# Tag Manager
+msgid "Edit Frequent Tags"
+msgstr "よく使うタグを編集"
 
-msgid "Add"
-msgstr "追加"
+msgid "Manage Frequent Tags"
+msgstr "よく使うタグの管理"
 
-msgid "Test All & Open First Working"
-msgstr "全テスト＆最初に動くものを開く"
+msgid "💡 Drag items to reorder"
+msgstr "💡 アイテムをドラッグして並べ替え"
 
-msgid "Clear All"
-msgstr "全削除"
+msgid "👈 Select a tag or click 'Add New Tag' to start editing."
+msgstr "👈 タグを選択するか「新規追加」をクリックして編集を開始します。"
 
-msgid "Active"
-msgstr "有効"
+msgid "Tag:"
+msgstr "タグ名:"
 
-msgid "Priority"
-msgstr "優先"
+msgid "Symbol (Display):"
+msgstr "表示記号 (シンボル):"
 
-msgid "URL"
-msgstr "URL"
+msgid "e.g. 🎨"
+msgstr "例: 🎨"
 
-msgid "Link"
-msgstr "リンク"
+msgid "Display Mode:"
+msgstr "表示モード:"
 
-msgid "Delete"
-msgstr "削除"
+msgid "Text/Emoji"
+msgstr "テキストと絵文字"
 
-msgid "No active URLs (all disabled)."
-msgstr "有効なURLがありません（すべて無効化されています）。"
+msgid "Image Icon"
+msgstr "画像アイコン"
 
-msgid "Could not connect to registered URLs."
-msgstr "登録されているURLに接続できません。"
+msgid "Inherit to subfolders"
+msgstr "サブフォルダに継承する"
 
-msgid "URL Connection"
-msgstr "URL接続"
+msgid "Inheritance:"
+msgstr "継承設定:"
 
-msgid "What would you like to do?"
-msgstr "どの操作を行いますか？"
+msgid "Icon Path (Optional)"
+msgstr "アイコンパス (任意)"
 
-msgid "Force Open"
-msgstr "強引に開く"
+msgid "Icon:"
+msgstr "アイコン:"
 
-msgid "Open URL Manager"
-msgstr "URL管理を開く"
+msgid "Add New Tag"
+msgstr "タグを新規追加"
 
-msgid "Auto-mark last accessed URL"
-msgstr "最後にアクセスしたものを自動的にマークする"
+msgid "Add Separator"
+msgstr "区切り線を追加"
 
-# App Registration
-msgid "Edit"
-msgstr "編集"
+msgid "Remove Selected"
+msgstr "選択項目を削除"
 
-msgid "Register New"
-msgstr "新規登録"
+msgid "Save & Close"
+msgstr "変更を保存して閉じる"
+
+msgid "Confirm"
+msgstr "確定"
+
+msgid "Overwrite Current"
+msgstr "上書き保存"
+
+msgid "Add as Separate New Tag"
+msgstr "新規追加"
+
+msgid "Text Only"
+msgstr "テキストのみ"
+
+msgid "Text + Symbol"
+msgstr "テキスト＋表示記号"
+
+msgid "Symbol Only"
+msgstr "表示記号のみ"
+
+msgid "Image Only"
+msgstr "画像のみ"
+
+msgid "|--- Separator ---|"
+msgstr "|--- 区切り線 ---|"
+
+msgid "Select Icon"
+msgstr "アイコン画像を選択"
+
+msgid "Unsaved Changes"
+msgstr "保存されていない変更"
+
+msgid "You have unsaved changes. Do you want to save them?"
+msgstr "保存されていない変更があります。保存しますか？"
+
+msgid "Add Frequent Tag"
+msgstr "タグを追加"
+
+msgid "Tag Name"
+msgstr "タグの名前"
+
+msgid "Emoji (e.g. ⭐)"
+msgstr "絵文字 (例: ⭐)"
 
 msgid "{mode} Application"
 msgstr "{mode} アプリケーション"
@@ -403,6 +444,117 @@ msgstr "英語からインポート"
 msgid "Import from Japanese"
 msgstr "日本語からインポート"
 
+msgid "Root: Not Selected"
+msgstr "ルート: 未選択"
+
+msgid "Root: {name}"
+msgstr "ルート: {name}"
+
+msgid "Select Region"
+msgstr "領域の選択"
+
+msgid "Drag to reorder"
+msgstr "ドラッグで並べ替え"
+
+msgid "💡 Drag items to reorder"
+msgstr "💡 ドラッグでアイテムを並べ替え"
+
+msgid "👈 Select a tag or click 'Add New Tag' to start editing."
+msgstr "👈 タグを選択するか「新規追加」をクリックして編集を開始してください。"
+
+msgid "e.g. 🎨"
+msgstr "例: 🎨"
+
+msgid "Unnamed"
+msgstr "無題"
+
+msgid "Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square)."
+msgstr "ドラッグで選択範囲を移動、右下角でリサイズします。アスペクト比 1:1 (正方形) 固定。"
+
+msgid "Drag to move, resize corner for free selection."
+msgstr "ドラッグで移動、角をリサイズして自由選択できます。"
+
+msgid "Crop && Apply"
+msgstr "切り抜きと適用"
+
+msgid "Batch Edit ({count} folders)"
+msgstr "一括編集 ({count} フォルダ)"
+
+msgid "Leave empty to use folder name"
+msgstr "空欄の場合はフォルダ名を使用します"
+
+msgid "Leave empty to keep original names"
+msgstr "空欄の場合は元の名前を維持します"
+
+msgid "Inherit"
+msgstr "継承"
+
+msgid "Inheritable"
+msgstr "継承可否"
+
+msgid "Yes"
+msgstr "はい"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "Image + Text"
+msgstr "画像 + テキスト"
+
+msgid "Author / Creator"
+msgstr "制作者 / クリエイター"
+
+msgid "Optional description..."
+msgstr "任意の説明..."
+
+msgid "Folder description..."
+msgstr "フォルダの説明..."
+
+msgid "📝 Edit Properties (Batch)"
+msgstr "📝 プロパティ一括編集"
+
+msgid "Set Type"
+msgstr "タイプを設定"
+
+msgid "Set Style"
+msgstr "スタイルを設定"
+
+msgid "Package"
+msgstr "パッケージ"
+
+msgid "Category"
+msgstr "カテゴリ"
+
+msgid "Image Only"
+msgstr "画像のみ"
+
+msgid "Text Only"
+msgstr "テキストのみ"
+
+msgid "Image + Text"
+msgstr "画像とテキスト"
+
+msgid "Root Folder"
+msgstr "ルートフォルダ"
+
+msgid "Type ({type})"
+msgstr "タイプ ({type})"
+
+msgid "Package (Bottom)"
+msgstr "パッケージ (下部)"
+
+msgid "Category (Top)"
+msgstr "カテゴリ (上部)"
+
+msgid "Category Style ({style})"
+msgstr "カテゴリスタイル ({style})"
+
+msgid "Package Style ({style})"
+msgstr "パッケージスタイル ({style})"
+
+msgid "Reset This Folder Config"
+msgstr "このフォルダ設定をリセット"
+
 # Tooltips - Main Window
 msgid "Show linked categories/packages"
 msgstr "リンク済みカテゴリ/パッケージを表示"
@@ -411,7 +563,10 @@ msgid "Show unlinked categories/packages"
 msgstr "未リンクカテゴリ/パッケージを表示"
 
 msgid "Unlink All Active Links"
-msgstr "全アンリンク"
+msgstr "全アクティブリンクを解除"
+
+msgid "Unlink All"
+msgstr "全てアンリンクする"
 
 msgid "Open Trash"
 msgstr "ゴミ箱を開く"
@@ -728,3 +883,180 @@ msgstr "'{preset_name}' を削除しますか？"
 
 msgid "📝 Properties"
 msgstr "📝 プロパティ"
+
+# File Dialogs
+msgid "Select Icon"
+msgstr "アイコンを選択"
+
+msgid "Images (*.png *.ico *.svg *.jpg)"
+msgstr "画像 (*.png *.ico *.svg *.jpg)"
+
+msgid "Select Executable"
+msgstr "実行ファイルを選択"
+
+msgid "Executables (*.exe);;All Files (*)"
+msgstr "実行ファイル (*.exe);;全ファイル (*)"
+
+msgid "Add Preview File"
+msgstr "プレビューファイルを追加"
+
+msgid "Videos/Images (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;All Files (*.*)"
+msgstr "動画/画像 (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;全ファイル (*.*)"
+
+msgid "Select Icon Image"
+msgstr "アイコン画像を選択"
+
+msgid "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+msgstr "画像 (*.png *.jpg *.jpeg *.gif *.webp)"
+
+msgid "Select Preview Files"
+msgstr "プレビューファイルを選択"
+
+msgid "All Files (*.*)"
+msgstr "全ファイル (*.*)"
+
+msgid "Select Image to Crop"
+msgstr "トリミングする画像を選択"
+
+msgid "Images (*.png *.jpg *.jpeg *.webp)"
+msgstr "画像 (*.png *.jpg *.jpeg *.webp)"
+
+msgid "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+msgstr "画像 (*.png *.jpg *.jpeg *.gif *.webp)"
+
+msgid "Refresh Tree"
+msgstr "ツリーを更新"
+
+# Properties Dialog
+msgid "Display Settings"
+msgstr "表示設定"
+
+msgid "Package Size:"
+msgstr "パッケージサイズ:"
+
+msgid "Display Name:"
+msgstr "表示名:"
+
+msgid "Favorite:"
+msgstr "お気に入り:"
+
+msgid "Score:"
+msgstr "スコア:"
+
+msgid "Multi-Preview:"
+msgstr "マルチプレビュー:"
+
+msgid "Manage Full Previews..."
+msgstr "フルプレビュー管理..."
+
+msgid "Icon Path (200x200):"
+msgstr "アイコンパス (200x200):"
+
+msgid "Effective Icon:"
+msgstr "有効なアイコン:"
+
+msgid "Description:"
+msgstr "説明:"
+
+msgid "Author:"
+msgstr "作者:"
+
+msgid "URL:"
+msgstr "URL:"
+
+msgid "Folder Attributes"
+msgstr "フォルダ属性"
+
+msgid "Folder Type:"
+msgstr "フォルダタイプ:"
+
+msgid "Category Style:"
+msgstr "カテゴリスタイル:"
+
+msgid "Package Style:"
+msgstr "パッケージスタイル:"
+
+msgid "Visibility:"
+msgstr "表示:"
+
+msgid "Hide this folder from normal view"
+msgstr "通常表示から隠す"
+
+msgid "Quick Tags:"
+msgstr "クイックタグ:"
+
+msgid "Additional Tags:"
+msgstr "追加タグ:"
+
+msgid "Inheritance:"
+msgstr "継承:"
+
+msgid "Inherit tags from parent folders"
+msgstr "親フォルダからタグを継承"
+
+msgid "Advanced Link Config"
+msgstr "詳細リンク設定"
+
+msgid "Deployment Method:"
+msgstr "展開方式:"
+
+msgid "Competition Policy:"
+msgstr "競合ポリシー:"
+
+msgid "Deployment Rules (JSON):"
+msgstr "展開ルール (JSON):"
+
+msgid "Edit Individual Redirections..."
+msgstr "個別リダイレクト編集..."
+
+msgid "Conflict Tag:"
+msgstr "競合タグ:"
+
+msgid "Libraries:"
+msgstr "ライブラリ:"
+
+msgid "Library Settings"
+msgstr "ライブラリ設定"
+
+msgid "(None)"
+msgstr "(なし)"
+
+# Batch Menu
+msgid "Selected: {count} item(s)"
+msgstr "選択中: {count} 件"
+
+msgid "Batch Edit ({count} items)"
+msgstr "一括編集 ({count} 件)"
+
+msgid "🚀 Batch Deploy (Links)"
+msgstr "🚀 一括展開 (リンク)"
+
+msgid "🔗 Batch Separate (Remove Links)"
+msgstr "🔗 一括解除 (リンク削除)"
+
+msgid "👁 Show All"
+msgstr "👁 全て表示"
+
+msgid "👻 Hide All"
+msgstr "👻 全て非表示"
+
+msgid "📦 Move Selected to Unclassified"
+msgstr "📦 未分類へ移動"
+
+msgid "📝 Batch Edit Properties..."
+msgstr "📝 一括プロパティ編集..."
+
+msgid "📂 Open Selected in Explorer"
+msgstr "📂 エクスプローラーで開く"
+
+msgid "📦 Restore Selected"
+msgstr "📦 一括復元"
+
+msgid "🗑 Move Selected to Trash"
+msgstr "🗑 一括ゴミ箱へ"
+
+msgid "Batch Trash"
+msgstr "一括ゴミ箱移動"
+
+msgid "Move {count} items to trash?"
+msgstr "{count} 個のアイテムをゴミ箱に移動しますか？"

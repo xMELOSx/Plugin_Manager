@@ -206,7 +206,7 @@ class ItemCard(QFrame):
             
         self.is_registered = kwargs.get('is_registered', True)
         self.is_misplaced = kwargs.get('is_misplaced', False)
-        self.is_partial = kwargs.get('is_partial', False)
+        self.is_partial = kwargs.get('is_partial', getattr(self, 'is_partial', False))
         self.is_trash_view = kwargs.get('is_trash_view', False)
         
         # Support 'is_visible' (0/1) mapping to 'is_hidden'
@@ -300,13 +300,13 @@ class ItemCard(QFrame):
             # pinpoint update: image is already set, just ensure it's re-scaled if needed (handled in update_data tail)
             pass
             
-        # 7. Refresh Detection (styling/overlays deferred to set_card_params)
-        # Performance optimization: Skip expensive disk check if status is already provided (e.g. from fresh scan)
-        if 'link_status' in kwargs:
-            # Status is already set via kwargs directly to self.link_status (see Step 3 above)
-            pass
-        else:
+        # 7. Refresh Detection
+        if 'link_status' not in kwargs:
             self._check_link_status()
+            
+        # 8. Force Style/Overlay Update (Fixes 'Ghost' state)
+        self._update_style()
+        self._update_icon_overlays()
 
     def _check_link_status(self):
         if not self.deployer: return
@@ -543,7 +543,7 @@ class ItemCard(QFrame):
             status_color = "#ff69b4" # Pink
             bg_color = "#3d2a35"     # Dark Pink Tint
         # Phase 3.6: Partial status must check BEFORE general linked to show yellow
-        elif self.is_partial and self.link_status == 'linked':
+        elif self.is_partial and (self.link_status == 'linked' or self.link_status == 'partial'):
             status_color = "#f1c40f" # Yellow (Feature 6: Partial Deployment)
             bg_color = "#3d3d2a"     # Dark Yellow Tint
         elif self.link_status == 'linked':

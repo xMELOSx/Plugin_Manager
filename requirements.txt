@@ -1,1 +1,11 @@
-PyQt6
+# Core UI Framework
+PyQt6>=6.5.0
+
+# Pretty console output and logging
+rich>=13.0.0
+
+# YAML processing for help data
+ruamel.yaml>=0.17.0
+
+# Note: Standard library modules used but not listed:
+# - os, json, logging, sqlite3, zipfile, shutil, subprocess, hashlib

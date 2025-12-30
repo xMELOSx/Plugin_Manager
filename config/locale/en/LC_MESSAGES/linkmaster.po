@@ -434,6 +434,9 @@ msgstr "Show unlinked categories/packages"
 msgid "Unlink All Active Links"
 msgstr "Unlink All Active Links"
 
+msgid "Unlink All"
+msgstr "Unlink All"
+
 msgid "Open Trash"
 msgstr "Open Trash"
 
@@ -749,3 +752,174 @@ msgstr "Delete '{preset_name}'?"
 
 msgid "📝 Properties"
 msgstr "📝 Properties"
+
+# File Dialogs
+msgid "Select Icon"
+msgstr "Select Icon"
+
+msgid "Images (*.png *.ico *.svg *.jpg)"
+msgstr "Images (*.png *.ico *.svg *.jpg)"
+
+msgid "Select Executable"
+msgstr "Select Executable"
+
+msgid "Executables (*.exe);;All Files (*)"
+msgstr "Executables (*.exe);;All Files (*)"
+
+msgid "Add Preview File"
+msgstr "Add Preview File"
+
+msgid "Videos/Images (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;All Files (*.*)"
+msgstr "Videos/Images (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;All Files (*.*)"
+
+msgid "Select Icon Image"
+msgstr "Select Icon Image"
+
+msgid "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+msgstr "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+
+msgid "Select Preview Files"
+msgstr "Select Preview Files"
+
+msgid "All Files (*.*)"
+msgstr "All Files (*.*)"
+
+msgid "Select Image to Crop"
+msgstr "Select Image to Crop"
+
+msgid "Images (*.png *.jpg *.jpeg *.webp)"
+msgstr "Images (*.png *.jpg *.jpeg *.webp)"
+
+msgid "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+msgstr "Images (*.png *.jpg *.jpeg *.gif *.webp)"
+
+msgid "Refresh Tree"
+msgstr "Refresh Tree"
+
+# Properties Dialog
+msgid "Display Settings"
+msgstr "Display Settings"
+
+msgid "Package Size:"
+msgstr "Package Size:"
+
+msgid "Display Name:"
+msgstr "Display Name:"
+
+msgid "Favorite:"
+msgstr "Favorite:"
+
+msgid "Score:"
+msgstr "Score:"
+
+msgid "Multi-Preview:"
+msgstr "Multi-Preview:"
+
+msgid "Manage Full Previews..."
+msgstr "Manage Full Previews..."
+
+msgid "Icon Path (200x200):"
+msgstr "Icon Path (200x200):"
+
+msgid "Effective Icon:"
+msgstr "Effective Icon:"
+
+msgid "Description:"
+msgstr "Description:"
+
+msgid "Author:"
+msgstr "Author:"
+
+msgid "URL:"
+msgstr "URL:"
+
+msgid "Folder Attributes"
+msgstr "Folder Attributes"
+
+msgid "Folder Type:"
+msgstr "Folder Type:"
+
+msgid "Category Style:"
+msgstr "Category Style:"
+
+msgid "Package Style:"
+msgstr "Package Style:"
+
+msgid "Visibility:"
+msgstr "Visibility:"
+
+msgid "Hide this folder from normal view"
+msgstr "Hide this folder from normal view"
+
+msgid "Quick Tags:"
+msgstr "Quick Tags:"
+
+msgid "Additional Tags:"
+msgstr "Additional Tags:"
+
+msgid "Inheritance:"
+msgstr "Inheritance:"
+
+msgid "Inherit tags from parent folders"
+msgstr "Inherit tags from parent folders"
+
+msgid "Advanced Link Config"
+msgstr "Advanced Link Config"
+
+msgid "Deployment Method:"
+msgstr "Deployment Method:"
+
+msgid "Competition Policy:"
+msgstr "Competition Policy:"
+
+msgid "Deployment Rules (JSON):"
+msgstr "Deployment Rules (JSON):"
+
+msgid "Edit Individual Redirections..."
+msgstr "Edit Individual Redirections..."
+
+msgid "Conflict Tag:"
+msgstr "Conflict Tag:"
+
+msgid "Libraries:"
+msgstr "Libraries:"
+
+msgid "Library Settings"
+msgstr "Library Settings"
+
+msgid "(None)"
+msgstr "(None)"
+
+# Batch Menu
+msgid "Selected: {count} item(s)"
+msgstr "Selected: {count} item(s)"
+
+msgid "Batch Edit ({count} items)"
+msgstr "Batch Edit ({count} items)"
+
+msgid "🚀 Batch Deploy (Links)"
+msgstr "🚀 Batch Deploy (Links)"
+
+msgid "🔗 Batch Separate (Remove Links)"
+msgstr "🔗 Batch Separate (Remove Links)"
+
+msgid "👁 Show All"
+msgstr "👁 Show All"
+
+msgid "👻 Hide All"
+msgstr "👻 Hide All"
+
+msgid "📦 Move Selected to Unclassified"
+msgstr "📦 Move Selected to Unclassified"
+
+msgid "📝 Batch Edit Properties..."
+msgstr "📝 Batch Edit Properties..."
+
+msgid "📂 Open Selected in Explorer"
+msgstr "📂 Open Selected in Explorer"
+
+msgid "📦 Restore Selected"
+msgstr "📦 Restore Selected"
+
+msgid "🗑 Move Selected to Trash"
+msgstr "🗑 Move Selected to Trash"

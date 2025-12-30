@@ -18,73 +18,141 @@
 
 help_notes:
   target_app:
-    body_size: [180, 50]
-    offset: [179, -44]
-    tail_target: [4, 35]
+    body_size:
+    - 180
+    - 50
+    offset:
+    - 179
+    - -44
+    tail_target:
+    - 4
+    - 35
     bg_style: 3364342474
     text_style: 4294967295
     content: "ターゲットアプリ設定\n実行ファイル起動ショートカットなど"
-  
+    anchor_mode: 0
   tag_bar:
-    body_size: [117, 138]
-    offset: [382, 11]
-    tail_target: [-97, 50]
+    body_size:
+    - 124
+    - 136
+    offset:
+    - 164
+    - -4
+    tail_target:
+    - -97
+    - 50
     bg_style: 3358074920
     text_style: 4294967295
     content: "#87caca\n一般\n#d9d38c\n重要\n#d5a01c"
-  
+    anchor_mode: 2
   search_bar:
-    body_size: [160, 90]
-    offset: [246, 654]
-    tail_target: [-120, 1]
+    body_size:
+    - 160
+    - 90
+    offset:
+    - 246
+    - 654
+    tail_target:
+    - -120
+    - 1
     bg_style: 3369443356
     text_style: 4294967295
-    content: "Help text here..."
-  
+    content: Help text here...
+    anchor_mode: 0
   explorer_btn:
-    body_size: [184, 50]
-    offset: [513, -75]
-    tail_target: [115, -27]
+    body_size:
+    - 186
+    - 59
+    offset:
+    - 1167
+    - 357
+    tail_target:
+    - 108
+    - -39
     bg_style: 3364342474
     text_style: 4294967295
     content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能\n"
-  
+    anchor_mode: 0
   sidebar_strip:
-    body_size: [160, 90]
-    offset: [180, 230]
-    tail_target: [1, 68]
+    body_size:
+    - 153
+    - 84
+    offset:
+    - 442
+    - -171
+    tail_target:
+    - 10
+    - -71
     bg_style: 3358074920
     text_style: 4294967295
-    content: "Help text here..."
-  
+    content: Help text here...
+    anchor_mode: 0
   presets_btn:
-    body_size: [160, 90]
-    offset: [114, 400]
-    tail_target: [106, 70]
+    body_size:
+    - 160
+    - 90
+    offset:
+    - 114
+    - 400
+    tail_target:
+    - 106
+    - 70
     bg_style: 3358074920
     text_style: 4294967295
-    content: "Help text here..."
-  
+    content: Help text here...
+    anchor_mode: 0
   notes_btn:
-    body_size: [160, 90]
-    offset: [334, 407]
-    tail_target: [-1, -79]
+    body_size:
+    - 160
+    - 90
+    offset:
+    - 334
+    - 407
+    tail_target:
+    - -1
+    - -79
     bg_style: 3358074920
     text_style: 4294967295
-    content: "Help text here..."
-  
+    content: Help text here...
+    anchor_mode: 0
   tools_btn:
-    body_size: [160, 90]
-    offset: [311, 203]
-    tail_target: [110, -3]
+    body_size:
+    - 160
+    - 90
+    offset:
+    - 135
+    - -69
+    tail_target:
+    - 110
+    - -3
     bg_style: 3358074920
     text_style: 4294967295
-    content: "Help text here..."
-  
+    content: Help text here...
+    anchor_mode: 0
   search_logic:
-    body_size: [150, 80]
-    offset: [210, 657]
-    tail_target: [-111, 49]
+    body_size:
+    - 150
+    - 80
+    offset:
+    - 210
+    - 657
+    tail_target:
+    - -111
+    - 49
     bg_style: 3370574229
     text_style: 4294967295
-    content: "Help text here..."
+    content: Help text here...
+    anchor_mode: 0
+  free_7eab6f19:
+    body_size:
+    - 197
+    - 51
+    offset:
+    - -34
+    - -326
+    tail_target:
+    - 118
+    - -47
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能"

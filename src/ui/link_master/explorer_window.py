@@ -56,6 +56,7 @@ class ExplorerPanel(QWidget):
         self.btn_refresh.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; background-color: #444; border-radius: 4px; }")
         self.btn_refresh.clicked.connect(lambda: self.fs_model.setRootPath(self.storage_root) if self.storage_root else None)
         header_layout.addWidget(self.btn_refresh)
+        self.btn_refresh.hide()  # Hidden: unclear purpose
         
         # Enable Context Menu on Header for Root Config
         self.header_frame.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

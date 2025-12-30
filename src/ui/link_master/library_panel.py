@@ -181,8 +181,29 @@ class LibraryPanel(QWidget):
         """)
         self.btn_refresh.clicked.connect(self.refresh)
         row3.addWidget(self.btn_refresh)
+        self.btn_refresh.hide()  # Hidden: unclear purpose
         
         layout.addLayout(row3)
+
+    def save_state(self):
+        """Save UI state like column widths."""
+        if not self.db: return
+        try:
+            state = self.lib_tree.header().saveState().data().hex()
+            self.db.set_setting(f'lib_panel_state_{self.app_id or "default"}', state)
+        except Exception as e:
+            print(f"Error saving lib state: {e}")
+
+    def restore_state(self):
+        """Restore UI state."""
+        if not self.db: return
+        try:
+             state_hex = self.db.get_setting(f'lib_panel_state_{self.app_id or "default"}')
+             if state_hex:
+                 from PyQt6.QtCore import QByteArray
+                 self.lib_tree.header().restoreState(QByteArray.fromHex(state_hex.encode()))
+        except Exception as e:
+            print(f"Error restoring lib state: {e}")
 
     def retranslate_ui(self):
         """Update strings for current language."""
@@ -207,6 +228,7 @@ class LibraryPanel(QWidget):
         self.app_id = app_id
         self.db = db
         self.refresh()
+        self.restore_state()
 
     def refresh(self):
         if not self.db: return
@@ -618,7 +640,27 @@ class LibrarySettingsDialog(QDialog):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self._init_ui()
-    
+
+    def save_state(self):
+        """Save UI state like column widths."""
+        if not self.db: return
+        try:
+            state = self.lib_tree.header().saveState().data().hex()
+            self.db.set_setting(f'lib_panel_state_{self.app_id or "default"}', state)
+        except Exception as e:
+            print(f"Error saving lib state: {e}")
+
+    def restore_state(self):
+        """Restore UI state."""
+        if not self.db: return
+        try:
+             state_hex = self.db.get_setting(f'lib_panel_state_{self.app_id or "default"}')
+             if state_hex:
+                 from PyQt6.QtCore import QByteArray
+                 self.lib_tree.header().restoreState(QByteArray.fromHex(state_hex.encode()))
+        except Exception as e:
+            print(f"Error restoring lib state: {e}")
+
     def _init_ui(self):
         layout = QVBoxLayout(self)
         
