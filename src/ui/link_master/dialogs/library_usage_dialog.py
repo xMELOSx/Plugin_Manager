@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QTreeWidget, QTreeWidgetItem, QComboBox,
                              QMessageBox, QHeaderView)
 from PyQt6.QtCore import Qt
+from src.core.lang_manager import _
 import json
 
 class LibraryUsageDialog(QDialog):
@@ -12,7 +13,7 @@ class LibraryUsageDialog(QDialog):
     def __init__(self, parent, db, current_deps_json):
         super().__init__(parent)
         self.db = db
-        self.setWindowTitle("ライブラリ設定")
+        self.setWindowTitle(_("Library Settings"))
         self.resize(600, 500)
         
         # Parse current dependencies
@@ -30,11 +31,11 @@ class LibraryUsageDialog(QDialog):
         layout = QVBoxLayout(self)
         
         layout.addWidget(QLabel("<b>📦 Library Dependencies</b>"))
-        layout.addWidget(QLabel("このパッケージが使用するライブラリを選択してください。"))
+        layout.addWidget(QLabel(_("Select libraries this package uses.")))
         
         # Tree: Library Name | Included? | Version Mode | Specific Version
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Library Name", "Version Mode", "Specific Version"])
+        self.tree.setHeaderLabels([_("Library Name"), _("Version Mode"), _("Specific Version")])
         self.tree.setColumnWidth(0, 200)
         self.tree.setColumnWidth(1, 150)
         
@@ -44,11 +45,11 @@ class LibraryUsageDialog(QDialog):
         btns = QHBoxLayout()
         btns.addStretch()
         
-        btn_cancel = QPushButton("Cancel")
+        btn_cancel = QPushButton(_("Cancel"))
         btn_cancel.clicked.connect(self.reject)
         btns.addWidget(btn_cancel)
         
-        btn_save = QPushButton("Save")
+        btn_save = QPushButton(_("Save"))
         btn_save.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
         btn_save.clicked.connect(self._save)
         btns.addWidget(btn_save)
@@ -102,15 +103,15 @@ class LibraryUsageDialog(QDialog):
             
             # Version Mode Combo: 優先 (use global priority version) or 任意 (choose specific)
             combo_mode = QComboBox()
-            combo_mode.addItems(["優先", "任意"])
+            combo_mode.addItems([_("Preferred"), _("Specific")])
             if existing:
                 mode = existing.get('version_mode', 'priority')
                 if mode == 'priority' or mode == 'latest': 
-                    combo_mode.setCurrentIndex(0)  # 優先
+                    combo_mode.setCurrentIndex(0)  # Preferred
                 elif mode == 'specific': 
-                    combo_mode.setCurrentIndex(1)  # 任意
+                    combo_mode.setCurrentIndex(1)  # Specific
             else:
-                combo_mode.setCurrentIndex(0) # Default to 優先
+                combo_mode.setCurrentIndex(0) # Default to Preferred
                 
             self.tree.setItemWidget(item, 1, combo_mode)
             
@@ -122,8 +123,8 @@ class LibraryUsageDialog(QDialog):
                 combo_ver.setCurrentText(existing.get('version'))
             
             # Enable/Disable based on mode - 任意 only
-            combo_ver.setEnabled(combo_mode.currentText() == "任意")
-            combo_mode.currentTextChanged.connect(lambda txt, c=combo_ver: c.setEnabled(txt == "任意"))
+            combo_ver.setEnabled(combo_mode.currentIndex() == 1)  # Index 1 = Specific
+            combo_mode.currentIndexChanged.connect(lambda idx, c=combo_ver: c.setEnabled(idx == 1))
             
             self.tree.setItemWidget(item, 2, combo_ver)
             item.setData(0, Qt.ItemDataRole.UserRole, lib_name)
@@ -139,8 +140,8 @@ class LibraryUsageDialog(QDialog):
                 combo_mode = self.tree.itemWidget(item, 1)
                 mode_text = combo_mode.currentText()
                 mode = 'priority'
-                if mode_text == "優先": mode = 'priority'
-                elif mode_text == "任意": mode = 'specific'
+                if combo_mode.currentIndex() == 0: mode = 'priority'  # Preferred
+                elif combo_mode.currentIndex() == 1: mode = 'specific'  # Specific
                 
                 combo_ver = self.tree.itemWidget(item, 2)
                 ver = combo_ver.currentText()

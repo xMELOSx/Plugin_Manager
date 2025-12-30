@@ -673,7 +673,7 @@ class LibrarySettingsDialog(QDialog):
         self.url_list_json = first_cfg.get('url_list', '[]') or '[]'
         
         url_manage_layout = QHBoxLayout()
-        self.url_btn = QPushButton("🌐 Manage URLs...")
+        self.url_btn = QPushButton(_("🌐 Manage URLs..."))
         self.url_btn.clicked.connect(self._open_url_manager)
         self.url_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; min-height: 24px;")
         url_manage_layout.addWidget(self.url_btn)
@@ -682,7 +682,7 @@ class LibrarySettingsDialog(QDialog):
         self.url_count_label.setStyleSheet("color: #888;")
         url_manage_layout.addWidget(self.url_count_label)
         url_manage_layout.addStretch()
-        form.addRow("URLs:", url_manage_layout)
+        form.addRow(_("URLs:"), url_manage_layout)
         self._update_url_count_preview()
         
         self.author_edit = QLineEdit(first_cfg.get('author', ''))
@@ -720,14 +720,14 @@ class LibrarySettingsDialog(QDialog):
             # Column 3 (View)
             view_btn = QPushButton("📋")
             view_btn.setFixedSize(30, 24)
-            view_btn.setToolTip("プロパティ表示")
+            view_btn.setToolTip(_("View Properties"))
             view_btn.clicked.connect(lambda _, p=v['_rel_path']: self.request_view_properties.emit(p))
             self.ver_tree.setItemWidget(item, 3, view_btn)
             
             # Column 4 (Edit)
             edit_btn = QPushButton("✏")
             edit_btn.setFixedSize(30, 24)
-            edit_btn.setToolTip("プロパティ編集")
+            edit_btn.setToolTip(_("Edit Properties"))
             edit_btn.clicked.connect(lambda _, p=v['_rel_path']: self.request_edit_properties.emit(p))
             self.ver_tree.setItemWidget(item, 4, edit_btn)
             
@@ -765,7 +765,7 @@ class LibrarySettingsDialog(QDialog):
     def _unregister_version(self, path: str, item: QTreeWidgetItem):
         confirm = QMessageBox.question(
             self, _("Unregister Library"), 
-            _("このバージョンをライブラリから解除しますか？"),
+            _("Unregister this version from the library?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:

@@ -350,8 +350,16 @@ class StickyHelpWidget(QWidget):
         
         mode_menu = menu.addMenu(_("Follow Mode"))
         m0 = mode_menu.addAction(_("Proportional (Center)"))
+        m0.setCheckable(True)
+        m0.setChecked(self.anchor_mode == 0)
+        
         m1 = mode_menu.addAction(_("Fixed (Top-Left)"))
+        m1.setCheckable(True)
+        m1.setChecked(self.anchor_mode == 1)
+        
         m2 = mode_menu.addAction(_("Full Follow (Size Delta)"))
+        m2.setCheckable(True)
+        m2.setChecked(self.anchor_mode == 2)
         
         change_bg_action = menu.addAction(_("Change Background Color"))
         change_text_action = menu.addAction(_("Change Text Color"))

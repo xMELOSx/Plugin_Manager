@@ -1154,3 +1154,74 @@ msgstr "閉じてフル編集ダイアログを開く"
 
 msgid "💾 Save"
 msgstr "💾 保存"
+
+# Sticky Help - Follow Mode
+msgid "Reset Anchor (Jump Out)"
+msgstr "アンカーをリセット (外へ飛ばす)"
+
+msgid "Follow Mode"
+msgstr "追従モード"
+
+msgid "Proportional (Center)"
+msgstr "比例 (中央)"
+
+msgid "Fixed (Top-Left)"
+msgstr "固定 (左上)"
+
+msgid "Full Follow (Size Delta)"
+msgstr "完全追従 (サイズ差)"
+
+msgid "Change Background Color"
+msgstr "背景色を変更"
+
+msgid "Change Text Color"
+msgstr "テキスト色を変更"
+
+msgid "Delete (Clear Content)"
+msgstr "削除 (内容をクリア)"
+
+msgid "Select Background Color"
+msgstr "背景色を選択"
+
+msgid "Select Text Color"
+msgstr "テキスト色を選択"
+
+# Library Dialogs
+msgid "Library Settings"
+msgstr "ライブラリ設定"
+
+msgid "Select libraries this package uses."
+msgstr "このパッケージが使用するライブラリを選択してください。"
+
+msgid "Library Name"
+msgstr "ライブラリ名"
+
+msgid "Version Mode"
+msgstr "バージョンモード"
+
+msgid "Specific Version"
+msgstr "指定バージョン"
+
+msgid "Preferred"
+msgstr "優先"
+
+msgid "Specific"
+msgstr "指定"
+
+msgid "URLs:"
+msgstr "URL:"
+
+msgid "View Properties"
+msgstr "プロパティ表示"
+
+msgid "Edit Properties"
+msgstr "プロパティ編集"
+
+msgid "Unregister this version from the library?"
+msgstr "このバージョンをライブラリから解除しますか？"
+
+msgid "Version (Editable)"
+msgstr "バージョン (編集可)"
+
+msgid "URL Management"
+msgstr "URL管理"
