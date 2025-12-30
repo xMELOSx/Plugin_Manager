@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt, QDir, pyqtSignal, QSortFilterProxyModel, QByteArray
 from PyQt6.QtGui import QFileSystemModel, QColor, QFont
 
 from src.ui.window_mixins import OptionsMixin
+from src.core.lang_manager import _
 
 class CheckableFileModel(QFileSystemModel):
     """ファイルシステムモデルにチェックボックスと色分け機能を追加したもの。"""
@@ -33,7 +34,7 @@ class CheckableFileModel(QFileSystemModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            headers = ["名前", "バックアップ", "ターゲット", "サイズ", "最終更新"]
+            headers = [_("Name"), _("Backup"), _("Target"), _("Size"), _("Modified")]
             if 0 <= section < len(headers):
                 return headers[section]
         return super().headerData(section, orientation, role)
@@ -155,7 +156,7 @@ class FileManagementDialog(QDialog, OptionsMixin):
         if "overrides" not in self.rules: self.rules["overrides"] = self.rules.get("rename", {})
         if "backups" not in self.rules: self.rules["backups"] = {}
         
-        self.setWindowTitle(f"File Management: {os.path.basename(folder_path)}")
+        self.setWindowTitle(_("File Management: {name}").format(name=os.path.basename(folder_path)))
         self.resize(1100, 750)
         self.load_options("file_management_dialog") # Restore geometry
         
@@ -203,6 +204,7 @@ class FileManagementDialog(QDialog, OptionsMixin):
         
         # Header Info
         header_title = QLabel(f"<b>📂 {os.path.basename(self.folder_path)}</b>")
+        header_title.setText(_("<b>📂 {name}</b>").format(name=os.path.basename(self.folder_path)))
         header_title.setStyleSheet("font-size: 14pt; color: #3498db;")
         layout.addWidget(header_title)
         
@@ -212,8 +214,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
         
         # Legend / Guide
         legend = QHBoxLayout()
-        legend.addWidget(self._create_legend_dot("#5d2a2a", "Excluded"))
-        legend.addWidget(self._create_legend_dot("#2a3b5d", "Redirected"))
+        legend.addWidget(self._create_legend_dot("#5d2a2a", _("Excluded")))
+        legend.addWidget(self._create_legend_dot("#2a3b5d", _("Redirected")))
         legend.addStretch()
         layout.addLayout(legend)
 
@@ -285,8 +287,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
         redir_box.addWidget(redir_label)
         
         redir_btns = QHBoxLayout()
-        self.btn_p = QPushButton("P (Primary)")
-        self.btn_p.setToolTip(f"Set to Primary Target: {self.primary_target}")
+        self.btn_p = QPushButton(_("P (Primary)"))
+        self.btn_p.setToolTip(_("Set to Primary Target: {target}").format(target=self.primary_target))
         self.btn_p.clicked.connect(lambda: self._set_quick_location(self.primary_target))
         self.btn_p.setStyleSheet("""
             QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
@@ -294,8 +296,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
             QPushButton:pressed { background-color: #2b2b2b; }
         """)
         
-        self.btn_s = QPushButton("S (Secondary)")
-        self.btn_s.setToolTip(f"Set to Secondary Target: {self.secondary_target}")
+        self.btn_s = QPushButton(_("S (Secondary)"))
+        self.btn_s.setToolTip(_("Set to Secondary Target: {target}").format(target=self.secondary_target))
         self.btn_s.clicked.connect(lambda: self._set_quick_location(self.secondary_target))
         self.btn_s.setStyleSheet("""
             QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
@@ -321,12 +323,12 @@ class FileManagementDialog(QDialog, OptionsMixin):
         
         # Section 2: Backup Ops
         backup_box = QVBoxLayout()
-        backup_label = QLabel("<b>Backup Operations</b>")
+        backup_label = QLabel(_("<b>Backup Operations</b>"))
         backup_box.addWidget(backup_label)
         
         backup_btns = QHBoxLayout()
-        self.btn_backup = QPushButton("Copy to _Backup")
-        self.btn_backup.setToolTip("Copy file to _Backup folder and record timestamp.")
+        self.btn_backup = QPushButton(_("Copy to _Backup"))
+        self.btn_backup.setToolTip(_("Copy file to _Backup folder and record timestamp."))
         self.btn_backup.clicked.connect(self._backup_item)
         self.btn_backup.setFixedHeight(35)
         self.btn_backup.setStyleSheet("""
@@ -335,8 +337,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
             QPushButton:pressed { background-color: #1a5276; }
         """)
         
-        self.btn_restore = QPushButton("Restore from _Backup")
-        self.btn_restore.setToolTip("Restore file from _Backup folder (Overwrite).")
+        self.btn_restore = QPushButton(_("Restore from _Backup"))
+        self.btn_restore.setToolTip(_("Restore file from _Backup folder (Overwrite)."))
         self.btn_restore.clicked.connect(self._restore_item)
         self.btn_restore.setFixedHeight(35)
         self.btn_restore.setEnabled(False) # Default disabled
@@ -358,12 +360,12 @@ class FileManagementDialog(QDialog, OptionsMixin):
         btns = QHBoxLayout()
         btns.addStretch()
         
-        btn_cancel = QPushButton("Cancel")
+        btn_cancel = QPushButton(_("Cancel"))
         btn_cancel.setFixedSize(100, 35)
         btn_cancel.clicked.connect(self.reject)
         btns.addWidget(btn_cancel)
         
-        btn_save = QPushButton("Save Changes")
+        btn_save = QPushButton(_("Save Changes"))
         btn_save.setFixedSize(140, 35)
         btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; font-size: 11pt;")
         btn_save.clicked.connect(self.accept)
@@ -446,8 +448,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
         selected = self.get_selected_rel_paths()
         if not selected: return
         
-        confirm = QMessageBox.question(self, "Confirm Backup", 
-                                     f"{len(selected)} 件のアイテムを _Backup フォルダにコピー（上書き保存）しますか？")
+        confirm = QMessageBox.question(self, _("Confirm Backup"), 
+                                     _("{count} 件のアイテムを _Backup フォルダにコピー（上書き保存）しますか？").format(count=len(selected)))
         if confirm != QMessageBox.StandardButton.Yes: return
 
         backup_root = os.path.join(self.folder_path, "_Backup")
@@ -477,8 +479,8 @@ class FileManagementDialog(QDialog, OptionsMixin):
         selected = self.get_selected_rel_paths()
         if not selected: return
         
-        confirm = QMessageBox.question(self, "Confirm Restore", 
-                                     f"{len(selected)} 件のアイテムをバックアップから復元（上書き）しますか？")
+        confirm = QMessageBox.question(self, _("Confirm Restore"), 
+                                     _("{count} 件のアイテムをバックアップから復元（上書き）しますか？").format(count=len(selected)))
         if confirm != QMessageBox.StandardButton.Yes: return
         
         backup_root = os.path.join(self.folder_path, "_Backup")
@@ -500,7 +502,7 @@ class FileManagementDialog(QDialog, OptionsMixin):
 
         if success_count > 0:
             self.logger.info(f"Restored {success_count} item(s)")
-            QMessageBox.information(self, "Success", f"{success_count} 件のアイテムを復元しました。")
+            QMessageBox.information(self, _("Success"), _("{count} 件のアイテムを復元しました。").format(count=success_count))
 
     def get_rules_json(self):
         # Phase 28: Remove backups from saved info

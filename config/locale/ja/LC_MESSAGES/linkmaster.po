@@ -1060,3 +1060,97 @@ msgstr "一括ゴミ箱移動"
 
 msgid "Move {count} items to trash?"
 msgstr "{count} 個のアイテムをゴミ箱に移動しますか？"
+
+msgid "<b>Categories</b>"
+msgstr "<b>カテゴリ</b>"
+
+msgid "<b>Packages</b>"
+msgstr "<b>パッケージ</b>"
+
+msgid "Total Links: {count}"
+msgstr "リンク合計: {count}"
+
+msgid "Total Links: 0"
+msgstr "リンク合計: 0"
+
+msgid "Package Count: {count}"
+msgstr "パッケージ数: {count}"
+
+msgid "Link Count In Category: {count}"
+msgstr "カテゴリ内リンク数: {count}"
+
+msgid "Total Link Count"
+msgstr "リンク合計数"
+
+msgid "Link Count In Category"
+msgstr "カテゴリ内リンク数"
+
+msgid "Package Count"
+msgstr "パッケージ数"
+
+# Preview Window
+msgid "📑 Edit Full Previews"
+msgstr "📑 フルプレビュー編集"
+
+msgid "Link Enabled"
+msgstr "リンク有効"
+
+msgid "Visibility"
+msgstr "表示状態"
+
+msgid "★Favorite"
+msgstr "★お気に入り"
+
+msgid "☆Favorite"
+msgstr "☆お気に入り"
+
+msgid "Score:"
+msgstr "スコア:"
+
+msgid "Folder Name:"
+msgstr "フォルダ名:"
+
+msgid "Open actual folder"
+msgstr "実態フォルダを開く"
+
+msgid "Display Name:"
+msgstr "表示名:"
+
+msgid "Enter display name..."
+msgstr "表示名を入力..."
+
+msgid "Description:"
+msgstr "説明:"
+
+msgid "Enter description..."
+msgstr "説明を入力..."
+
+msgid "Author:"
+msgstr "作者:"
+
+msgid "Author name..."
+msgstr "作者名..."
+
+msgid "URL:"
+msgstr "URL:"
+
+msgid "🌐 Manage URLs..."
+msgstr "🌐 URL管理..."
+
+msgid "Quick Tags"
+msgstr "クイックタグ"
+
+msgid "Additional Tags:"
+msgstr "追加タグ:"
+
+msgid "Enter tags separated by comma..."
+msgstr "タグをカンマ区切りで入力..."
+
+msgid "📝 Detail Edit"
+msgstr "📝 詳細編集"
+
+msgid "Close this and open full property editor"
+msgstr "閉じてフル編集ダイアログを開く"
+
+msgid "💾 Save"
+msgstr "💾 保存"

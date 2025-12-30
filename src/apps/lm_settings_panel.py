@@ -50,16 +50,16 @@ class LMSettingsPanelMixin:
             # Header with buttons
             header = QHBoxLayout()
             header.setSpacing(5)
-            header.addWidget(QLabel("<b>📓 Card Settings</b>"))
+            header.addWidget(QLabel(_("<b>📓 Card Settings</b>")))
             header.addStretch()
             
-            save_btn = QPushButton("保存")
+            save_btn = QPushButton(_("Save"))
             save_btn.setFixedWidth(50)
             save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #2ecc71; border-color: #fff; }")
             save_btn.clicked.connect(self._settings_panel.hide)
             header.addWidget(save_btn)
             
-            cancel_btn = QPushButton("戻す")
+            cancel_btn = QPushButton(_("Reset"))
             cancel_btn.setFixedWidth(50)
             cancel_btn.setStyleSheet("QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 2px; border: 1px solid #555; } QPushButton:hover { background-color: #4a4a4a; border-color: #999; }")
             cancel_btn.clicked.connect(self._cancel_settings)
@@ -73,7 +73,7 @@ class LMSettingsPanelMixin:
             layout.addLayout(header)
             
             # Lock View Mode Option
-            self._lock_check = QCheckBox("表示モードを固定 (保持) する")
+            self._lock_check = QCheckBox(_("Lock Display Mode (Persist)"))
             self._lock_check.setStyleSheet("QCheckBox { color: #ddd; padding: 5px; font-size: 11px; }")
             self._lock_check.setChecked(self.display_mode_locked)
             self._lock_check.toggled.connect(self._on_display_lock_toggled)
@@ -90,7 +90,7 @@ class LMSettingsPanelMixin:
                 tab_layout.setContentsMargins(5, 10, 5, 5)
                 
                 # Category section
-                tab_layout.addWidget(QLabel(f"📁 <b>Category</b>"))
+                tab_layout.addWidget(QLabel(_("📁 <b>Category</b>")))
                 tab_layout.addLayout(self._create_mode_slider("CardW:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
                 h_min = 20 if mode_icon == "text_list" else 50
                 tab_layout.addLayout(self._create_mode_slider("CardH:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
@@ -101,7 +101,7 @@ class LMSettingsPanelMixin:
                 tab_layout.addSpacing(10)
                 
                 # Package section
-                tab_layout.addWidget(QLabel(f"📦 <b>Package</b>"))
+                tab_layout.addWidget(QLabel(_("📦 <b>Package</b>")))
                 tab_layout.addLayout(self._create_mode_slider("CardW:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
                 tab_layout.addLayout(self._create_mode_slider("CardH:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
                 if mode_icon != "text_list":
@@ -110,7 +110,7 @@ class LMSettingsPanelMixin:
                 
                 # Scale per mode
                 tab_layout.addSpacing(5)
-                tab_layout.addWidget(QLabel("📐 <b>Scale</b> (Independent)"))
+                tab_layout.addWidget(QLabel(_("📐 <b>Scale</b> (Independent)")))
                 tab_layout.addLayout(self._create_mode_scale_row("Cat:", f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
                 tab_layout.addLayout(self._create_mode_scale_row("Pkg:", f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
 

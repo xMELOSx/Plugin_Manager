@@ -1014,6 +1014,21 @@ class PreviewTableDialog(QDialog):
         self.paths = paths or []
         self._init_ui()
         self._load_paths()
+        
+        # Phase 32: Restore Size
+        from src.core.link_master.database import get_lm_db
+        # We need an app context for general settings, but LM uses lm_ui_state for splitters etc.
+        # For dialogs, let's use a common 'lm_global_settings' or just the first app's DB for now,
+        # or better, use the instance of 'db' if available from parent.
+        self.db = getattr(parent, 'db', None)
+        if self.db:
+            geom = self.db.get_setting("geom_preview_table", None)
+            if geom: self.restoreGeometry(bytes.fromhex(geom))
+    
+    def closeEvent(self, event):
+        if self.db:
+            self.db.set_setting("geom_preview_table", self.saveGeometry().toHex().data().decode())
+        super().closeEvent(event)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -1701,6 +1716,17 @@ class FullPreviewDialog(QDialog):
         self.current_index = 0
         self._init_ui()
         self._update_display()
+        
+        # Phase 32: Restore Size
+        self.db = getattr(parent, 'db', None)
+        if self.db:
+            geom = self.db.get_setting("geom_full_preview", None)
+            if geom: self.restoreGeometry(bytes.fromhex(geom))
+
+    def closeEvent(self, event):
+        if self.db:
+            self.db.set_setting("geom_full_preview", self.saveGeometry().toHex().data().decode())
+        super().closeEvent(event)
 
     def _init_ui(self):
         from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QPushButton
@@ -1944,7 +1970,20 @@ class FolderPropertiesDialog(QDialog):
             if auto_thumb:
                 self.current_config['image_path'] = auto_thumb
         
+        self.db = getattr(parent, 'db', None)
         self._init_ui()
+        
+        # Phase 32: Restore Size
+        if self.db:
+            key = "geom_folder_props_batch" if batch_mode else "geom_folder_props"
+            geom = self.db.get_setting(key, None)
+            if geom: self.restoreGeometry(bytes.fromhex(geom))
+
+    def closeEvent(self, event):
+        if hasattr(self, 'db') and self.db:
+            key = "geom_folder_props_batch" if self.batch_mode else "geom_folder_props"
+            self.db.set_setting(key, self.saveGeometry().toHex().data().decode())
+        super().closeEvent(event)
     
     def _detect_auto_thumbnail(self):
         """Detect first available image in folder for auto-thumbnail."""
@@ -2969,6 +3008,16 @@ class TagManagerDialog(QDialog):
         
         self._init_ui()
         self._load_tags()
+        
+        # Phase 32: Restore Size
+        if self.db:
+            geom = self.db.get_setting("geom_tag_manager", None)
+            if geom: self.restoreGeometry(bytes.fromhex(geom))
+
+    def closeEvent(self, event):
+        if self.db:
+            self.db.set_setting("geom_tag_manager", self.saveGeometry().toHex().data().decode())
+        super().closeEvent(event)
         self._dirty = False 
         
     def _init_ui(self):
@@ -3789,11 +3838,18 @@ class ImportTypeDialog(QDialog):
         layout.setSpacing(15)
         
         # Translating capitalized capitalized target_type name
-        title_text = _("Import Item") if self.target_type == "item" else _("Import Folder")
+        title_text = _("Import Item") if self.target_type == "item" else ("Import Folder" if self.target_type == "category" else _("Import Package"))
         title = QLabel(f"<b>{title_text}</b>")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 16px; color: #3498db;")
+        title.setStyleSheet("font-size: 16px; color: #3498db; margin-bottom: 2px;")
         layout.addWidget(title)
+
+        # Added Security Note (Phase 32)
+        note = QLabel(_("Note: Target installation paths are NOT stored in dioco files for security."))
+        note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        note.setStyleSheet("color: #888; font-size: 10px; font-style: italic; margin-bottom: 8px;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
         
         desc = QLabel(_("Select how to import this {type}:").format(type=self.target_type))
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)

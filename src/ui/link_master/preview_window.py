@@ -17,6 +17,7 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.compact_dial import CompactDial
+from src.core.lang_manager import _
 import shutil
 
 
@@ -128,7 +129,7 @@ class PreviewWindow(QWidget):
         self.next_btn.setFixedWidth(40)
         self.next_btn.clicked.connect(self._next)
         
-        self.edit_previews_btn = QPushButton("📑 フルプレビュー編集")
+        self.edit_previews_btn = QPushButton(_("📑 Edit Full Previews"))
         self.edit_previews_btn.setFixedWidth(140)
         self.edit_previews_btn.clicked.connect(self._open_preview_editor)
         
@@ -326,11 +327,11 @@ class PreviewWindow(QWidget):
         # Checkboxes (horizontal layout)
         checkbox_layout = QHBoxLayout()
         
-        self.deploy_check = QCheckBox("リンク有効")
+        self.deploy_check = QCheckBox(_("Link Enabled"))
         # Actual deploy/unlink will happen on save, not immediately
         checkbox_layout.addWidget(self.deploy_check)
         
-        self.visible_check = QCheckBox("表示状態")
+        self.visible_check = QCheckBox(_("Visibility"))
         # Actual visibility change will happen on save, not immediately
         checkbox_layout.addWidget(self.visible_check)
         
@@ -338,7 +339,7 @@ class PreviewWindow(QWidget):
         checkbox_layout.addSpacing(10)
         # Favorite button
         is_fav = bool(self.folder_config.get('is_favorite', False))
-        self.favorite_btn = QPushButton("★お気に入り" if is_fav else "☆お気に入り", self)
+        self.favorite_btn = QPushButton(_("★Favorite") if is_fav else _("☆Favorite"), self)
         self.favorite_btn.setCheckable(True)
         self.favorite_btn.setChecked(is_fav)
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -361,7 +362,7 @@ class PreviewWindow(QWidget):
         checkbox_layout.addSpacing(15)
         
         # Score label and CompactDial
-        score_label = QLabel("スコア:", self)
+        score_label = QLabel(_("Score:"), self)
         score_label.setStyleSheet("color: #ccc; font-size: 11px;")
         checkbox_layout.addWidget(score_label)
         
@@ -377,13 +378,13 @@ class PreviewWindow(QWidget):
         folder_row.setContentsMargins(0, 0, 0, 0)
         folder_row.setSpacing(5)
         
-        folder_label = QLabel("フォルダ名:")
+        folder_label = QLabel(_("Folder Name:"))
         folder_row.addWidget(folder_label)
         
         self.folder_open_btn = QPushButton()
         self.folder_open_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
         self.folder_open_btn.setFixedSize(24, 24)
-        self.folder_open_btn.setToolTip("実態フォルダを開く")
+        self.folder_open_btn.setToolTip(_("Open actual folder"))
         self.folder_open_btn.clicked.connect(self._open_actual_folder)
         folder_row.addWidget(self.folder_open_btn)
         folder_row.addStretch()
@@ -396,30 +397,28 @@ class PreviewWindow(QWidget):
         prop_layout.addWidget(self.folder_name_label)
         
         # Display Name
-        prop_layout.addWidget(QLabel("表示名:"))
+        prop_layout.addWidget(QLabel(_("Display Name:")))
         self.display_name_edit = QLineEdit()
-        self.display_name_edit.setPlaceholderText("表示名を入力...")
+        self.display_name_edit.setPlaceholderText(_("Enter display name..."))
         prop_layout.addWidget(self.display_name_edit)
         
         # Description
-        
-        # Description
-        prop_layout.addWidget(QLabel("説明:"))
+        prop_layout.addWidget(QLabel(_("Description:")))
         self.description_edit = QTextEdit()
-        self.description_edit.setPlaceholderText("説明を入力...")
+        self.description_edit.setPlaceholderText(_("Enter description..."))
         self.description_edit.setMaximumHeight(80)
         prop_layout.addWidget(self.description_edit)
 
         # Author
-        prop_layout.addWidget(QLabel("作者:"))
+        prop_layout.addWidget(QLabel(_("Author:")))
         self.author_edit = QLineEdit()
-        self.author_edit.setPlaceholderText("作者名...")
+        self.author_edit.setPlaceholderText(_("Author name..."))
         prop_layout.addWidget(self.author_edit)
 
         # URL List Management
-        prop_layout.addWidget(QLabel("URL:"))
+        prop_layout.addWidget(QLabel(_("URL:")))
         url_manage_layout = QHBoxLayout()
-        self.url_btn = QPushButton("🌐 Manage URLs...")
+        self.url_btn = QPushButton(_("🌐 Manage URLs..."))
         self.url_btn.clicked.connect(self._open_url_manager)
         self.url_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; min-height: 28px;")
         url_manage_layout.addWidget(self.url_btn)
@@ -436,7 +435,7 @@ class PreviewWindow(QWidget):
         self.auto_mark = True
         
         # Quick Tags
-        tag_group = QGroupBox("クイックタグ")
+        tag_group = QGroupBox(_("Quick Tags"))
         tag_v_layout = QVBoxLayout(tag_group)
         
         self.tag_panel = QWidget()
@@ -449,10 +448,10 @@ class PreviewWindow(QWidget):
         
         tag_v_layout.addWidget(self.tag_panel)
         
-        tag_v_layout.addWidget(QLabel("追加タグ:"))
+        tag_v_layout.addWidget(QLabel(_("Additional Tags:")))
         self.tags_edit = QLineEdit()
         self.tags_edit.setMaxLength(100) # Phase 28: Add character limit
-        self.tags_edit.setPlaceholderText("タグをカンマ区切りで入力...")
+        self.tags_edit.setPlaceholderText(_("Enter tags separated by comma..."))
         tag_v_layout.addWidget(self.tags_edit)
         
         prop_layout.addWidget(tag_group)
@@ -461,14 +460,14 @@ class PreviewWindow(QWidget):
         btn_row = QHBoxLayout()
         
         # Detail Edit Button (Opens full FolderPropertiesDialog)
-        self.detail_btn = QPushButton("📝 詳細編集")
+        self.detail_btn = QPushButton(_("📝 Detail Edit"))
         self.detail_btn.clicked.connect(self._open_detail_edit)
         self.detail_btn.setStyleSheet("background-color: #7f8c8d; color: white; font-weight: bold; padding: 8px;")
-        self.detail_btn.setToolTip("Close this and open full property editor")
+        self.detail_btn.setToolTip(_("Close this and open full property editor"))
         btn_row.addWidget(self.detail_btn)
         
         # Save Button (Minimal - No advanced features here)
-        self.save_btn = QPushButton("💾 保存")
+        self.save_btn = QPushButton(_("💾 Save"))
         self.save_btn.clicked.connect(self._save_properties)
         self.save_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
         btn_row.addWidget(self.save_btn)
@@ -512,10 +511,31 @@ class PreviewWindow(QWidget):
                 for t in frequent_tags:
                     if t.get('is_sep'): continue
                     name = t.get('name')
-                    btn = QPushButton(t.get('emoji', name))
+                    mode = t.get('display_mode', 'text')
+                    emoji = t.get('emoji', '')
+                    
+                    # Respect display_mode as in FolderPropertiesDialog
+                    btn_text = ""
+                    if mode == 'symbol' and emoji:
+                        btn_text = emoji
+                    elif mode == 'text_symbol' and emoji:
+                        btn_text = f"{emoji} {name}"
+                    elif mode == 'image':
+                        btn_text = "" # Text hidden for image-only
+                    elif mode == 'image_text':
+                        btn_text = name # Icon + Text
+                    else: # 'text' or fallback
+                        btn_text = name
+                    
+                    btn = QPushButton(btn_text)
                     btn.setCheckable(True)
                     
-                    if t.get('icon') and os.path.exists(t.get('icon')):
+                    # Add Icon if mode allows
+                    show_icon = (mode in ['image', 'image_text', 'text'])
+                    if show_icon and t.get('icon') and os.path.exists(t.get('icon')):
+                         btn.setIcon(QIcon(t.get('icon')))
+                    elif mode not in ['symbol', 'text_symbol'] and t.get('icon') and os.path.exists(t.get('icon')):
+                         # Fallback for complex modes
                          btn.setIcon(QIcon(t.get('icon')))
 
                     btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 4px 8px;")
@@ -679,7 +699,7 @@ class PreviewWindow(QWidget):
         self.favorite_btn.blockSignals(True)
         is_fav = bool(cfg.get('is_favorite'))
         self.favorite_btn.setChecked(is_fav)
-        self.favorite_btn.setText("★お気に入り" if is_fav else "☆お気に入り")
+        self.favorite_btn.setText(_("★Favorite") if is_fav else _("☆Favorite"))
         self.favorite_btn.blockSignals(False)
         
         self.score_dial.blockSignals(True)
@@ -750,7 +770,7 @@ class PreviewWindow(QWidget):
     
     def _on_favorite_ui_update(self, checked):
         """Update favorite button text only (actual save on save button)."""
-        self.favorite_btn.setText("★お気に入り" if checked else "☆お気に入り")
+        self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite"))
 
     def _on_score_changed(self, value):
         """スコア値変更時の処理。"""

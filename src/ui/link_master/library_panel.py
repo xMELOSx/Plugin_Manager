@@ -405,32 +405,32 @@ class LibraryPanel(QWidget):
         data = self._get_selected_lib_data()
         if not data:
             self.btn_deploy_unlink.setEnabled(False)
-            self.btn_deploy_unlink.setText("🚀 デプロイ")
+            self.btn_deploy_unlink.setText(_("🚀 Deploy"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #555; color: #888; }
             """)
-            self.btn_hide.setText("👁 非表示")
+            self.btn_hide.setText(_("👁 Hide"))
             return
         
         self.btn_deploy_unlink.setEnabled(True)
         
         if data.get('priority_status') == 'linked':
-            self.btn_deploy_unlink.setText("🔗 アンリンク")
+            self.btn_deploy_unlink.setText(_("🔗 Unlink"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #e67e22; color: white; }
                 QPushButton:hover { background-color: #f39c12; }
             """)
         else:
-            self.btn_deploy_unlink.setText("🚀 デプロイ")
+            self.btn_deploy_unlink.setText(_("🚀 Deploy"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #27ae60; color: white; }
                 QPushButton:hover { background-color: #2ecc71; }
             """)
         
         if data.get('is_hidden'):
-            self.btn_hide.setText("👁 表示")
+            self.btn_hide.setText(_("👁 Show"))
         else:
-            self.btn_hide.setText("👁 非表示")
+            self.btn_hide.setText(_("👁 Hide"))
 
     def _on_priority_changed(self, lib_name: str, combo: QComboBox):
         selected_data = combo.currentData()
@@ -586,8 +586,8 @@ class LibraryPanel(QWidget):
         if not path:
             return
         confirm = QMessageBox.question(
-            self, "ライブラリ解除", 
-            f"選択中のバージョンをライブラリから解除しますか？",
+            self, _("Unregister Library"), 
+            _("選択中のバージョンをライブラリから解除しますか？"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:
@@ -628,7 +628,7 @@ class LibrarySettingsDialog(QDialog):
         self.db = db
         self.lib_name = lib_name
         self.versions = versions
-        self.setWindowTitle(f"ライブラリ設定: {lib_name}")
+        self.setWindowTitle(_("Library Settings: {name}").format(name=lib_name))
         self.setMinimumSize(550, 400)
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #e0e0e0; }
@@ -667,7 +667,7 @@ class LibrarySettingsDialog(QDialog):
         form = QFormLayout()
         
         self.name_edit = QLineEdit(self.lib_name)
-        form.addRow("ライブラリ名:", self.name_edit)
+        form.addRow(_("Library Name:"), self.name_edit)
         
         first_cfg = self.versions[0] if self.versions else {}
         self.url_list_json = first_cfg.get('url_list', '[]') or '[]'
@@ -686,15 +686,15 @@ class LibrarySettingsDialog(QDialog):
         self._update_url_count_preview()
         
         self.author_edit = QLineEdit(first_cfg.get('author', ''))
-        form.addRow("作者:", self.author_edit)
+        form.addRow(_("Author:"), self.author_edit)
         
         layout.addLayout(form)
         
-        layout.addWidget(QLabel("登録済みバージョン:"))
+        layout.addWidget(QLabel(_("Registered Versions:")))
         
         self.ver_tree = QTreeWidget()
         self.ver_tree.setEditTriggers(QTreeWidget.EditTrigger.DoubleClicked | QTreeWidget.EditTrigger.SelectedClicked)
-        self.ver_tree.setHeaderLabels(["バージョン (編集可)", "パッケージ名", "URL", "表示", "編集", "解除"])
+        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), _("URL"), _("View"), _("Edit"), _("Unreg")])
         self.ver_tree.setColumnWidth(0, 80)
         self.ver_tree.setColumnWidth(1, 150)
         self.ver_tree.setColumnWidth(2, 120)
@@ -713,7 +713,7 @@ class LibrarySettingsDialog(QDialog):
             # URL Button
             url_btn = QPushButton("🌐")
             url_btn.setFixedSize(30, 24)
-            url_btn.setToolTip("URL管理")
+            url_btn.setToolTip(_("URL Management"))
             url_btn.clicked.connect(lambda _, p=v['_rel_path'], c=v.get('url_list', '[]'): self._open_version_url_manager(p, c))
             self.ver_tree.setItemWidget(item, 2, url_btn)
             
@@ -751,12 +751,12 @@ class LibrarySettingsDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         
-        save_btn = QPushButton("保存")
+        save_btn = QPushButton(_("Save"))
         save_btn.setStyleSheet("background-color: #27ae60; color: white;")
         save_btn.clicked.connect(self._save)
         btn_layout.addWidget(save_btn)
         
-        cancel_btn = QPushButton("キャンセル")
+        cancel_btn = QPushButton(_("Cancel"))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         
@@ -764,8 +764,8 @@ class LibrarySettingsDialog(QDialog):
     
     def _unregister_version(self, path: str, item: QTreeWidgetItem):
         confirm = QMessageBox.question(
-            self, "ライブラリ解除", 
-            "このバージョンをライブラリから解除しますか？",
+            self, _("Unregister Library"), 
+            _("このバージョンをライブラリから解除しますか？"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:

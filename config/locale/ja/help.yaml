@@ -34,13 +34,13 @@ help_notes:
   tag_bar:
     body_size:
     - 124
-    - 136
+    - 137
     offset:
-    - 164
-    - -4
+    - 109
+    - 1
     tail_target:
-    - -97
-    - 50
+    - -92
+    - 63
     bg_style: 3358074920
     text_style: 4294967295
     content: "#87caca\n一般\n#d9d38c\n重要\n#d5a01c"

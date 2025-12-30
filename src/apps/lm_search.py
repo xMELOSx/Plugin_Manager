@@ -267,6 +267,19 @@ class LMSearchMixin:
         # Phase 28: CARD POOLING - Respect the toggle
         use_pool = getattr(self, 'search_cache_enabled', False)
         
+        # Phase 32: Remove orphan QLabel widgets (e.g., "No packages match" message) from layouts
+        # before releasing ItemCard instances.
+        for layout in [getattr(self, 'cat_layout', None), getattr(self, 'pkg_layout', None)]:
+            if layout:
+                items_to_remove = []
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item and item.widget() and isinstance(item.widget(), QLabel):
+                        items_to_remove.append(item.widget())
+                for widget in items_to_remove:
+                    layout.removeWidget(widget)
+                    widget.deleteLater()
+        
         # Always use release call to ensure tracking lists are cleared correctly
         # If use_pool is False, the cards will be released to the pool, but 
         # not acquired back in the loop below (which uses ItemCard directly).

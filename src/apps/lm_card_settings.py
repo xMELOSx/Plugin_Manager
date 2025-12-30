@@ -24,7 +24,7 @@ class LMCardSettingsMixin:
         row = QHBoxLayout()
         row.setContentsMargins(5, 0, 0, 0)
         
-        lbl = QLabel(label)
+        lbl = QLabel(_(label))
         lbl.setFixedWidth(60)
         row.addWidget(lbl)
         
@@ -80,7 +80,7 @@ class LMCardSettingsMixin:
         row = QHBoxLayout()
         row.setContentsMargins(5, 0, 0, 0)
         
-        lbl = QLabel(label)
+        lbl = QLabel(_(label))
         lbl.setFixedWidth(60)
         row.addWidget(lbl)
         
