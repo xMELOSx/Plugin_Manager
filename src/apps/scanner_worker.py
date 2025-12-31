@@ -2,6 +2,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 import os
 import logging
 import json
+import time
 
 class ScannerWorker(QObject):
     results_ready = pyqtSignal(list, str, str) # items_sorted, original_path, context
@@ -51,6 +52,8 @@ class ScannerWorker(QObject):
 
     @pyqtSlot()
     def run(self):
+        import time
+        t_run_start = time.perf_counter()
         try:
             if not self.current_path or not os.path.exists(self.current_path):
                 self.results_ready.emit([], self.current_path, self.context)
@@ -61,12 +64,25 @@ class ScannerWorker(QObject):
             # Normalize keys to forward slashes for consistent lookup
             folder_configs = {k.replace('\\', '/'): v for k, v in raw_configs.items()}
             
+            # Phase 28 Optimization: Pre-group folder configs by parent for O(1) child scan
+            self._parent_config_map = {}
+            for rel, cfg in folder_configs.items():
+                p_rel = os.path.dirname(rel).replace('\\', '/')
+                if p_rel == ".": p_rel = ""
+                if p_rel not in self._parent_config_map:
+                    self._parent_config_map[p_rel] = []
+                self._parent_config_map[p_rel].append((rel, cfg))
+            
             if self.search_config:
                 # 1. Recursive Search Mode
+                t_scan_start = time.perf_counter()
                 results = self._recursive_search(folder_configs)
+                t_scan_end = time.perf_counter()
             else:
                 # 2. Standard Scan Mode
+                t_scan_start = time.perf_counter()
                 results = self._standard_scan(folder_configs)
+                t_scan_end = time.perf_counter()
 
             # 3. Sort logic: Categories first, then Packages, then alphabetical
             def sort_final(r):
@@ -83,10 +99,19 @@ class ScannerWorker(QObject):
                 return (type_score, r['item']['name'].lower())
 
             # 3. Post-process results for logical conflicts (names and targets)
+            t_detect_start = time.perf_counter()
             self._detect_logical_conflicts(results, folder_configs)
+            t_detect_end = time.perf_counter()
 
             # 4. Sort logic: Categories first, then Packages, then alphabetical
             items_sorted = sorted(results, key=sort_final)
+            
+            t_worker_end = time.perf_counter()
+            self.logger.info(f"[WorkerProfile] context={self.context} total={t_worker_end-t_run_start:.3f}s "
+                             f"(Scan:{t_scan_end-t_scan_start:.3f}s / "
+                             f"Detect:{t_detect_end-t_detect_start:.3f}s / "
+                             f"Sort:{t_worker_end-t_detect_end:.3f}s)")
+                             
             self.results_ready.emit(items_sorted, self.current_path, self.context)
             
         except Exception as e:
@@ -98,12 +123,30 @@ class ScannerWorker(QObject):
             self.finished.emit()
 
     def _standard_scan(self, folder_configs):
+        import time
+        t_en_total = 0
+        t_en_link = 0
+        t_en_child = 0
+        t_en_auto = 0
+        
         items = self.scanner.scan_directory(self.current_path)
         results = []
         for item in items:
+            t_s = time.perf_counter()
             item_abs_path = os.path.join(self.current_path, item['name'])
             res = self._enrich_item(item, item_abs_path, self.current_path, folder_configs)
             results.append(res)
+            
+            t_en_total += (time.perf_counter() - t_s)
+            t_en_link += res.get('_profile_link', 0)
+            t_en_child += res.get('_profile_child', 0)
+            t_en_auto += res.get('_profile_auto', 0)
+            
+        self.logger.info(f"[WorkerProfile] _standard_scan items={len(items)} "
+                         f"Total:{t_en_total:.3f}s (Link:{t_en_link:.3f}s / Child:{t_en_child:.3f}s / Auto:{t_en_auto:.3f}s)")
+        # Clean up optimization map after use
+        if hasattr(self, '_parent_config_map'):
+            del self._parent_config_map
         return results
 
     def _recursive_search(self, folder_configs):
@@ -250,18 +293,22 @@ class ScannerWorker(QObject):
         item_config = folder_configs.get(item_rel, {})
         
         # 1. Determine Item Type (Package vs Category) for UI/logic purposes
+        t_auto_start = time.perf_counter()
         config_type = item_config.get('folder_type', 'auto')
         if config_type == 'auto':
             is_actually_package = self._is_package_auto(item_abs_path)
         else:
             is_actually_package = (config_type == 'package')
+        t_auto_end = time.perf_counter()
 
         # 2. Link Status - ALWAYS check for all items (reverted from package-only)
         # The item type detection is unreliable for many mod types, so we must check link status for everything.
+        t_link_start = time.perf_counter()
         target_override = item_config.get('target_override')
         target_link = target_override or os.path.join(self.target_root, item['name'])
         status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
         link_status = status_info.get('status', 'none')
+        t_link_end = time.perf_counter()
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)
         db_status = item_config.get('last_known_status')
@@ -274,8 +321,10 @@ class ScannerWorker(QObject):
         # 3. Child Status Check (Folders only)
         has_linked = False
         has_conflict = False
+        t_child_start = time.perf_counter()
         if os.path.isdir(item_abs_path):
             has_linked, has_conflict = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
+        t_child_end = time.perf_counter()
         
         # 4. Misplaced Detection (Phase 18.11 Enhanced)
         is_misplaced = False
@@ -320,6 +369,7 @@ class ScannerWorker(QObject):
         db_alt = item_config.get('is_library_alt_version', 0)
         is_library_alt_version = (db_alt == 1) and (link_status != 'linked')
 
+        t_end = time.perf_counter()
         return {
             'item': item,
             'abs_path': item_abs_path,
@@ -342,7 +392,10 @@ class ScannerWorker(QObject):
             'url_list': item_config.get('url_list', '[]'),  # URL list JSON
             'conflict_tag': item_config.get('conflict_tag'),
             'conflict_scope': item_config.get('conflict_scope'),
-            'has_tag_conflict': bool(item_config.get('conflict_tag'))
+            'has_tag_conflict': bool(item_config.get('conflict_tag')),
+            '_profile_link': t_link_end - t_link_start,
+            '_profile_child': t_child_end - t_child_start,
+            '_profile_auto': t_auto_end - t_auto_start
         }
 
     def _get_inherited_tags_static(self, folder_path, storage_root, folder_configs, non_inheritable):
@@ -376,33 +429,30 @@ class ScannerWorker(QObject):
 
     def _scan_children_status(self, folder_path: str, target_root: str, folder_configs: dict) -> tuple:
         """
-        Optimized: Use in-memory folder_configs cache and trust DB-persisted conflict flags.
+        Hyper-Optimized: Use pre-calculated _parent_config_map for O(1) lookup.
         """
         has_linked = False
         has_conflict = False
         
-        # Determine the relative path prefix for this folder
+        # Determine the relative path of THIS folder
         try:
             folder_rel = os.path.relpath(folder_path, self.storage_root).replace('\\', '/')
             if folder_rel == ".": folder_rel = ""
         except:
-            folder_rel = ""
+            return False, False
         
-        # Iterate over folder_configs and filter for direct children only
-        for child_rel, child_cfg in folder_configs.items():
-            # Skip if not a direct child of this folder
-            child_parent = os.path.dirname(child_rel).replace('\\', '/')
-            if child_parent != folder_rel:
-                continue
-            
-            # Check link status from DB cache (already updated by TagConflictWorker)
+        # Phase 28: Use pre-grouped child configs instead of scanning ALL configs
+        children = getattr(self, '_parent_config_map', {}).get(folder_rel, [])
+        
+        for child_rel, child_cfg in children:
+            # Check link status from DB cache
             status = child_cfg.get('last_known_status', 'none')
             if status == 'linked':
                 has_linked = True
             elif status == 'conflict':
                 has_conflict = True
             
-            # Trust persisted has_logical_conflict flag from TagConflictWorker
+            # Trust persisted has_logical_conflict flag
             if not has_conflict and child_cfg.get('has_logical_conflict', 0):
                 has_conflict = True
             

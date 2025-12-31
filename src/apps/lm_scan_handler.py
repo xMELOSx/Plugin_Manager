@@ -190,7 +190,19 @@ class LMScanHandlerMixin:
             app_deploy_default = app_data.get('deployment_type', 'folder')
             app_conflict_default = app_data.get('conflict_policy', 'backup')
 
+        if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(False)
+        if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(False)
+        
+        # Phase 1.0.7: Batch adding for FlowLayout
+        if hasattr(self, 'pkg_layout') and hasattr(self.pkg_layout, 'setBatchMode'):
+            self.pkg_layout.setBatchMode(True)
+        if hasattr(self, 'cat_layout') and hasattr(self.cat_layout, 'setBatchMode'):
+            self.cat_layout.setBatchMode(True)
+
         t_loop_start = time.perf_counter()
+        t_acquire = 0
+        t_update = 0
+        t_layout = 0
         for r in results:
             item = r['item']
             item_abs_path = r['abs_path']
@@ -276,8 +288,11 @@ class LMScanHandlerMixin:
             # Phase 31: Use pkg settings if item is a package OR in contents context
             use_pkg_settings = (is_package or context == "contents")
             
+            t_pre_aq = time.perf_counter()
             card = self._acquire_card(item_type)
+            t_acquire += (time.perf_counter() - t_pre_aq)
             
+            t_pre_up = time.perf_counter()
             card.update_data(
                 name=display_name,
                 path=item_abs_path,
@@ -322,6 +337,7 @@ class LMScanHandlerMixin:
                 show_deploy=(pkg_show_deploy if use_pkg_settings else cat_show_deploy),
                 deploy_button_opacity=opacity
             )
+            t_update += (time.perf_counter() - t_pre_up)
 
             if item_abs_path in self.selected_paths:
                 card.set_selected(True)
@@ -337,6 +353,7 @@ class LMScanHandlerMixin:
             # card.request_reorder.connect(self._reorder_item)
             # card.deploy_changed.connect(self._refresh_category_cards)
 
+            t_pre_la = time.perf_counter()
             if item_type == "package":
                 # Phase 28: Real-time check for selection to prevent race condition
                 # Don't show view-context packages if a category has been selected (contents scan running)
@@ -378,6 +395,7 @@ class LMScanHandlerMixin:
                 cat_count += 1
             
             card.show() # Ensure card is visible after reuse
+            t_layout += (time.perf_counter() - t_pre_la)
 
         # Update labels - now split into link count and package count
         link_count = sum(1 for r in results if r.get('link_status') == 'linked')
@@ -424,8 +442,17 @@ class LMScanHandlerMixin:
                          f"Configs: {t_configs - t_start:.3f}s / "
                          f"Sort: {t_sort - t_configs:.3f}s / "
                          f"Release: {t_release - t_sort:.3f}s / "
-                         f"Loop: {t_end - t_loop_start:.3f}s / "
+                         f"Loop(Total): {t_end - t_loop_start:.3f}s (Aq:{t_acquire:.3f}s, Up:{t_update:.3f}s, Ly:{t_layout:.3f}s) / "
                          f"Total: {t_end - t_start:.3f}s")
+        
+        # Phase 1.0.7: Resume layout updates
+        if hasattr(self, 'pkg_layout') and hasattr(self.pkg_layout, 'setBatchMode'):
+            self.pkg_layout.setBatchMode(False)
+        if hasattr(self, 'cat_layout') and hasattr(self.cat_layout, 'setBatchMode'):
+            self.cat_layout.setBatchMode(False)
+
+        if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(True)
+        if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(True)
         
         # Performance Fix: DO NOT call self._refresh_category_cards() here!
         # The card loop above already updated all cards with correct linkage/child status.

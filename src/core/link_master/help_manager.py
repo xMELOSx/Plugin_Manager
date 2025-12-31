@@ -41,7 +41,7 @@ class StickyHelpManager(QObject):
 
     def toggle_help(self, edit_mode=False):
         """ヘルプの表示/非表示を切り替える。"""
-        self.parent_window.logger.info(f"[HelpProfile] manager.toggle_help: current_visible={self.is_help_visible}, target_edit={edit_mode}")
+        # self.parent_window.logger.info(f"[HelpProfile] manager.toggle_help: current_visible={self.is_help_visible}, target_edit={edit_mode}")
         # 編集モードに入る直前にスナップショットを保存
         if edit_mode and not self.is_edit_mode:
             self._capture_snapshot()
@@ -59,7 +59,7 @@ class StickyHelpManager(QObject):
 
         # 言語変更があった場合は再読み込み（フラグのみで制御）
         if self._needs_reload:
-            self.parent_window.logger.info(f"[HelpProfile] toggle_help: cleaning up before open")
+            # self.parent_window.logger.info(f"[HelpProfile] toggle_help: cleaning up before open")
             self._needs_reload = False
 
         self.is_help_visible = True
@@ -85,7 +85,7 @@ class StickyHelpManager(QObject):
         self.show_all()
 
     def show_all(self):
-        self.parent_window.logger.info(f"[HelpProfile] show_all: preparing {len(self.stickies)} stickies")
+        # self.parent_window.logger.info(f"[HelpProfile] show_all: preparing {len(self.stickies)} stickies")
         
         # 1. Prepare positions while invisible
         for eid, sticky in self.stickies.items():
@@ -105,8 +105,8 @@ class StickyHelpManager(QObject):
             sticky.setWindowOpacity(1.0)
             
             # Log for verification
-            if eid in ["target_app", "tag_bar"]:
-                self.parent_window.logger.info(f"[HelpProfile] show_all check: eid={eid}, textlen={len(sticky.text_content)}")
+            # if eid in ["target_app", "tag_bar"]:
+            #     # self.parent_window.logger.info(f"[HelpProfile] show_all check: eid={eid}, textlen={len(sticky.text_content)}")
         self.is_help_visible = True
 
     def hide_all(self):
@@ -169,7 +169,7 @@ class StickyHelpManager(QObject):
         
         for eid in self.stickies:
             sticky_data = lang_manager.get_help_data(eid)
-            self.parent_window.logger.info(f"[HelpProfile] load_all: eid={eid}, data_found={bool(sticky_data)}")
+            # self.parent_window.logger.info(f"[HelpProfile] load_all: eid={eid}, data_found={bool(sticky_data)}")
             # Always call from_dict to handle default string translation fallback
             self.stickies[eid].from_dict(sticky_data or {})
 
@@ -184,7 +184,7 @@ class StickyHelpManager(QObject):
     
     def _on_language_changed(self, lang_code):
         """言語が変更されたときにヘル普データを即座に再読み込みし、表示位置を更新。"""
-        self.parent_window.logger.info(f"[HelpProfile] _on_language_changed: lang={lang_code}, visible={self.is_help_visible}")
+        # self.parent_window.logger.info(f"[HelpProfile] _on_language_changed: lang={lang_code}, visible={self.is_help_visible}")
         
         # 内部データを再読み込み
         self.load_all()

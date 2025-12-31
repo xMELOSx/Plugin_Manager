@@ -12,6 +12,14 @@ class FlowLayout(QLayout):
             self.setContentsMargins(margin, margin, margin, margin)
         self.setSpacing(spacing)
         self.itemList = []
+        self._batch_mode = False
+        self._spacing_cache = {}
+
+    def setBatchMode(self, enabled: bool):
+        """Phase 1.0.7: Toggle batch mode to skip doLayout during bulk additions."""
+        self._batch_mode = enabled
+        if not enabled:
+            self.invalidate() # Trigger layout if batch mode disabled
 
     def __del__(self):
         item = self.takeAt(0)
@@ -46,7 +54,8 @@ class FlowLayout(QLayout):
 
     def setGeometry(self, rect):
         super().setGeometry(rect)
-        self.doLayout(rect, False)
+        if not self._batch_mode:
+            self.doLayout(rect, False)
 
     def sizeHint(self):
         # Return size needed to show all items in one row as a hint
@@ -80,8 +89,17 @@ class FlowLayout(QLayout):
             if wid is None or not wid.isVisible():
                 continue
                 
-            spaceX = spacing + wid.style().layoutSpacing(QSizePolicy.ControlType.PushButton, QSizePolicy.ControlType.PushButton, Qt.Orientation.Horizontal)
-            spaceY = spacing + wid.style().layoutSpacing(QSizePolicy.ControlType.PushButton, QSizePolicy.ControlType.PushButton, Qt.Orientation.Vertical)
+            # Optimized: Cache layout spacing lookups
+            style = wid.style()
+            cache_key = (style, QSizePolicy.ControlType.PushButton) # Buttons are mostly used
+            if cache_key not in self._spacing_cache:
+                sx = style.layoutSpacing(QSizePolicy.ControlType.PushButton, QSizePolicy.ControlType.PushButton, Qt.Orientation.Horizontal)
+                sy = style.layoutSpacing(QSizePolicy.ControlType.PushButton, QSizePolicy.ControlType.PushButton, Qt.Orientation.Vertical)
+                self._spacing_cache[cache_key] = (sx, sy)
+            
+            sx, sy = self._spacing_cache[cache_key]
+            spaceX = spacing + sx
+            spaceY = spacing + sy
             
             nextX = x + item.sizeHint().width() + spaceX
             if nextX - spaceX > rect.right() and lineHeight > 0:

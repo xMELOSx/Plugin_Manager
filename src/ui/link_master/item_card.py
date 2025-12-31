@@ -9,6 +9,7 @@ from PyQt6.QtGui import QPixmap, QCursor, QPainter, QPen, QColor, QDragEnterEven
 import os
 import shutil
 import logging
+import time
 from src.core.lang_manager import _
 
 class ItemCard(QFrame):
@@ -507,8 +508,8 @@ class ItemCard(QFrame):
         self._update_style()
 
     def _update_style(self):
-        import time
-        t0 = time.perf_counter()
+        # Profiling only if needed
+        # t0 = time.perf_counter()
         
         # Priority: Conflict (Red) > Linked Children (Orange) > Linked (Green) > Unregistered (Purple) > Normal
         # Note: Misplaced (Pink) is also high priority.
@@ -589,6 +590,8 @@ class ItemCard(QFrame):
         if not hasattr(self, "_current_stylesheet_str") or self._current_stylesheet_str != new_style:
             self.setStyleSheet(new_style)
             self._current_stylesheet_str = new_style
+        else:
+            return # Skip child label updates and repaint if style is the same
         
         # Update name label color for hidden state
         name_color = "#888" if getattr(self, 'is_hidden', False) else "#ddd"
@@ -597,9 +600,9 @@ class ItemCard(QFrame):
             
         self.update()  # Force immediate repaint
         
-        dt = time.perf_counter() - t0
-        ItemCard._total_style_time += dt
-        ItemCard._style_count += 1
+        # dt = time.perf_counter() - t0
+        # ItemCard._total_style_time += dt
+        # ItemCard._style_count += 1
 
     def paintEvent(self, event):
         """Draw Dual-Layered Border: Status (Outer) + Selection/Hover (Inner)."""

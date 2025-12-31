@@ -348,15 +348,43 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             image = QImage(path)
             if image.isNull():
                 return
+            
+            # Optimization: Scale down BEFORE pixel-by-pixel processing to avoid millions of iterations.
+            # 256x256 is more than enough for a window icon and title bar icon.
+            if image.width() > 256 or image.height() > 256:
+                image = image.scaled(256, 256, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                
             image = image.convertToFormat(QImage.Format.Format_ARGB32)
-            # Simple threshold for "white" corners
-            for y in range(image.height()):
-                for x in range(image.width()):
-                    pixel = image.pixelColor(x, y)
-                    w, h = image.width(), image.height()
-                    in_corner = (x < w*0.2 or x > w*0.8) and (y < h*0.2 or y > h*0.8)
-                    if in_corner and pixel.red() > 240 and pixel.green() > 240 and pixel.blue() > 240:
-                        image.setPixelColor(x, y, QColor(0, 0, 0, 0)) 
+            # Simple threshold for "white" corners (to make them transparent for JPG icons)
+            w, h = image.width(), image.height()
+            threshold = 240
+            
+            # Process corners only for transparency (20% of edges)
+            cw, ch = int(w * 0.2), int(h * 0.2)
+            
+            # Helper to check and set transparency
+            def process_pixel(px, py):
+                p = image.pixelColor(px, py)
+                if p.red() > threshold and p.green() > threshold and p.blue() > threshold:
+                    image.setPixelColor(px, py, QColor(0, 0, 0, 0))
+
+            # Top-left
+            for y in range(ch):
+                for x in range(cw):
+                    process_pixel(x, y)
+            # Top-right
+            for y in range(ch):
+                for x in range(w - cw, w):
+                    process_pixel(x, y)
+            # Bottom-left
+            for y in range(h - ch, h):
+                for x in range(cw):
+                    process_pixel(x, y)
+            # Bottom-right
+            for y in range(h - ch, h):
+                for x in range(w - cw, w):
+                    process_pixel(x, y)
+            
             pixmap = QPixmap.fromImage(image)
             self.icon_label.setPixmap(pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             self.icon_label.setVisible(True)

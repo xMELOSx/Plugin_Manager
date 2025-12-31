@@ -59,11 +59,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._init_start_t = time.perf_counter()
         super().__init__()
         self.logger = logging.getLogger("LinkMasterWindow")
+        self.logger.info(f"[Profile] super().__init__() took {time.perf_counter()-self._init_start_t:.3f}s")
+        t_base = time.perf_counter()
         self.registry = get_lm_registry()
         self.db = get_lm_db() # App DB (Initializes with current app later)
         self.scanner = Scanner()
         self.image_loader = ImageLoader()
         self.deployer = Deployer()
+        self.logger.info(f"[Profile] Core (Scanner/Deployer) init took {time.perf_counter()-t_base:.3f}s")
+        t_pool = time.perf_counter()
         
         # Phase 19: Multi-Selection State
         self.selected_paths = set()
@@ -71,11 +75,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Phase 28: Card Pooling
         self._init_card_pool()
+        self.logger.info(f"[Profile] _init_card_pool took {time.perf_counter()-t_pool:.3f}s")
+        t_misc = time.perf_counter()
         
         # Initialize Thumbnail Manager (resource/app in Project Root)
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         resource_path = os.path.join(project_root, "resource", "app")
+        
+        t_thumb = time.perf_counter()
         self.thumbnail_manager = ThumbnailManager(resource_path)
+        self.logger.info(f"[Profile] ThumbnailManager init took {time.perf_counter()-t_thumb:.3f}s")
+        t_thread = time.perf_counter()
         
         # Threaded Scanner Setup
         self.scanner_thread = QThread()
@@ -96,12 +106,16 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.pkg_scanner_worker.finished.connect(self._on_scan_finished)
         
         self.scanner_thread.start()
+        self.logger.info(f"[Profile] Scanner thread start took {time.perf_counter()-t_thread:.3f}s")
+        t_icon = time.perf_counter()
         
         # Icon Setup (User Request)
         icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
         if os.path.exists(icon_path):
             self.set_window_icon_from_path(icon_path)
             self.icon_label.mousePressEvent = self._icon_mouse_press
+        self.logger.info(f"[Profile] Icon setup took {time.perf_counter()-t_icon:.3f}s")
+        t_win_state = time.perf_counter()
         
         # State
         self.current_app_id = None
@@ -121,21 +135,22 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.link_filter_mode = None  # 'linked', 'unlinked', or None
 
         
-        # Read version from VERSION.txt
-        self.version = self._read_version()
-        self.setWindowTitle(f"Dionys Control Ver.{self.version}")
         self.resize(1400, 850)
+        self.logger.info(f"[Profile] Window/State setup took {time.perf_counter()-t_win_state:.3f}s")
         
         # Explorer is now embedded, not a window
         
         self._init_title_buttons()
         # Drag & Drop Support
         self.setAcceptDrops(True)
+        self.logger.info(f"[Profile] Misc setup took {time.perf_counter()-t_misc:.3f}s")
         
         self._init_ui()
         
         # Sub Windows with parent=self to stay on top of main window
+        t_opt = time.perf_counter()
         self.options_window = OptionsWindow(parent_debug_window=self, db=self.db)
+        self.logger.info(f"[Profile] OptionsWindow init took {time.perf_counter()-t_opt:.3f}s")
         self.options_window.setParent(self, self.options_window.windowFlags())
         self.options_window.closed.connect(self._on_options_window_closed)
         # Replace old list-based HelpWindow with dynamic StickyHelp
@@ -153,6 +168,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         get_lang_manager().language_changed.connect(self.retranslate_ui)
         
         self.logger.info(f"[Profile] _load_apps took {time.perf_counter()-t_load:.3f}s")
+        
+        t_options = time.perf_counter()
+        self.load_options("link_master")
+        self.logger.info(f"[Profile] load_options took {time.perf_counter()-t_options:.3f}s")
+        
         self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.perf_counter()-self._init_start_t :.3f}s")
         
         # Centralized Card Settings State (Phase 19.x)
@@ -172,7 +192,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Restore window/view state (Phase 18.12 + 25)
         self._always_on_top = False # Initialize state
-        self.load_options("link_master")
         self._restore_ui_state()
         
         t_init_end = time.perf_counter()
@@ -211,18 +230,22 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             extra_data['cat_display_override'] = self.cat_display_override
             extra_data['pkg_display_override'] = self.pkg_display_override
         
-        # Save sidebar splitter sizes (use cached value if drawer is hidden)
+        # Save sidebar splitter sizes
         if hasattr(self, 'sidebar_splitter'):
+            # Preference: 1. Current sizes if visible, 2. Last cached sizes, 3. Empty (last resort)
             drawer_visible = self.drawer_widget.isVisible()
             has_cached = hasattr(self, '_last_splitter_sizes') and self._last_splitter_sizes
-            self.logger.info(f"[save_options] drawer_visible={drawer_visible}, has_cached={has_cached}")
+            
             if drawer_visible:
+                # Use real-time sizes when visible
                 sizes = self.sidebar_splitter.sizes()
                 extra_data['sidebar_splitter_sizes'] = sizes
-                self.logger.info(f"[save_options] Saving visible splitter sizes: {sizes}")
+                self._last_splitter_sizes = sizes # Update cache
+                # self.logger.info(f"[save_options] Saving visible splitter sizes: {sizes}")
             elif has_cached:
+                # Use cache if hidden (splitter returns [0, X] when collapsed/hidden)
                 extra_data['sidebar_splitter_sizes'] = self._last_splitter_sizes
-                self.logger.info(f"[save_options] Saving cached splitter sizes: {self._last_splitter_sizes}")
+                # self.logger.info(f"[save_options] Saving cached splitter sizes: {self._last_splitter_sizes}")
             else:
                 self.logger.warning("[save_options] No splitter sizes to save!")
         
@@ -260,6 +283,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             splitter_sizes = data.get('sidebar_splitter_sizes')
             if splitter_sizes and hasattr(self, 'sidebar_splitter'):
                 self._pending_splitter_sizes = splitter_sizes
+                self._last_splitter_sizes = splitter_sizes # Phase 1.0.8: Initialize cache on startup!
             
             # Restore explorer panel width
             explorer_width = data.get('explorer_panel_width')
@@ -475,13 +499,20 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.logger.error(f"Failed to save UI state: {e}")
 
     def _init_ui(self):
+        t_start = time.perf_counter()
         main_widget = QWidget()
         main_widget.setStyleSheet("""
             QWidget { background-color: transparent; }
             QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
             QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; }
+            QComboBox:hover { border-color: #3498db; background-color: #444; }
             QComboBox::drop-down { border: none; }
             QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #3498db; border: 1px solid #555; }
+            QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
+            QLineEdit:hover { border-color: #3498db; background-color: #444; }
+            QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
+            QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
         """)
         
         main_layout = QVBoxLayout(main_widget)
@@ -534,35 +565,30 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         header_layout.addWidget(self.register_app_btn)
         
         header_layout.addSpacing(20)
+        self.logger.info(f"[Profile] _init_ui (Header) took {time.perf_counter()-t_start:.3f}s")
+        t_sidebar = time.perf_counter()
         
         from src.ui.link_master.tag_bar import TagBar
+        t_tag = time.perf_counter()
         self.tag_bar = TagBar()
+        self.logger.info(f"[Profile] TagBar init took {time.perf_counter()-t_tag:.3f}s")
         self.tag_bar.tags_changed.connect(self._on_tags_changed)
         self.tag_bar.request_edit_tags.connect(self._open_tag_manager)
         self.tag_bar.tag_icon_updated.connect(self._on_tag_icon_updated)
         header_layout.addWidget(self.tag_bar, 1) # Give TagBar stretch factor 1
         
         header_layout.addSpacing(10)
-
         self.search_logic = QComboBox()
-
         self.search_logic.setMouseTracking(True)
         self.search_logic.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.search_logic.addItem(_("OR"), "or")
         self.search_logic.addItem(_("AND"), "and")
         self.search_logic.setFixedWidth(60)
-        self.search_logic.setStyleSheet("""
-            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-            QComboBox:hover { border-color: #3498db; background-color: #444; }
-            QComboBox::drop-down { border: none; }
-        """)
         header_layout.addWidget(self.search_logic)
         
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText(_("Search by name or tags..."))
-        self.search_bar.setFixedWidth(300) # Shorten search bar as requested (was expanding before)
-        
-        self.logger.info(f"[Profile] _init_ui took {time.perf_counter()-self._init_start_t if hasattr(self, '_init_start_t') else 0:.3f}s")
+        self.search_bar.setFixedWidth(300)
         self.search_bar.setMouseTracking(True)
         self.search_bar.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.search_bar.returnPressed.connect(self._perform_search)
@@ -575,11 +601,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.search_mode.addItem(_("📁 Categories Only"), "categories_only")
         self.search_mode.addItem(_("📁+📦 Cats with Pkgs"), "cats_with_packages")
         self.search_mode.setFixedWidth(150)
-        self.search_mode.setStyleSheet("""
-            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-            QComboBox:hover { border-color: #3498db; background-color: #444; }
-            QComboBox::drop-down { border: none; }
-        """)
         header_layout.addWidget(self.search_mode)
         
         from PyQt6.QtWidgets import QCheckBox
@@ -588,27 +609,19 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.search_global_chk.hide()
         
         self.search_btn = QPushButton("🔍")
+        self.search_btn.setObjectName("header_btn")
         self.search_btn.setFixedSize(30, 28)
         self.search_btn.setMouseTracking(True)
         self.search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.search_btn.clicked.connect(self._perform_search)
-        self.search_btn.setStyleSheet("""
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QPushButton:hover { background-color: #3498db; border-color: #5dade2; }
-            QPushButton:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
-        """)
         header_layout.addWidget(self.search_btn)
         
         self.clear_search_btn = QPushButton("✕")
+        self.clear_search_btn.setObjectName("header_btn")
         self.clear_search_btn.setFixedSize(30, 28)
         self.clear_search_btn.setMouseTracking(True)
         self.clear_search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.clear_search_btn.clicked.connect(self._clear_search)
-        self.clear_search_btn.setStyleSheet("""
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
-            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 4px; }
-        """)
         header_layout.addWidget(self.clear_search_btn)
         
         main_layout.addLayout(header_layout)
@@ -622,6 +635,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         content_wrapper_layout.setSpacing(0)
         
         # Left Edge: Vertical button strip
+        t_sidebar_btns = time.perf_counter()
         btn_strip = QWidget()
         btn_strip.setFixedWidth(28)
         btn_strip.setStyleSheet("background-color: #222; border-right: 1px solid #333;")
@@ -702,6 +716,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         btn_strip_layout.addStretch()
         content_wrapper_layout.addWidget(btn_strip)
+        self.logger.info(f"[Profile] Sidebar Button Strip setup took {time.perf_counter()-t_sidebar_btns:.3f}s")
         
         # Resizable Sidebar Splitter (Horizontal)
         self.sidebar_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -717,12 +732,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.sidebar_tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.sidebar_tabs.tabBar().hide() # Hide tab bar, use sidebar buttons
         self.sidebar_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
+        t_tabs_add = time.perf_counter()
         
         # Add empty placeholders for lazy loading
         self.sidebar_tabs.addTab(QWidget(), "Libraries")
         self.sidebar_tabs.addTab(QWidget(), "Presets")
         self.sidebar_tabs.addTab(QWidget(), "Notes")
         self.sidebar_tabs.addTab(QWidget(), "Tools")
+        self.logger.info(f"[Profile] Sidebar Tabs add took {time.perf_counter()-t_tabs_add:.3f}s")
         
         self.drawer_ui_layout.addWidget(self.sidebar_tabs)
         self.drawer_widget.setMinimumWidth(200) # Minimum width for drawer
@@ -733,6 +750,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Monitor splitter size changes for persistence
         self.sidebar_splitter.splitterMoved.connect(self._on_sidebar_splitter_moved)
+        self.logger.info(f"[Profile] _init_ui (Sidebar) took {time.perf_counter()-t_sidebar:.3f}s")
+        t_card = time.perf_counter()
         
         # Card View (Main Content)
         right_widget = QWidget()
@@ -1072,6 +1091,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         main_layout.addWidget(self.content_wrapper, 1)
         self.set_content_widget(main_widget)
+        self.logger.info(f"[Profile] _init_ui (CardArea) took {time.perf_counter()-t_card:.3f}s")
+        t_explorer = time.perf_counter()
 
         # 3. Floating Explorer Panel (Overlay - does NOT push content)
         # Explorer Panel initialization
@@ -1088,6 +1109,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.explorer_panel.hide()
 
         self.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
+        self.logger.info(f"[Profile] _init_ui (Explorer) took {time.perf_counter()-t_explorer:.3f}s")
 
         # Initial translation
         self.retranslate_ui()
@@ -3190,7 +3212,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         modifiers = QApplication.keyboardModifiers()
         is_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
         
-        self.logger.info(f"[HelpProfile] UI toggle_help: is_alt={is_alt}")
+        # self.logger.info(f"[HelpProfile] UI toggle_help: is_alt={is_alt}")
         self.help_manager.toggle_help(edit_mode=is_alt)
         
         # Sync title bar button state
