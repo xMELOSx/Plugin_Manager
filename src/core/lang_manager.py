@@ -56,10 +56,21 @@ class LangManager(QObject):
         # Load saved language preference from window.json
         saved_lang = self._load_saved_language()
         if saved_lang:
-            self._current_lang_code = saved_lang
+            if saved_lang == "system":
+                self._current_lang_code = self._get_system_language()
+            else:
+                self._current_lang_code = saved_lang
         
         # Load language
         self._load_language(self._current_lang_code)
+
+    def _get_system_language(self) -> str:
+        """Determine system language (ja or en) via QLocale."""
+        from PyQt6.QtCore import QLocale
+        sys_name = QLocale.system().name()
+        if sys_name.startswith("ja"):
+            return "ja"
+        return "en"
     
     def _load_saved_language(self) -> str:
         """Load saved language preference from window.json."""

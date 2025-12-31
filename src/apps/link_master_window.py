@@ -210,6 +210,25 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if self.display_mode_locked:
             extra_data['cat_display_override'] = self.cat_display_override
             extra_data['pkg_display_override'] = self.pkg_display_override
+        
+        # Save sidebar splitter sizes (use cached value if drawer is hidden)
+        if hasattr(self, 'sidebar_splitter'):
+            drawer_visible = self.drawer_widget.isVisible()
+            has_cached = hasattr(self, '_last_splitter_sizes') and self._last_splitter_sizes
+            self.logger.info(f"[save_options] drawer_visible={drawer_visible}, has_cached={has_cached}")
+            if drawer_visible:
+                sizes = self.sidebar_splitter.sizes()
+                extra_data['sidebar_splitter_sizes'] = sizes
+                self.logger.info(f"[save_options] Saving visible splitter sizes: {sizes}")
+            elif has_cached:
+                extra_data['sidebar_splitter_sizes'] = self._last_splitter_sizes
+                self.logger.info(f"[save_options] Saving cached splitter sizes: {self._last_splitter_sizes}")
+            else:
+                self.logger.warning("[save_options] No splitter sizes to save!")
+        
+        # Save explorer panel width
+        if hasattr(self, '_explorer_panel_width'):
+            extra_data['explorer_panel_width'] = self._explorer_panel_width
             
         super().save_options(key_prefix, extra_data=extra_data)
 
@@ -236,6 +255,16 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 is_pinned = data['always_on_top']
                 if self.pin_btn.toggled_state != is_pinned:
                     self.pin_btn._force_state(is_pinned) # Avoid triggering clicked signal
+            
+            # Restore sidebar splitter sizes (deferred to after UI is ready)
+            splitter_sizes = data.get('sidebar_splitter_sizes')
+            if splitter_sizes and hasattr(self, 'sidebar_splitter'):
+                self._pending_splitter_sizes = splitter_sizes
+            
+            # Restore explorer panel width
+            explorer_width = data.get('explorer_panel_width')
+            if explorer_width:
+                self._explorer_panel_width = explorer_width
                     
             return data
         return None
@@ -347,6 +376,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self._category_fixed_height = sizes[0]
                 self.registry.set_global("category_view_height", self._category_fixed_height)
     
+    def _on_sidebar_splitter_moved(self, pos, index):
+        """Cache sidebar splitter sizes when user resizes."""
+        if hasattr(self, 'sidebar_splitter'):
+            self._last_splitter_sizes = self.sidebar_splitter.sizes()
+    
     def resizeEvent(self, event):
         """Maintain fixed category height on window resize."""
         super().resizeEvent(event)
@@ -369,16 +403,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     
     def _read_version(self):
-        """Read version from VERSION.txt."""
-        try:
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            version_file = os.path.join(project_root, "VERSION.txt")
-            if os.path.exists(version_file):
-                with open(version_file, 'r') as f:
-                    return f.read().strip()
-        except:
-            pass
-        return "0.2.0"
+        """Read version from src/core/version.py."""
+        from src.core.version import VERSION
+        return VERSION
     
     def _restore_last_app(self):
         """Restore last selected app from registry."""
@@ -703,6 +730,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         self.sidebar_splitter.addWidget(self.drawer_widget)
         self.sidebar_splitter.setCollapsible(0, True) # Allow collapsing the drawer widget
+        
+        # Monitor splitter size changes for persistence
+        self.sidebar_splitter.splitterMoved.connect(self._on_sidebar_splitter_moved)
         
         # Card View (Main Content)
         right_widget = QWidget()
@@ -1053,6 +1083,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.explorer_panel.config_changed.connect(self._refresh_current_view)
         # Phase 28: Connect redirection edit request from explorer/breadcrumbs
         self.explorer_panel.request_properties_edit.connect(self._handle_explorer_properties_edit)
+        # Phase 32: Save panel width on resize
+        self.explorer_panel.width_changed.connect(self._on_explorer_panel_width_changed)
         self.explorer_panel.hide()
 
         self.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
@@ -1858,6 +1890,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                  self.tools_panel.slider_deploy_opacity.setValue(int(self.deploy_button_opacity * 100))
 
         if is_already_open and current_tab == index:
+            # Cache splitter sizes before closing
+            if hasattr(self, 'sidebar_splitter'):
+                self._last_splitter_sizes = self.sidebar_splitter.sizes()
             # Close it
             self.drawer_widget.hide()
             self.btn_libraries.setChecked(False)
@@ -1868,6 +1903,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Open it / Switch to it
             self.sidebar_tabs.setCurrentIndex(index)
             self.drawer_widget.show()
+            
+            # Restore saved splitter sizes if available
+            if hasattr(self, '_pending_splitter_sizes') and self._pending_splitter_sizes:
+                self.sidebar_splitter.setSizes(self._pending_splitter_sizes)
+                self._pending_splitter_sizes = None  # Clear after first use
+            
             self.btn_libraries.setChecked(index == 0)
             self.btn_presets.setChecked(index == 1)
             self.btn_notes.setChecked(index == 2)
@@ -1949,8 +1990,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Position at the left edge of content_wrapper, below the header
         pos = self.content_wrapper.mapTo(self, self.content_wrapper.rect().topLeft())
         height = self.content_wrapper.height()
-        self.explorer_panel.setGeometry(pos.x() + 20, pos.y(), 280, height)
+        # Use saved width or default to 280
+        width = getattr(self, '_explorer_panel_width', 280)
+        self.explorer_panel.setGeometry(pos.x() + 20, pos.y(), width, height)
         self.explorer_panel.raise_()
+    
+    def _on_explorer_panel_width_changed(self, new_width: int):
+        """Cache explorer panel width for persistence."""
+        self._explorer_panel_width = new_width
+        self.logger.info(f"[ExplorerPanel] Width changed to: {new_width}")
     
     def _toggle_explorer(self, checked):
         """Toggle the floating Explorer panel."""

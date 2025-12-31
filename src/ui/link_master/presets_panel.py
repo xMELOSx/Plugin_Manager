@@ -155,8 +155,6 @@ class PresetsPanel(QWidget):
         """Update strings for current language."""
         from src.core.lang_manager import _
         self.header_lbl.setText(_("<b>Presets</b>"))
-        self.btn_refresh.setToolTip(_("Refresh Presets"))
-        self.btn_add.setToolTip(_("Create New Preset from Current Links"))
         self.btn_folder.setText(_("📁 Folder"))
         self.btn_del.setText(_("🗑 Delete"))
         self.btn_load.setText(_("🚀 Deploy"))

@@ -860,8 +860,8 @@ msgstr "Additional Tags:"
 msgid "Inheritance:"
 msgstr "Inheritance:"
 
-msgid "Inherit tags from parent folders"
-msgstr "Inherit tags from parent folders"
+msgid "Inherit tags to subfolders"
+msgstr "Inherit tags to subfolders"
 
 msgid "Advanced Link Config"
 msgstr "Advanced Link Config"

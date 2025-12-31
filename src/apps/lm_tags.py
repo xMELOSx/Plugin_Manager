@@ -34,7 +34,7 @@ class LMTagsMixin:
     def _open_tag_manager(self):
         """Open the TagManagerDialog."""
         from src.ui.link_master.dialogs import TagManagerDialog
-        d = TagManagerDialog(self, self.db)
+        d = TagManagerDialog(self, self.db, registry=self.registry)
         if d.exec():
             print("[LMTagsMixin] Tag Manager closed. Refreshing UI...")
             self._load_tags_for_app()

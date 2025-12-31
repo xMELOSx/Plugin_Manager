@@ -14,6 +14,7 @@ Link Master: Card Settings Mixin
 import copy
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QSpinBox, QSlider, QCheckBox
 from PyQt6.QtCore import Qt
+from src.core.lang_manager import _
 
 
 class LMCardSettingsMixin:

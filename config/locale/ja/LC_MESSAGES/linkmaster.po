@@ -94,8 +94,8 @@ msgstr "テキストと絵文字"
 msgid "Image Icon"
 msgstr "画像アイコン"
 
-msgid "Inherit to subfolders"
-msgstr "サブフォルダに継承する"
+msgid "Inherit tags to subfolders"
+msgstr "サブフォルダにタグを継承"
 
 msgid "Inheritance:"
 msgstr "継承設定:"
@@ -991,9 +991,6 @@ msgstr "追加タグ:"
 msgid "Inheritance:"
 msgstr "継承:"
 
-msgid "Inherit tags from parent folders"
-msgstr "親フォルダからタグを継承"
-
 msgid "Advanced Link Config"
 msgstr "詳細リンク設定"
 
@@ -1225,3 +1222,241 @@ msgstr "バージョン (編集可)"
 
 msgid "URL Management"
 msgstr "URL管理"
+
+# ExecutablesManagerDialog
+msgid "Manage Executables"
+msgstr "実行ファイル管理"
+
+msgid "Add / Edit Executable"
+msgstr "実行ファイルの追加/編集"
+
+msgid "Display Name (e.g. 'Launch Game')"
+msgstr "表示名 (例: 'ゲーム起動')"
+
+msgid "Name:"
+msgstr "名前:"
+
+msgid "Executable path (.exe)"
+msgstr "実行ファイルパス (.exe)"
+
+msgid "Path:"
+msgstr "パス:"
+
+msgid "Command line arguments (optional)"
+msgstr "コマンドライン引数 (任意)"
+
+msgid "Args:"
+msgstr "引数:"
+
+msgid "■ BG Color"
+msgstr "■ 背景色"
+
+msgid "T Text Color"
+msgstr "T 文字色"
+
+msgid "Style:"
+msgstr "スタイル:"
+
+msgid "➕ Register/Update"
+msgstr "➕ 登録/更新"
+
+msgid "▲ Up"
+msgstr "▲ 上へ"
+
+msgid "▼ Down"
+msgstr "▼ 下へ"
+
+msgid "OK (Save Changes)"
+msgstr "OK (変更を保存)"
+
+msgid "Select Button Color"
+msgstr "ボタンの色を選択"
+
+msgid "Select Executable"
+msgstr "実行ファイルを選択"
+
+msgid "Executables (*.exe);;All Files (*)"
+msgstr "実行ファイル (*.exe);;すべてのファイル (*)"
+
+msgid "Name and Path are required."
+msgstr "名前とパスは必須です。"
+
+# URLListDialog
+msgid "Manage URLs"
+msgstr "URL管理"
+
+msgid "Enter URL (https://...)"
+msgstr "URLを入力 (https://...)"
+
+msgid "Add"
+msgstr "追加"
+
+msgid "Active"
+msgstr "有効"
+
+msgid "Priority"
+msgstr "優先"
+
+msgid "Link"
+msgstr "リンク"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Automatically mark the last accessed one (🔗)"
+msgstr "最後にアクセスしたものを自動的にマーク (🔗)"
+
+msgid "🔍 Test All && Open First Working"
+msgstr "🔍 全てテスト&最初の有効なURLを開く"
+
+msgid "🗑 Clear All"
+msgstr "🗑 全て削除"
+
+# OptionsWindow
+msgid "Options"
+msgstr "オプション"
+
+msgid "<b>Settings</b>"
+msgstr "<b>設定</b>"
+
+msgid "Always on Top"
+msgstr "常に前面に表示"
+
+msgid "Remember Position/Size"
+msgstr "位置/サイズを記憶"
+
+msgid "Background Opacity:"
+msgstr "背景透明度:"
+
+msgid "Text Opacity:"
+msgstr "テキスト透明度:"
+
+msgid "<b>Window Size</b>"
+msgstr "<b>ウィンドウサイズ</b>"
+
+msgid "Width:"
+msgstr "幅:"
+
+msgid "Height:"
+msgstr "高さ:"
+
+msgid "Close"
+msgstr "閉じる"
+
+# Card Settings Panel
+msgid "Card W:"
+msgstr "カード横幅:"
+
+msgid "Card H:"
+msgstr "カード縦幅:"
+
+msgid "Img W:"
+msgstr "画像横幅:"
+
+msgid "Img H:"
+msgstr "画像縦幅:"
+
+msgid "Cat:"
+msgstr "カテゴリ:"
+
+msgid "Pkg:"
+msgstr "パッケージ:"
+
+msgid "📁 <b>Category</b>"
+msgstr "📁 <b>カテゴリ</b>"
+
+msgid "📦 <b>Package</b>"
+msgstr "📦 <b>パッケージ</b>"
+
+msgid "📐 <b>Scale</b> (Independent)"
+msgstr "📐 <b>スケール</b> (独立)"
+
+msgid "📓 Card Settings"
+msgstr "📓 カード設定"
+
+msgid "<b>📓 Card Settings</b>"
+msgstr "<b>📓 カード設定</b>"
+
+msgid "Lock Display Mode (Persist)"
+msgstr "表示モードをロック (永続化)"
+
+# FullPreviewDialog
+msgid "Manage Full Previews"
+msgstr "フルプレビュー管理"
+
+msgid "➕ Add File"
+msgstr "➕ ファイル追加"
+
+msgid "📋 Paste from Clipboard"
+msgstr "📋 クリップボードから貼り付け"
+
+msgid "🗑 Delete All"
+msgstr "🗑 全て削除"
+
+# LibrarySettingsDialog (additional)
+msgid "Library Settings: {name}"
+msgstr "ライブラリ設定: {name}"
+
+msgid "Registered Versions:"
+msgstr "登録済みバージョン:"
+
+msgid "Package Name"
+msgstr "パッケージ名"
+
+msgid "View"
+msgstr "表示"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Unreg"
+msgstr "解除"
+
+# Save Changes Dialog
+msgid "Unsaved Changes"
+msgstr "保存されていない変更"
+
+msgid "There are unsaved changes. Do you want to save?"
+msgstr "保存されていない変更があります。保存しますか？"
+
+msgid "Discard"
+msgstr "破棄"
+
+# Help Window
+msgid "Help"
+msgstr "ヘルプ"
+
+msgid "<b>Dionys Debug Help</b>"
+msgstr "<b>Dionys デバッグヘルプ</b>"
+
+msgid "• 📌: Toggle Always on Top"
+msgstr "• 📌: 常に前面に表示を切り替え"
+
+msgid "• Win32 Native Resizing Enabled"
+msgstr "• Win32 ネイティブリサイズ有効"
+
+msgid "• F11: Fullscreen"
+msgstr "• F11: フルスクリーン"
+
+# Phase 32: OptionsWindow Language & About
+msgid "Language:"
+msgstr "言語:"
+
+msgid "System Default"
+msgstr "システム既定"
+
+msgid "About"
+msgstr "情報"
+
+msgid "About Link Master"
+msgstr "Link Master について"
+
+msgid "<b>Link Master</b><br>\nVersion: 1.0.0<br><br>\nA powerful plugin and link management tool.<br><br>\n© 2024 - All rights reserved."
+msgstr "<b>Link Master</b><br>\nバージョン: 1.0.0<br><br>\n高機能なプラグイン＆リンク管理ツール<br><br>\n© 2024 - All rights reserved."
+
+# File Deployment Translations  
+msgid "Selected Files Only"
+msgstr "選択ファイルのみ"
+
+msgid "File Management: {name}"
+msgstr "ファイル管理: {name}"

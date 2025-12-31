@@ -1,13 +1,153 @@
 """
 Link Master: Search Functionality Mixin
 Phase 19.8: Major search overhaul with modes, depth limit, NOT search
+Phase 32: Background thread search to prevent UI freeze
 """
 import os
 import time
 from PyQt6.QtWidgets import QLabel
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QObject
 from src.core.lang_manager import _
 from src.ui.link_master.item_card import ItemCard
+
+
+class SearchWorker(QObject):
+    """Worker to perform file system search in background thread."""
+    finished = pyqtSignal(list)  # Emit search results when done
+    error = pyqtSignal(str)
+    
+    def __init__(self, storage_root, folder_configs, non_inheritable, 
+                 terms, not_terms, include_tags, exclude_tags, logic, selected_segments):
+        super().__init__()
+        self.storage_root = storage_root
+        self.folder_configs = folder_configs
+        self.non_inheritable = non_inheritable
+        self.terms = terms
+        self.not_terms = not_terms
+        self.include_tags = include_tags
+        self.exclude_tags = exclude_tags
+        self.logic = logic
+        self.selected_segments = selected_segments
+        self._cancelled = False
+    
+    def cancel(self):
+        self._cancelled = True
+    
+    def run(self):
+        """Execute search in background thread."""
+        try:
+            results = self._search_two_levels(self.storage_root)
+            if not self._cancelled:
+                self.finished.emit(results)
+        except Exception as e:
+            if not self._cancelled:
+                self.error.emit(str(e))
+    
+    def _search_two_levels(self, storage_path):
+        """Scan two levels of directories for matching items."""
+        results = []
+        if not storage_path or not os.path.isdir(storage_path):
+            return results
+        
+        try:
+            with os.scandir(storage_path) as cat_iter:
+                for cat_entry in cat_iter:
+                    if self._cancelled:
+                        return results
+                    if not cat_entry.is_dir():
+                        continue
+                    if cat_entry.name.startswith('_'):
+                        continue
+                    
+                    cat_abs = cat_entry.path
+                    cat_rel = cat_entry.name
+                    cat_config = self.folder_configs.get(cat_rel.replace('\\', '/'), {})
+                    cat_type = 'category'
+                    
+                    cat_own_tags = {t.strip().lower() for t in (cat_config.get('tags') or '').split(',') if t.strip()}
+                    cat_effective_tags = cat_own_tags
+                    cat_inheritable_tags = cat_own_tags - self.non_inheritable
+                    
+                    if self._check_match(cat_entry.name, cat_config, cat_effective_tags):
+                        results.append({
+                            'name': cat_entry.name,
+                            'path': cat_abs,
+                            'rel_path': cat_rel,
+                            'config': cat_config,
+                            'type': cat_type,
+                            'effective_tags': cat_effective_tags
+                        })
+                    
+                    # Level 2: Packages
+                    try:
+                        with os.scandir(cat_abs) as pkg_iter:
+                            for pkg_entry in pkg_iter:
+                                if self._cancelled:
+                                    return results
+                                if not pkg_entry.is_dir():
+                                    continue
+                                if pkg_entry.name.startswith('_'):
+                                    continue
+                                
+                                pkg_abs = pkg_entry.path
+                                pkg_rel = f"{cat_rel}/{pkg_entry.name}"
+                                pkg_config = self.folder_configs.get(pkg_rel.replace('\\', '/'), {})
+                                pkg_type = pkg_config.get('folder_type', 'package')
+                                
+                                pkg_own_tags = {t.strip().lower() for t in (pkg_config.get('tags') or '').split(',') if t.strip()}
+                                pkg_effective_tags = pkg_own_tags | cat_inheritable_tags
+                                
+                                if self._check_match(pkg_entry.name, pkg_config, pkg_effective_tags):
+                                    results.append({
+                                        'name': pkg_entry.name,
+                                        'path': pkg_abs,
+                                        'rel_path': pkg_rel,
+                                        'config': pkg_config,
+                                        'type': pkg_type,
+                                        'effective_tags': pkg_effective_tags
+                                    })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        
+        return results
+    
+    def _check_match(self, name, config, effective_tags):
+        """Check if item matches search criteria."""
+        name_lower = name.lower()
+        memo = (config.get('memo') or '').lower()
+        
+        # NOT terms exclusion
+        for nt in self.not_terms:
+            if nt in name_lower or nt in memo:
+                return False
+        
+        # Exclude tags
+        for et in self.exclude_tags:
+            if et in effective_tags:
+                return False
+        
+        # Positive matching
+        if self.logic == 'and':
+            if self.terms and not all(t in name_lower or t in memo for t in self.terms):
+                return False
+            if self.include_tags and not self.include_tags.issubset(effective_tags):
+                return False
+        else:  # 'or' logic
+            matched = False
+            if self.terms:
+                if any(t in name_lower or t in memo for t in self.terms):
+                    matched = True
+            if self.include_tags:
+                if self.include_tags & effective_tags:
+                    matched = True
+            if not self.terms and not self.include_tags:
+                matched = True
+            if not matched:
+                return False
+        
+        return True
 
 
 class LMSearchMixin:
@@ -76,10 +216,15 @@ class LMSearchMixin:
             results = []
             if not storage_path or not os.path.isdir(storage_path): return results
             
+            from PyQt6.QtWidgets import QApplication
+            
             try:
                 # Level 1: Categories (direct children of storage_root)
                 with os.scandir(storage_path) as cat_iter:
                     for cat_entry in cat_iter:
+                        # Process UI events to keep UI responsive
+                        QApplication.processEvents()
+                        
                         if not cat_entry.is_dir(): continue
                         if cat_entry.name.startswith('_'): continue  # Skip _Trash etc
                         

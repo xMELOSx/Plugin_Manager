@@ -2362,7 +2362,7 @@ class FolderPropertiesDialog(QDialog):
         attr_form.addRow(_("Additional Tags:"), self.tags_edit)
         
         # Inherit Tags Toggle (Phase 18.8)
-        self.inherit_tags_chk = QCheckBox(_("Inherit tags from parent folders"))
+        self.inherit_tags_chk = QCheckBox(_("Inherit tags to subfolders"))
         self.inherit_tags_chk.setChecked(bool(self.current_config.get('inherit_tags', 1)))
         self.inherit_tags_chk.setToolTip(_("If unchecked, tags from parent folders will NOT be applied to this item and its children."))
         attr_form.addRow(_("Inheritance:"), self.inherit_tags_chk)
@@ -2997,9 +2997,19 @@ class FolderPropertiesDialog(QDialog):
         return data
 
 class TagManagerDialog(QDialog):
-    def __init__(self, parent=None, db=None):
+    def __init__(self, parent=None, db=None, registry=None):
         super().__init__(parent)
         self.db = db
+        # Fallback: Try to get registry from parent if not provided
+        if registry is None and parent and hasattr(parent, 'registry'):
+            registry = parent.registry
+        # Final fallback: Get global registry singleton
+        if registry is None:
+            from src.core.link_master.database import get_lm_registry
+            registry = get_lm_registry()
+            import logging; logging.info(f"[TagManagerDialog] Using global registry singleton")
+        self.registry = registry
+        import logging; logging.info(f"[TagManagerDialog] __init__: registry={registry is not None}")
         self.setWindowTitle(_("Manage Frequent Tags"))
         self.resize(500, 400)
         self.tags = [] 
@@ -3009,16 +3019,39 @@ class TagManagerDialog(QDialog):
         self._init_ui()
         self._load_tags()
         
-        # Phase 32: Restore Size
-        if self.db:
-            geom = self.db.get_setting("geom_tag_manager", None)
-            if geom: self.restoreGeometry(bytes.fromhex(geom))
+        # Phase 32: Restore Size (use registry for global persistence)
+        if self.registry:
+            geom = self.registry.get_setting("geom_tag_manager", None)
+            logging.info(f"[TagManagerDialog] Restoring geometry: geom={'found' if geom else 'None'}")
+            if geom: 
+                self.restoreGeometry(bytes.fromhex(geom))
+                logging.info(f"[TagManagerDialog] Restored to: {self.width()}x{self.height()}")
+        else:
+            logging.warning("[TagManagerDialog] registry is None, cannot restore geometry")
+        
+        # Phase 32: Connect finished signal to ensure geometry is saved on close
+        self.finished.connect(self._on_dialog_finished)
 
-    def closeEvent(self, event):
-        if self.db:
-            self.db.set_setting("geom_tag_manager", self.saveGeometry().toHex().data().decode())
-        super().closeEvent(event)
-        self._dirty = False 
+    def _save_geometry(self):
+        """Save current geometry to registry."""
+        import logging
+        logging.info(f"[TagManagerDialog] _save_geometry called, registry={self.registry is not None}")
+        if self.registry:
+            try:
+                geom_hex = self.saveGeometry().toHex().data().decode()
+                self.registry.set_setting("geom_tag_manager", geom_hex)
+                logging.info(f"[TagManagerDialog] Saved geometry: {self.width()}x{self.height()}")
+            except Exception as e:
+                logging.error(f"[TagManagerDialog] Failed to save geometry: {e}")
+        else:
+            logging.warning("[TagManagerDialog] registry is None, cannot save geometry")
+
+    def _on_dialog_finished(self, result):
+        """Called when dialog is finished (accept or reject)."""
+        import logging
+        logging.info(f"[TagManagerDialog] _on_dialog_finished called, result={result}")
+        self._save_geometry()
+        
         
     def _init_ui(self):
         from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QHeaderView, QFormLayout, QLineEdit, QComboBox, QCheckBox, QPushButton
@@ -3110,7 +3143,7 @@ class TagManagerDialog(QDialog):
         emoji_h.addStretch()
         form.addRow(_("Symbol (Display):"), emoji_h)
 
-        self.inheritable_check = QCheckBox(_("Inherit to subfolders"))
+        self.inheritable_check = QCheckBox(_("Inherit tags to subfolders"))
         self.inheritable_check.setChecked(True)
         self.inheritable_check.stateChanged.connect(self._on_data_changed)
         form.addRow(_("Inheritance:"), self.inheritable_check)
@@ -3447,6 +3480,9 @@ class TagManagerDialog(QDialog):
         self.accept()
 
     def closeEvent(self, event):
+        # Phase 32: Always save geometry before closing
+        self._save_geometry()
+        
         if self._dirty:
             from PyQt6.QtWidgets import QMessageBox
             reply = QMessageBox.question(self, _("Unsaved Changes"), _("You have unsaved changes. Do you want to save them?"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
@@ -3512,7 +3548,7 @@ class TagCreationDialog(QDialog):
         form.addRow(_("Icon:"), h)
         
         # Inheritance (Phase 18.9 compatibility)
-        self.inheritable_check = QCheckBox(_("Inherit to subfolders"))
+        self.inheritable_check = QCheckBox(_("Inherit tags to subfolders"))
         self.inheritable_check.setChecked(True)
         form.addRow(_("Inheritance:"), self.inheritable_check)
         

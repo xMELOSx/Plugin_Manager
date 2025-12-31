@@ -129,12 +129,36 @@ class OptionsWindow(FramelessWindow):
         self.height_slider.valueChanged.connect(lambda v: self._sync_slider_spin(v, self.height_slider, self.height_spin, self._apply_window_height))
         self.height_spin.valueChanged.connect(lambda v: self._sync_slider_spin(v, self.height_slider, self.height_spin, self._apply_window_height))
 
+        # --- Language Selection ---
+        from PyQt6.QtWidgets import QComboBox
+        lang_layout = QHBoxLayout()
+        lang_lbl = QLabel(_("Language:"))
+        lang_layout.addWidget(lang_lbl)
+        
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItem(_("System Default"), "system")
+        self.lang_combo.addItem("English", "en")
+        self.lang_combo.addItem("日本語", "ja")
+        self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_layout.addWidget(self.lang_combo)
+        layout.addLayout(lang_layout)
+        self.lang_lbl = lang_lbl  # Store for retranslate
 
         layout.addStretch()
         
+        # --- Action Buttons ---
+        btn_layout = QHBoxLayout()
+        
+        about_btn = QPushButton(_("About"))
+        about_btn.clicked.connect(self._show_about)
+        btn_layout.addWidget(about_btn)
+        self.about_btn = about_btn
+        
         close_btn = QPushButton(_("Close"))
         close_btn.clicked.connect(self.close)  # Use close() to emit closed signal
-        layout.addWidget(close_btn)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
         
         self.set_content_widget(content)
 
@@ -163,6 +187,10 @@ class OptionsWindow(FramelessWindow):
         self.width_lbl.setText(_("Width:"))
         self.height_lbl.setText(_("Height:"))
         self.close_btn.setText(_("Close"))
+        self.lang_lbl.setText(_("Language:"))
+        self.about_btn.setText(_("About"))
+        # Update language combo first item (System Default)
+        self.lang_combo.setItemText(0, _("System Default"))
     
     def _get_config_path(self):
         """Get path to config/window.json."""
@@ -210,6 +238,15 @@ class OptionsWindow(FramelessWindow):
                     self.parent_debug_window.set_content_opacity(settings.get('text_opacity', 100) / 100.0)
                     if settings.get('always_top', False):
                         self.parent_debug_window.set_pin_state(True)
+            
+            # Load language setting
+            saved_lang = all_config.get('language', 'system')
+            self.lang_combo.blockSignals(True)
+            for i in range(self.lang_combo.count()):
+                if self.lang_combo.itemData(i) == saved_lang:
+                    self.lang_combo.setCurrentIndex(i)
+                    break
+            self.lang_combo.blockSignals(False)
         except Exception as e:
             print(f"Failed to load OptionsWindow settings: {e}")
     
@@ -280,6 +317,58 @@ class OptionsWindow(FramelessWindow):
         if self.parent_debug_window:
             curr_w = self.parent_debug_window.width()
             self.parent_debug_window.resize(curr_w, value)
+
+    def _on_language_changed(self, index):
+        """Handle language selection change."""
+        from src.core.lang_manager import get_lang_manager
+        from PyQt6.QtCore import QLocale
+        
+        lang_code = self.lang_combo.currentData()
+        if lang_code == "system":
+            # Use system language via QLocale (more reliable in Qt)
+            sys_lang = QLocale.system().name()  # e.g., "ja_JP" or "en_US"
+            if sys_lang.startswith("ja"):
+                lang_code = "ja"
+            else:
+                lang_code = "en"
+        
+        lm = get_lang_manager()
+        lm.set_language(lang_code)
+        
+        # Save language preference (as 'system' if that was selected)
+        self._save_language_setting(self.lang_combo.currentData())
+
+    def _save_language_setting(self, lang_code):
+        """Save language preference to config."""
+        try:
+            import json
+            from src.core.file_handler import FileHandler
+            
+            path = self._get_config_path()
+            all_config = {}
+            try:
+                content = FileHandler().read_text_file(path)
+                all_config = json.loads(content)
+            except:
+                pass
+            
+            all_config['language'] = lang_code
+            FileHandler().write_text_file(path, json.dumps(all_config, indent=4))
+        except Exception as e:
+            print(f"Failed to save language setting: {e}")
+
+    def _show_about(self):
+        """Show About window (transparent overlay with icon and close button)."""
+        from src.core.version import APP_NAME, VERSION, AUTHOR, YEAR, SOURCE_URL
+        from src.core.lang_manager import _
+        
+        # Create or show existing about window
+        if not hasattr(self, '_about_window') or self._about_window is None:
+            self._about_window = AboutWindow(APP_NAME, VERSION, AUTHOR, YEAR, SOURCE_URL)
+        
+        self._about_window.show()
+        self._about_window.raise_()
+        self._about_window.activateWindow()
 
 
     def showEvent(self, event):
@@ -379,5 +468,137 @@ class HelpWindow(FramelessWindow):
     
     def closeEvent(self, event):
         """Override to emit closed signal when X button is clicked."""
+        self.closed.emit()
+        super().closeEvent(event)
+
+
+class AboutWindow(FramelessWindow):
+    """Transparent overlay About window with icon and close button."""
+    closed = pyqtSignal()
+    
+    def __init__(self, app_name: str, version: str, author: str, year: str, source_url: str):
+        super().__init__()
+        self.app_name = app_name
+        self.version = version
+        self.author = author
+        self.year = year
+        self.source_url = source_url
+        
+        # Title specified as 'About'
+        self.setWindowTitle("About")
+        
+        # Ensure no maximize/minimize, just tool window behavior
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.resize(380, 320)
+        self.set_resizable(False)
+        self._init_ui()
+    
+    def _init_ui(self):
+        from src.core.lang_manager import _
+        import os
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(10)
+        
+        # Icon (centered)
+        icon_layout = QHBoxLayout()
+        icon_layout.addStretch()
+        
+        icon_lbl = QLabel()
+        # Use application icon from resource
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        icon_path = os.path.join(project_root, "resource", "app_icon.png")
+        
+        if os.path.exists(icon_path):
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap(icon_path).scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            icon_lbl.setPixmap(pixmap)
+        else:
+            icon_lbl.setText("⚙️")
+            icon_lbl.setStyleSheet("font-size: 64px;")
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_layout.addWidget(icon_lbl)
+        icon_layout.addStretch()
+        layout.addLayout(icon_layout)
+        
+        layout.addSpacing(10)
+        
+        # App Title (Dyonys Control)
+        title_lbl = QLabel(f"<b>{self.app_name}</b>")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_lbl.setStyleSheet("font-size: 20px; color: #fff;")
+        layout.addWidget(title_lbl)
+        
+        # Version
+        version_lbl = QLabel(f"Ver.{self.version}")
+        version_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_lbl.setStyleSheet("font-size: 13px; color: #aaa;")
+        layout.addWidget(version_lbl)
+        
+        layout.addSpacing(5)
+        
+        # Description
+        desc_lbl = QLabel(_("A powerful plugin and link management tool."))
+        desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc_lbl.setStyleSheet("color: #888;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+        
+        layout.addStretch()
+        
+        # Metadata: Year & Author
+        meta_lbl = QLabel(f"© {self.year} {self.author}")
+        meta_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        meta_lbl.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(meta_lbl)
+        
+        # Source Link
+        source_lbl = QLabel(f'<a href="{self.source_url}" style="color: #3498db; text-decoration: none;">GitHub Source</a>')
+        source_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        source_lbl.setOpenExternalLinks(True)
+        source_lbl.setStyleSheet("font-size: 11px;")
+        layout.addWidget(source_lbl)
+        
+        layout.addSpacing(15)
+        
+        # Close button
+        close_btn = QPushButton(_("Close"))
+        close_btn.clicked.connect(self.close)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #34495e; 
+                color: #fff; 
+                padding: 8px 30px; 
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2c3e50;
+            }
+        """)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(close_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+        
+        self.set_content_widget(content)
+        
+        # Store for retranslation
+        self.desc_lbl = desc_lbl
+        self.close_btn = close_btn
+        
+        from src.core.lang_manager import get_lang_manager
+        get_lang_manager().language_changed.connect(self.retranslate_ui)
+    
+    def retranslate_ui(self):
+        from src.core.lang_manager import _
+        self.desc_lbl.setText(_("A powerful plugin and link management tool."))
+        self.close_btn.setText(_("Close"))
+    
+    def closeEvent(self, event):
         self.closed.emit()
         super().closeEvent(event)

@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QSlider, QSpinBox, QTabWidget, QWidget, QCheckBox
 )
 from PyQt6.QtCore import Qt
+from src.core.lang_manager import _
 
 
 class LMSettingsPanelMixin:
@@ -91,28 +92,28 @@ class LMSettingsPanelMixin:
                 
                 # Category section
                 tab_layout.addWidget(QLabel(_("📁 <b>Category</b>")))
-                tab_layout.addLayout(self._create_mode_slider("CardW:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
+                tab_layout.addLayout(self._create_mode_slider(_("Card W:"), f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
                 h_min = 20 if mode_icon == "text_list" else 50
-                tab_layout.addLayout(self._create_mode_slider("CardH:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
+                tab_layout.addLayout(self._create_mode_slider(_("Card H:"), f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
                 if mode_icon != "text_list":
-                    tab_layout.addLayout(self._create_mode_slider("ImgW:", f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
-                    tab_layout.addLayout(self._create_mode_slider("ImgH:", f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider(_("Img W:"), f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider(_("Img H:"), f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
 
                 tab_layout.addSpacing(10)
                 
                 # Package section
                 tab_layout.addWidget(QLabel(_("📦 <b>Package</b>")))
-                tab_layout.addLayout(self._create_mode_slider("CardW:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
-                tab_layout.addLayout(self._create_mode_slider("CardH:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
+                tab_layout.addLayout(self._create_mode_slider(_("Card W:"), f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
+                tab_layout.addLayout(self._create_mode_slider(_("Card H:"), f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
                 if mode_icon != "text_list":
-                    tab_layout.addLayout(self._create_mode_slider("ImgW:", f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
-                    tab_layout.addLayout(self._create_mode_slider("ImgH:", f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider(_("Img W:"), f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider(_("Img H:"), f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
                 
                 # Scale per mode
                 tab_layout.addSpacing(5)
                 tab_layout.addWidget(QLabel(_("📐 <b>Scale</b> (Independent)")))
-                tab_layout.addLayout(self._create_mode_scale_row("Cat:", f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
-                tab_layout.addLayout(self._create_mode_scale_row("Pkg:", f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
+                tab_layout.addLayout(self._create_mode_scale_row(_("Cat:"), f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
+                tab_layout.addLayout(self._create_mode_scale_row(_("Pkg:"), f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
 
                 tab_layout.addStretch()
                 self._settings_tabs.addTab(tab, mode_name)

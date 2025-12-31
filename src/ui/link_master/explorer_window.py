@@ -13,6 +13,7 @@ class ExplorerPanel(QWidget):
     item_clicked = pyqtSignal(str)  # Selection (Single Click)
     config_changed = pyqtSignal()
     request_properties_edit = pyqtSignal(list) # Phase 28: Piping property edit requests (abs_paths)
+    width_changed = pyqtSignal(int)  # Emitted when user resizes the panel
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -129,6 +130,9 @@ class ExplorerPanel(QWidget):
                 self.setFixedWidth(new_width)
         
         def mouse_release(e):
+            if self._drag_start:
+                # Emit signal on resize complete
+                self.width_changed.emit(self.width())
             self._drag_start = None
         
         self._resize_handle.mousePressEvent = mouse_press
