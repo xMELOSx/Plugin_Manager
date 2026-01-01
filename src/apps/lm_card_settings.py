@@ -13,7 +13,7 @@ Link Master: Card Settings Mixin
 """
 import copy
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QSpinBox, QSlider, QCheckBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from src.core.lang_manager import _
 
 
@@ -35,6 +35,29 @@ class LMCardSettingsMixin:
         slider.setRange(min_v, max_v)
         slider.setValue(init_val)
         slider.setFixedWidth(90)
+        
+        # Phase 1.1.4: Premium Slider Style
+        slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #333;
+                height: 4px;
+                background: #222;
+                margin: 2px 0;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #3498db;
+                border: 1px solid #2980b9;
+                width: 12px;
+                height: 12px;
+                margin: -5px 0;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #5dade2;
+                border-color: #fff;
+            }
+        """)
         row.addWidget(slider)
         
         minus_btn = QPushButton("-")
@@ -91,6 +114,29 @@ class LMCardSettingsMixin:
         slider.setRange(min_v, max_v)
         slider.setValue(init_val)
         slider.setFixedWidth(90)
+        
+        # Phase 1.1.4: Premium Slider Style (Matching _create_mode_slider)
+        slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #333;
+                height: 4px;
+                background: #222;
+                margin: 2px 0;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #3498db;
+                border: 1px solid #2980b9;
+                width: 12px;
+                height: 12px;
+                margin: -5px 0;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #5dade2;
+                border-color: #fff;
+            }
+        """)
         row.addWidget(slider)
         
         minus_btn = QPushButton("-")
@@ -157,17 +203,17 @@ class LMCardSettingsMixin:
         
         self.card_settings[attr_name] = value
         setattr(self, attr_name, value)
-        self._save_card_settings()
-        self._apply_card_params_to_layout(type_, mode)
+        # self._save_card_settings() # Phase 1.1.5: Save only on OK
+        self._apply_card_params_to_layout_debounced(type_, mode)
 
     def _set_mode_param(self, type_: str, mode: str, param: str, value: int):
-        """モードごとのカードパラメータを設定し、DBに保存。"""
+        """モードごとのカードパラメータを設定。"""
         prefix = 'cat' if type_ == 'category' else 'pkg'
         attr_name = f'{prefix}_{mode}_{param}'
         
         self.card_settings[attr_name] = value
         setattr(self, attr_name, value)
-        self._save_card_settings()
+        # self._save_card_settings() # Phase 1.1.5: Save only on OK
         
         # 編集中のモードに自動切り替え
         current_override = getattr(self, f'{prefix}_display_override', None)
@@ -177,7 +223,7 @@ class LMCardSettingsMixin:
             else:
                 self._toggle_pkg_display_mode(mode)
         
-        self._apply_card_params_to_layout(type_, mode)
+        self._apply_card_params_to_layout_debounced(type_, mode)
 
     def _update_mode_scale(self, type_: str, mode: str, scale: float):
         """モードスケールを更新し、カードに適用。"""
@@ -186,7 +232,7 @@ class LMCardSettingsMixin:
         
         self.card_settings[attr_name] = scale
         setattr(self, attr_name, scale)
-        self._save_card_settings()
+        # self._save_card_settings() # Phase 1.1.5: Save only on OK
         
         current_override = getattr(self, f'{prefix}_display_override', None)
         if current_override != mode:
@@ -195,7 +241,18 @@ class LMCardSettingsMixin:
             else:
                 self._toggle_pkg_display_mode(mode)
         
-        self._apply_card_params_to_layout(type_, mode)
+        self._apply_card_params_to_layout_debounced(type_, mode)
+
+    def _apply_card_params_to_layout_debounced(self, type_: str, mode: str):
+        """Phase 1.1.5: Debounce apply to prevent UI lag with 100+ items."""
+        if not hasattr(self, '_card_apply_timer'):
+            self._card_apply_timer = QTimer(self)
+            self._card_apply_timer.setSingleShot(True)
+        
+        self._card_apply_timer.timeout.disconnect() if self._card_apply_timer.receivers(self._card_apply_timer.timeout) > 0 else None
+        self._card_apply_timer.timeout.connect(lambda: self._apply_card_params_to_layout(type_, mode))
+        self._card_apply_timer.start(50) # 50ms debounce
+
 
     def _apply_card_params_to_layout(self, type_: str, mode: str):
         """現在のモード設定をレイアウト内の全カードに適用。"""
@@ -213,6 +270,10 @@ class LMCardSettingsMixin:
         
         layout = self.cat_layout if type_ == 'category' else self.pkg_layout
         
+        # Phase 1.1.5: Use Batch Mode to prevent redundant layouts during O(N) loop
+        if hasattr(layout, 'setBatchMode'):
+            layout.setBatchMode(True)
+
         # ユーザー要望: スケールに合わせて隙間を調整 (Dynamic Spacing & Margin)
         # Base is 10px. Clamp to sensible minimums.
         dyn_spacing = max(2, int(10 * scale))
@@ -224,7 +285,6 @@ class LMCardSettingsMixin:
         for i in range(layout.count()):
             widget = layout.itemAt(i).widget()
             if hasattr(widget, 'update_data'):
-                # Apply visibility triggers immediate update
                 widget.update_data(
                     show_link=show_link,
                     show_deploy=show_deploy,
@@ -232,6 +292,9 @@ class LMCardSettingsMixin:
                 )
             if hasattr(widget, 'set_card_params'):
                 widget.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
+        
+        if hasattr(layout, 'setBatchMode'):
+            layout.setBatchMode(False)
         
         # Force layout update to apply new spacing/margins immediately
         layout.update()
@@ -250,6 +313,6 @@ class LMCardSettingsMixin:
         self.card_settings = copy.deepcopy(self._settings_backup)
         self.cat_display_override, self.pkg_display_override = self._overrides_backup
         self._sync_settings_to_attributes()
-        self._save_card_settings()
+        # Phase 1.1.5: Do NOT save to DB on cancel
         self._refresh_current_view(force=False)
         self._settings_panel.hide()

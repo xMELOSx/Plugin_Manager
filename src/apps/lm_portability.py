@@ -248,3 +248,4 @@ class LMPortabilityMixin:
                 
             QMessageBox.information(self, "Import", f"{import_count} 件の設定をインポートしました。")
             self._refresh_current_view()
+

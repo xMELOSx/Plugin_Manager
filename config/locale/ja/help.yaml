@@ -19,25 +19,27 @@
 help_notes:
   target_app:
     body_size:
-    - 180
-    - 50
+    - 182
+    - 44
     offset:
-    - 179
-    - -44
+    - -3
+    - -43
     tail_target:
-    - 4
-    - 35
+    - 1
+    - 37
     bg_style: 3364342474
     text_style: 4294967295
     content: "ターゲットアプリ設定\n実行ファイル起動ショートカットなど"
-    anchor_mode: 0
+    anchor_mode: 3
+    target_widget_name: header_edit_app_btn
+    show_tail: true
   tag_bar:
     body_size:
-    - 124
-    - 137
+    - 115
+    - 139
     offset:
-    - 109
-    - 1
+    - 222
+    - 2
     tail_target:
     - -92
     - 63
@@ -45,6 +47,8 @@ help_notes:
     text_style: 4294967295
     content: "#87caca\n一般\n#d9d38c\n重要\n#d5a01c"
     anchor_mode: 2
+    target_widget_name: main_tag_bar
+    show_tail: true
   search_bar:
     body_size:
     - 160
@@ -59,62 +63,72 @@ help_notes:
     text_style: 4294967295
     content: Help text here...
     anchor_mode: 0
+    target_widget_name: main_search_bar
+    show_tail: true
   explorer_btn:
     body_size:
-    - 186
-    - 59
+    - 189
+    - 45
     offset:
-    - 1167
-    - 357
+    - -65
+    - -40
     tail_target:
-    - 108
-    - -39
+    - 65
+    - 37
     bg_style: 3364342474
     text_style: 4294967295
     content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能\n"
-    anchor_mode: 0
+    anchor_mode: 3
+    target_widget_name: tagbar_edit_btn
+    show_tail: true
   sidebar_strip:
     body_size:
     - 153
     - 84
     offset:
-    - 442
-    - -171
+    - 404
+    - -105
     tail_target:
-    - 10
-    - -71
+    - -27
+    - -72
     bg_style: 3358074920
     text_style: 4294967295
     content: Help text here...
-    anchor_mode: 0
+    anchor_mode: 2
+    target_widget_name: QTabWidget
+    show_tail: true
   presets_btn:
     body_size:
-    - 160
-    - 90
+    - 184
+    - 47
     offset:
-    - 114
-    - 400
+    - -115
+    - 59
     tail_target:
-    - 106
-    - 70
-    bg_style: 3358074920
+    - -119
+    - 16
+    bg_style: 3364342474
     text_style: 4294967295
-    content: Help text here...
-    anchor_mode: 0
+    content: "カテゴリインポート\n　フォルダやzipからファイルを追加"
+    anchor_mode: 3
+    target_widget_name: header_edit_app_btn
+    show_tail: true
   notes_btn:
     body_size:
-    - 160
-    - 90
+    - 164
+    - 83
     offset:
-    - 334
-    - 407
+    - 930
+    - 558
     tail_target:
-    - -1
-    - -79
-    bg_style: 3358074920
+    - -84
+    - 64
+    bg_style: 3359946146
     text_style: 4294967295
     content: Help text here...
-    anchor_mode: 0
+    anchor_mode: 3
+    target_widget_name: header_edit_app_btn
+    show_tail: true
   tools_btn:
     body_size:
     - 160
@@ -129,6 +143,8 @@ help_notes:
     text_style: 4294967295
     content: Help text here...
     anchor_mode: 0
+    target_widget_name: header_edit_app_btn
+    show_tail: true
   search_logic:
     body_size:
     - 150
@@ -137,12 +153,14 @@ help_notes:
     - 210
     - 657
     tail_target:
-    - -111
-    - 49
+    - -103
+    - 52
     bg_style: 3370574229
     text_style: 4294967295
-    content: Help text here...
+    content: saHelp text here...
     anchor_mode: 0
+    target_widget_name: search_logic_combo
+    show_tail: true
   free_7eab6f19:
     body_size:
     - 197
@@ -156,3 +174,33 @@ help_notes:
     bg_style: 3358074920
     text_style: 4294967295
     content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能"
+  free_f34f215e:
+    body_size:
+    - 202
+    - 74
+    offset:
+    - -1
+    - 0
+    tail_target:
+    - 11
+    - 69
+    bg_style: 3358074920
+    text_style: 4294967295
+    content: ヘルプテキストを入力...
+    anchor_mode: 3
+  free_d831a33e:
+    body_size:
+    - 151
+    - 32
+    offset:
+    - 60
+    - -37
+    tail_target:
+    - -61
+    - 31
+    bg_style: 3364342474
+    text_style: 4294967295
+    content: フォルダやzipをインポート
+    anchor_mode: 3
+    target_widget_name: pkg_import_btn
+    show_tail: true

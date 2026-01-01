@@ -152,7 +152,7 @@ class LMTagsMixin:
         if self.cat_layout.parentWidget():
             self.cat_layout.parentWidget().updateGeometry()
             
-        self.cat_result_label.setText(f"🏷️ {visible_count} カテゴリ (タグフィルター: セグメントAND)")
+        self.cat_result_label.setText(f"🏷️ {visible_count} (タグフィルター: セグメントAND)")
 
     def _get_non_inheritable_tags_from_json(self):
         """Parse frequent_tags_config to find tags marked as non-inheritable."""

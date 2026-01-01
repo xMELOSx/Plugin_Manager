@@ -3,15 +3,17 @@ import shutil
 import json
 import logging
 import datetime
+import ctypes
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QTreeView, QHeaderView, QMessageBox, QFrame, QLineEdit,
                              QStyledItemDelegate, QCheckBox, QFileDialog, QInputDialog,
                              QWidget)
 from PyQt6.QtCore import Qt, QDir, pyqtSignal, QSortFilterProxyModel, QByteArray
-from PyQt6.QtGui import QFileSystemModel, QColor, QFont
+from PyQt6.QtGui import QFileSystemModel, QColor, QFont, QPalette
 
 from src.ui.window_mixins import OptionsMixin
 from src.core.lang_manager import _
+from src.ui.frameless_window import FramelessDialog
 
 class CheckableFileModel(QFileSystemModel):
     """ファイルシステムモデルにチェックボックスと色分け機能を追加したもの。"""
@@ -133,7 +135,7 @@ class BackupFilterProxyModel(QSortFilterProxyModel):
             return False
         return True
 
-class FileManagementDialog(QDialog, OptionsMixin):
+class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
     個別のファイル単位での除外（チェックボックス）、場所変更（P/S/Browse）、
     バックアップ/リストアを管理するダイアログ。
@@ -160,6 +162,7 @@ class FileManagementDialog(QDialog, OptionsMixin):
         self.resize(1100, 750)
         self.load_options("file_management_dialog") # Restore geometry
         
+        # FramelessDialog handled dark mode/palette
         self._apply_theme()
         self._init_ui()
 
@@ -169,6 +172,13 @@ class FileManagementDialog(QDialog, OptionsMixin):
         header_state = self.tree.header().saveState().toHex().data().decode()
         self.save_options("file_management_dialog_tree_widths", {"header": header_state})
         return super().done(r)
+
+    def keyPressEvent(self, event):
+        """Handle Alt+Enter for saving."""
+        if event.key() in [Qt.Key.Key_Return, Qt.Key.Key_Enter] and event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            self.accept()
+            return
+        super().keyPressEvent(event)
 
     def _apply_theme(self):
         self.setStyleSheet("""
@@ -198,9 +208,13 @@ class FileManagementDialog(QDialog, OptionsMixin):
         """)
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
+        
+        # Define draggable area (header section) - handled by FramelessDialog
+        # We can also add a title bar or just let user drag blank areas
         
         # Header Info
         header_title = QLabel(f"<b>📂 {os.path.basename(self.folder_path)}</b>")
@@ -365,13 +379,15 @@ class FileManagementDialog(QDialog, OptionsMixin):
         btn_cancel.clicked.connect(self.reject)
         btns.addWidget(btn_cancel)
         
-        btn_save = QPushButton(_("Save Changes"))
-        btn_save.setFixedSize(140, 35)
+        btn_save = QPushButton(_("Save Changes (Alt + Enter)"))
+        btn_save.setFixedSize(220, 35)
         btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; font-size: 11pt;")
         btn_save.clicked.connect(self.accept)
         btns.addWidget(btn_save)
         
         layout.addLayout(btns)
+        
+        self.set_content_widget(content_widget)
 
         self.btn_backup.setObjectName("BackupBtn")
         self.btn_restore.setObjectName("RestoreBtn")

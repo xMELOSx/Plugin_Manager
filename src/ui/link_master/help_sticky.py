@@ -11,6 +11,9 @@ class StickyHelpWidget(QWidget):
     closed = pyqtSignal()
     data_changed = pyqtSignal()
 
+    # Phase 1.1.10: Style clipboard for copy/paste
+    _style_clipboard = {}
+
     def __init__(self, element_id, target_widget, parent=None):
         super().__init__(None) # ウィンドウとして独立（親を持つとクリッピングされるため）
         self.element_id = element_id
@@ -39,8 +42,16 @@ class StickyHelpWidget(QWidget):
         self._drag_start_pos = QPoint()
         self._start_body_size = QSize()
         
-        # アンカーモード: 0=比例(Center), 1=固定(TopLeft), 2=追従(Full/Delta)
-        self.anchor_mode = 0 # 0=Center, 1=TopLeft, 2=BottomRight/Full
+        # アンカーモード: 0=割合(Proportional), 1=固定(Fixed), 2=追従(Full Follow)
+        self.anchor_mode = 0
+        
+        # Phase 1.1.7.3: ウィンドウサイズ変更追跡用
+        self._last_win_geo = None  # 直前の親ウィンドウのQRect
+        self._screen_pos = QPoint(0, 0)  # 固定モード用: スクリーン上の絶対位置
+        self._proportional_pos = (0.5, 0.5) # 割合モード用: (x_ratio, y_ratio)
+        
+        # Phase 1.1.10: Tail visibility
+        self.show_tail = True
         
         # UI
         self._init_ui()
@@ -81,43 +92,91 @@ class StickyHelpWidget(QWidget):
             self.show()
 
     def update_position(self):
-        """ターゲットに合わせて、本体とアンカーの両方を覆うサイズに自身のウィンドウを広げて移動する。"""
-        if not self.target_widget or not self.parent_window:
+        """Phase 1.1.7.3: 親ウィンドウのサイズ変更に応じて付箋の位置を更新する。"""
+        if not self.parent_window:
             return
-            
-        # 1. 基準点の計算
-        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
         
-        if self.anchor_mode == 1: # TopLeft 固定
-            base_g = target_global
-        elif self.anchor_mode == 2: # BottomRight / Window相対 (サイズ変更と同じ量移動)
-            # ターゲットの右下を基準にする
-            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
-        else: # 0 = Center (比例)
-            center_x = target_global.x() + self.target_widget.width() // 2
-            center_y = target_global.y() + self.target_widget.height() // 2
-            base_g = QPoint(center_x, center_y)
-            
-        # 本体の中心（グローバル）を計算
-        body_center_g = base_g + self.offset
+        win_geo = self.parent_window.geometry()
         
-        # 2. しっぽの先端（グローバル）を計算
+        # 初回呼び出し時は現在のウィンドウサイズを記録
+        if self._last_win_geo is None:
+            self._last_win_geo = win_geo
+            # デフォルトの位置を設定 (ターゲットを指すならその近く)
+            if self.target_widget and self.target_widget != self.parent_window:
+                target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+                self._screen_pos = target_global + self.offset
+            else:
+                self._screen_pos = win_geo.topLeft() + self.offset
+            
+            # 割合位置も初期化
+            if win_geo.width() > 0 and win_geo.height() > 0:
+                rel_x = (self._screen_pos.x() - win_geo.x()) / win_geo.width()
+                rel_y = (self._screen_pos.y() - win_geo.y()) / win_geo.height()
+                self._proportional_pos = (rel_x, rel_y)
+        
+        # モード別の位置計算
+        if self.anchor_mode == 1:  # 固定: スクリーン上の絶対位置に留まる
+            body_center_g = self._screen_pos
+            
+        elif self.anchor_mode == 0:  # 割合: ウィンドウの割合位置を維持
+            new_x = win_geo.x() + int(self._proportional_pos[0] * win_geo.width())
+            new_y = win_geo.y() + int(self._proportional_pos[1] * win_geo.height())
+            body_center_g = QPoint(new_x, new_y)
+            # スクリーン位置も同期
+            self._screen_pos = body_center_g
+            
+        else:  # anchor_mode == 2 追従: ウィンドウサイズの変化量だけ移動
+            # サイズ差分を計算
+            delta_w = win_geo.width() - self._last_win_geo.width()
+            delta_h = win_geo.height() - self._last_win_geo.height()
+            # 移動差分も計算
+            delta_x = win_geo.x() - self._last_win_geo.x()
+            delta_y = win_geo.y() - self._last_win_geo.y()
+            
+            # スクリーン位置を更新 (ウィンドウの右下リサイズに追従)
+            self._screen_pos = QPoint(
+                self._screen_pos.x() + delta_x + delta_w,
+                self._screen_pos.y() + delta_y + delta_h
+            )
+            body_center_g = self._screen_pos
+            
+            # 割合位置も同期
+            if win_geo.width() > 0 and win_geo.height() > 0:
+                rel_x = (self._screen_pos.x() - win_geo.x()) / win_geo.width()
+                rel_y = (self._screen_pos.y() - win_geo.y()) / win_geo.height()
+                self._proportional_pos = (rel_x, rel_y)
+        
+        # anchor_mode == 3: 要素追従 (ターゲットウィジェットの位置に直接追従)
+        if self.anchor_mode == 3 and self.target_widget and self.target_widget != self.parent_window:
+            target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+            target_center = target_global + QPoint(self.target_widget.width() // 2, self.target_widget.height() // 2)
+            body_center_g = target_center + self.offset
+            self._screen_pos = body_center_g
+            
+            # 割合位置も同期
+            if win_geo.width() > 0 and win_geo.height() > 0:
+                rel_x = (self._screen_pos.x() - win_geo.x()) / win_geo.width()
+                rel_y = (self._screen_pos.y() - win_geo.y()) / win_geo.height()
+                self._proportional_pos = (rel_x, rel_y)
+        
+        # ウィンドウサイズを記録
+        self._last_win_geo = win_geo
+        
+        # しっぽの先端（グローバル）を計算
         tail_tip_g = body_center_g + self.tail_target_offset
         
-        # 3. 本体の矩形（グローバル）
+        # 本体の矩形（グローバル）
         body_rect_g = QRect(body_center_g.x() - self.body_size.width() // 2,
                             body_center_g.y() - self.body_size.height() // 2,
                             self.body_size.width(), self.body_size.height())
         
-        # 4. ウィンドウ全体の矩形（グローバル）: 本体としっぽの先端の両方を含む必要がある
-        margin = 30 # ハンドル等のために少し余裕を持たせる
+        # ウィンドウ全体の矩形（グローバル）
+        margin = 30
         widget_rect_g = body_rect_g.united(QRect(tail_tip_g, QSize(1,1))).adjusted(-margin, -margin, margin, margin)
         
-        # ジオメトリ更新
         self.setGeometry(widget_rect_g)
         
-        # 5. 子要素のテキストエディタを本体部分に配置（ローカル座標）
-        # mapFromGlobal is avoided here to ensure accurate positioning even when the widget is hidden.
+        # テキストエディタを本体部分に配置（ローカル座標）
         local_body_topLeft = body_rect_g.topLeft() - widget_rect_g.topLeft()
         body_local = QRect(local_body_topLeft, self.body_size)
         self.text_edit.setGeometry(body_local.adjusted(4, 4, -4, -4))
@@ -127,62 +186,66 @@ class StickyHelpWidget(QWidget):
         self.text_content = self.text_edit.toPlainText()
         self.data_changed.emit()
 
+    def _get_body_rect(self):
+        """Phase 1.1.10: Calculate body rectangle in local coordinates."""
+        widget_topLeft = self.geometry().topLeft()
+        local_body_center = self._screen_pos - widget_topLeft
+        return QRectF(local_body_center.x() - self.body_size.width() / 2,
+                           local_body_center.y() - self.body_size.height() / 2,
+                           self.body_size.width(), self.body_size.height())
+
+    def _get_shape_path(self):
+        """Phase 1.1.10: Calculate the combined shape of the sticky (body + optional tail)."""
+        widget_topLeft = self.geometry().topLeft()
+        local_body_center = self._screen_pos - widget_topLeft
+        body_rect = self._get_body_rect()
+        
+        path = QPainterPath()
+        path.addRoundedRect(body_rect, 8, 8)
+        
+        if self.show_tail:
+            tail_tip = (self._screen_pos + self.tail_target_offset) - widget_topLeft
+            
+            # Distance from tip to each edge (positive if outside)
+            dist_l = body_rect.left() - tail_tip.x()
+            dist_r = tail_tip.x() - body_rect.right()
+            dist_t = body_rect.top() - tail_tip.y()
+            dist_b = tail_tip.y() - body_rect.bottom()
+            
+            max_d = max(dist_l, dist_r, dist_t, dist_b)
+            if max_d <= 0:
+                return path # Inside
+            
+            base_width = 25
+            margin_edge = 10
+            
+            if max_d == dist_l or max_d == dist_r:
+                bx = body_rect.left() if max_d == dist_l else body_rect.right()
+                by = max(body_rect.top() + margin_edge + base_width/2, 
+                         min(body_rect.bottom() - margin_edge - base_width/2, tail_tip.y()))
+                p1 = QPointF(bx, by - base_width / 2)
+                p2 = QPointF(bx, by + base_width / 2)
+            else:
+                by = body_rect.top() if max_d == dist_t else body_rect.bottom()
+                bx = max(body_rect.left() + margin_edge + base_width/2, 
+                         min(body_rect.right() - margin_edge - base_width/2, tail_tip.x()))
+                p1 = QPointF(bx - base_width / 2, by)
+                p2 = QPointF(bx + base_width / 2, by)
+
+            tail_poly = QPolygonF([p1, p2, QPointF(tail_tip)])
+            path.addPolygon(tail_poly)
+                
+        return path
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # 本体の中心（ローカル座標）
-        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+        # Phase 1.1.7.3: Use _screen_pos as the source of truth
+        body_center_g = self._screen_pos
         
-        if self.anchor_mode == 1:
-            base_g = target_global
-        elif self.anchor_mode == 2:
-            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
-        else:
-            center_x = target_global.x() + self.target_widget.width() // 2
-            center_y = target_global.y() + self.target_widget.height() // 2
-            base_g = QPoint(center_x, center_y)
-            
-        body_center_g = base_g + self.offset
-        
-        # Calculate local positions mathematically to avoid mapFromGlobal reliability issues
-        widget_topLeft = self.geometry().topLeft()
-        local_body_center = body_center_g - widget_topLeft
-        tail_tip = (body_center_g + self.tail_target_offset) - widget_topLeft
-        
-        body_rect = QRectF(local_body_center.x() - self.body_size.width() / 2,
-                           local_body_center.y() - self.body_size.height() / 2,
-                           self.body_size.width(), self.body_size.height())
-        
-        body_path = QPainterPath()
-        body_path.addRoundedRect(body_rect, 8, 8)
-        
-        dx = tail_tip.x() - local_body_center.x()
-        dy = tail_tip.y() - local_body_center.y()
-        base_width = 25
-        margin_edge = 10
-        
-        if abs(dx) > abs(dy):
-            bx = body_rect.left() if dx < 0 else body_rect.right()
-            by = max(body_rect.top() + margin_edge + base_width/2, 
-                     min(body_rect.bottom() - margin_edge - base_width/2, tail_tip.y()))
-            p1 = QPointF(bx, by - base_width / 2)
-            p2 = QPointF(bx, by + base_width / 2)
-        else:
-            by = body_rect.top() if dy < 0 else body_rect.bottom()
-            bx = max(body_rect.left() + margin_edge + base_width/2, 
-                     min(body_rect.right() - margin_edge - base_width/2, tail_tip.x()))
-            p1 = QPointF(bx - base_width / 2, by)
-            p2 = QPointF(bx + base_width / 2, by)
-
-        dist = math.sqrt(dx*dx + dy*dy)
-        if dist > 0:
-            tail_path = QPainterPath()
-            tail_poly = QPolygonF([p1, p2, QPointF(tail_tip)])
-            tail_path.addPolygon(tail_poly)
-            merged_path = body_path.united(tail_path)
-        else:
-            merged_path = body_path
+        # Phase 1.1.10: Use unified path calculation
+        merged_path = self._get_shape_path()
 
         painter.setBrush(QBrush(self.bg_color))
         if self.is_edit_mode:
@@ -193,12 +256,16 @@ class StickyHelpWidget(QWidget):
         painter.drawPath(merged_path)
         
         if self.is_edit_mode:
-            # 尻尾先端のアンカー
-            painter.setBrush(QBrush(QColor(255, 0, 0, 200)))
-            painter.setPen(QPen(Qt.GlobalColor.white, 2))
-            painter.drawEllipse(tail_tip, 8, 8)
+            if self.show_tail:
+                # 尻尾先端のアンカー
+                widget_topLeft = self.geometry().topLeft()
+                tail_tip = (body_center_g + self.tail_target_offset) - widget_topLeft
+                painter.setBrush(QBrush(QColor(255, 0, 0, 200)))
+                painter.setPen(QPen(Qt.GlobalColor.white, 2))
+                painter.drawEllipse(tail_tip, 8, 8)
             
             # リサイズハンドル（右下）
+            body_rect = self._get_body_rect()
             handle_size = 12
             handle_rect = QRectF(body_rect.right() - handle_size, body_rect.bottom() - handle_size, handle_size, handle_size)
             painter.setBrush(QBrush(QColor(255, 255, 255, 100)))
@@ -210,6 +277,37 @@ class StickyHelpWidget(QWidget):
                                  QPointF(handle_rect.right(), handle_rect.bottom() - offset))
 
     def eventFilter(self, obj, event):
+        # ターゲットピッカーモード中は Enterキーで確定（クリックだと要素のハンドラが発火するため）
+        if getattr(self, '_picking_target', False) and obj == self.parent_window:
+            if event.type() == QEvent.Type.KeyPress:
+                from PyQt6.QtCore import Qt as QtKey
+                if event.key() in [QtKey.Key.Key_Return, QtKey.Key.Key_Enter, QtKey.Key.Key_Space]:
+                    # Phase 1.1.10: Use childAt to avoid sticking hitting the sticky itself
+                    from PyQt6.QtGui import QCursor
+                    global_pos = QCursor.pos()
+                    local_win_pos = self.parent_window.mapFromGlobal(global_pos)
+                    # childAt is better than widgetAt for precise matching inside a specific window
+                    widget = self.parent_window.childAt(local_win_pos)
+                    
+                    # If we hit nothing or just a layout spacer, try to find top-most widget
+                    if not widget:
+                        widget = QApplication.widgetAt(global_pos)
+                    
+                    # ピッカーモードを終了
+                    self._picking_target = False
+                    self.parent_window.removeEventFilter(self)
+                    self.parent_window.setCursor(Qt.CursorShape.ArrowCursor)
+                    
+                    # 選択されたウィジェットをターゲットに設定
+                    self._on_element_picked(widget)
+                    return True  # イベントを消費
+                elif event.key() == QtKey.Key.Key_Escape:
+                    # Escでキャンセル
+                    self._picking_target = False
+                    self.parent_window.removeEventFilter(self)
+                    self.parent_window.setCursor(Qt.CursorShape.ArrowCursor)
+                    return True
+        
         if obj == self.text_edit and event.type() == QEvent.Type.FocusOut:
             if self.is_edit_mode:
                 self.text_edit.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -222,19 +320,9 @@ class StickyHelpWidget(QWidget):
         if not self.is_edit_mode:
             super().mousePressEvent(event)
             return
-            
-        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
         
-        if self.anchor_mode == 1:
-            base_g = target_global
-        elif self.anchor_mode == 2:
-            base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
-        else:
-            center_x = target_global.x() + self.target_widget.width() // 2
-            center_y = target_global.y() + self.target_widget.height() // 2
-            base_g = QPoint(center_x, center_y)
-            
-        body_center_g = base_g + self.offset
+        # Phase 1.1.7.3: Use _screen_pos as the source of truth
+        body_center_g = self._screen_pos
         
         widget_topLeft = self.geometry().topLeft()
         local_body_center = body_center_g - widget_topLeft
@@ -242,7 +330,7 @@ class StickyHelpWidget(QWidget):
         local_pos = event.pos()
         
         # 1. アンカー（尻尾先端）チェック
-        if (local_pos - tail_tip).manhattanLength() < 25:
+        if self.show_tail and (local_pos - tail_tip).manhattanLength() < 25:
             self._dragging_tail = True
             self._drag_start_pos = event.globalPosition().toPoint()
             event.accept()
@@ -291,6 +379,20 @@ class StickyHelpWidget(QWidget):
             elif event.button() == Qt.MouseButton.RightButton:
                 self._show_context_menu(event.globalPosition().toPoint())
                 event.accept()
+            return # Block default
+        
+        # 4. Phase 1.1.10: Tail body check (for dragging/menu on the tail itself)
+        if self.show_tail:
+            # Check if mouse is on the tail part (path test)
+            path = self._get_shape_path()
+            if path.contains(QPointF(local_pos)):
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self._dragging_body = True
+                    self._drag_start_pos = event.globalPosition().toPoint()
+                    event.accept()
+                elif event.button() == Qt.MouseButton.RightButton:
+                    self._show_context_menu(event.globalPosition().toPoint())
+                    event.accept()
 
     def mouseMoveEvent(self, event):
         if not self.is_edit_mode:
@@ -306,27 +408,32 @@ class StickyHelpWidget(QWidget):
             
         elif self._dragging_body:
             delta = event.globalPosition().toPoint() - self._drag_start_pos
-            self.offset += delta
+            # Phase 1.1.7.3: Update _screen_pos directly instead of offset
+            self._screen_pos += delta
             self._drag_start_pos = event.globalPosition().toPoint()
+            
+            # Phase 1.1.7.4: For Element Follow mode, also update offset
+            if self.anchor_mode == 3 and self.target_widget and self.target_widget != self.parent_window:
+                target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+                target_center = target_global + QPoint(self.target_widget.width() // 2, self.target_widget.height() // 2)
+                self.offset = self._screen_pos - target_center
+            
+            # Update proportional position to match new screen position
+            if self.parent_window:
+                win_geo = self.parent_window.geometry()
+                if win_geo.width() > 0 and win_geo.height() > 0:
+                    rel_x = (self._screen_pos.x() - win_geo.x()) / win_geo.width()
+                    rel_y = (self._screen_pos.y() - win_geo.y()) / win_geo.height()
+                    self._proportional_pos = (rel_x, rel_y)
+            
             self.update_position()
             self.data_changed.emit()
             
         elif self._dragging_tail:
-            # 本体の中心（グローバル）を基準にオフセットを再計算
-            target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+            # Phase 1.1.7.3: Use _screen_pos as the body center
+            body_center_g = self._screen_pos
             
-            if self.anchor_mode == 1:
-                base_g = target_global
-            elif self.anchor_mode == 2:
-                base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
-            else:
-                center_x = target_global.x() + self.target_widget.width() // 2
-                center_y = target_global.y() + self.target_widget.height() // 2
-                base_g = QPoint(center_x, center_y)
-                
-            body_center_g = base_g + self.offset
-            
-            # 新しいオフセット = マウスのグローバル位置 - 本体のグローバル中心
+            # New offset = mouse global position - body global center
             self.tail_target_offset = event.globalPosition().toPoint() - body_center_g
             self.update_position()
             self.data_changed.emit()
@@ -361,8 +468,26 @@ class StickyHelpWidget(QWidget):
         m2.setCheckable(True)
         m2.setChecked(self.anchor_mode == 2)
         
+        m3 = mode_menu.addAction(_("Element Follow (Target)"))
+        m3.setCheckable(True)
+        m3.setChecked(self.anchor_mode == 3)
+        
+        menu.addSeparator()
+        pick_target_action = menu.addAction(_("🎯 Pick Target Element..."))
+        show_target_action = menu.addAction(_("👁 Show Current Target"))
+        
         change_bg_action = menu.addAction(_("Change Background Color"))
         change_text_action = menu.addAction(_("Change Text Color"))
+        
+        menu.addSeparator()
+        # Phase 1.1.10: Style and Tail Controls
+        copy_style_action = menu.addAction(_("Copy Style"))
+        paste_style_action = menu.addAction(_("Paste Style"))
+        paste_style_action.setEnabled(bool(self._style_clipboard))
+        
+        toggle_tail_action = menu.addAction(_("Show Tail"))
+        toggle_tail_action.setCheckable(True)
+        toggle_tail_action.setChecked(self.show_tail)
         
         menu.addSeparator()
         delete_action = menu.addAction(_("Delete (Clear Content)"))
@@ -385,6 +510,14 @@ class StickyHelpWidget(QWidget):
             self.anchor_mode = 2
             self._recalc_offset_after_mode_change()
             self.data_changed.emit()
+        elif action == m3:
+            self.anchor_mode = 3
+            self._recalc_offset_for_element_mode()
+            self.data_changed.emit()
+        elif action == pick_target_action:
+            self._start_element_picker()
+        elif action == show_target_action:
+            self._show_current_target()
         elif action == change_bg_action:
             color = QColorDialog.getColor(self.bg_color, self, _("Select Background Color"), QColorDialog.ColorDialogOption.ShowAlphaChannel)
             if color.isValid():
@@ -397,37 +530,172 @@ class StickyHelpWidget(QWidget):
                 self.text_color = color
                 self._update_text_style()
                 self.data_changed.emit()
+        elif action == copy_style_action:
+            self._copy_style()
+        elif action == paste_style_action:
+            self._paste_style()
+        elif action == toggle_tail_action:
+            self.show_tail = not self.show_tail
+            self.update_position()
+            self.data_changed.emit()
         elif action == delete_action:
             self.text_edit.clear()
 
+    def _copy_style(self):
+        StickyHelpWidget._style_clipboard = {
+            "bg_color": self.bg_color,
+            "text_color": self.text_color,
+            "body_size": QSize(self.body_size),
+            "show_tail": self.show_tail
+        }
+
+    def _paste_style(self):
+        style = StickyHelpWidget._style_clipboard
+        if not style: return
+        self.bg_color = QColor(style["bg_color"])
+        self.text_color = QColor(style["text_color"])
+        self.body_size = QSize(style["body_size"])
+        self.show_tail = style["show_tail"]
+        self._update_text_style()
+        self.update_position()
+        self.data_changed.emit()
+
     def _recalc_offset_after_mode_change(self):
-        """モード変更時に見た目の位置が変わらないように offset を再計算する。"""
-        if not self.target_widget: return
+        """Phase 1.1.7.3: モード変更時に内部状態を同期。"""
+        if not self.parent_window: return
         
-        # 現在のグローバル位置を取得
-        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
-        
-        # 現在の「本体中心グリッド」を以前のモード計算で出す
-        # (すでに update_position で計算されているはずだが、正確を期すため self.offset はそのまま使い、
-        # 逆算して新しいオフセットを求める)
-        
-        # 現在の本体中心(Global)
-        current_rect_g = self.geometry().adjusted(30, 30, -30, -30) # margin=30
+        # 現在の本体中心(Global)を取得
+        current_rect_g = self.geometry().adjusted(30, 30, -30, -30)
         current_body_center_g = current_rect_g.center()
         
-        if self.anchor_mode == 1: # 新しいモードが TopLeft
-            new_base_g = target_global
-        elif self.anchor_mode == 2: # 新しいモードが BottomRight
-            new_base_g = target_global + QPoint(self.target_widget.width(), self.target_widget.height())
-        else: # 0 = Center
-            center_x = target_global.x() + self.target_widget.width() // 2
-            center_y = target_global.y() + self.target_widget.height() // 2
-            new_base_g = QPoint(center_x, center_y)
-            
-        self.offset = current_body_center_g - new_base_g
+        # スクリーン位置を更新
+        self._screen_pos = current_body_center_g
+        
+        # 割合位置を更新
+        win_geo = self.parent_window.geometry()
+        if win_geo.width() > 0 and win_geo.height() > 0:
+            rel_x = (self._screen_pos.x() - win_geo.x()) / win_geo.width()
+            rel_y = (self._screen_pos.y() - win_geo.y()) / win_geo.height()
+            self._proportional_pos = (rel_x, rel_y)
+        
+        self._last_win_geo = win_geo
         self.update_position()
 
+    def _recalc_offset_for_element_mode(self):
+        """要素追従モード切替時にオフセットを再計算。"""
+        if not self.target_widget or self.target_widget == self.parent_window:
+            # ターゲットがない場合は通常モードに戻す
+            self.anchor_mode = 0
+            self._recalc_offset_after_mode_change()
+            return
+        
+        # 現在の本体中心(Global)を取得
+        current_rect_g = self.geometry().adjusted(30, 30, -30, -30)
+        current_body_center_g = current_rect_g.center()
+        
+        # ターゲットの中心を計算
+        target_global = self.target_widget.mapToGlobal(QPoint(0, 0))
+        target_center = target_global + QPoint(self.target_widget.width() // 2, self.target_widget.height() // 2)
+        
+        # オフセット = 現在の本体中心 - ターゲット中心
+        self.offset = current_body_center_g - target_center
+        self._screen_pos = current_body_center_g
+        self.update_position()
+
+    def _start_element_picker(self):
+        """ターゲット要素を選択するピッカーモードを開始。"""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        if not self.parent_window:
+            return
+        
+        # ユーザーにホバー+Enterで選択を促す
+        msg = QMessageBox(self.parent_window)
+        msg.setWindowTitle(_("Pick Target Element"))
+        msg.setText(_("After closing this dialog:\n\n1. Hover your mouse over the target UI element\n2. Press Enter or Space to confirm\n3. Press Escape to cancel\n\nThis method avoids triggering the element's click action."))
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.exec()
+        
+        # 親ウィンドウにイベントフィルターをインストール
+        self._picking_target = True
+        self.parent_window.installEventFilter(self)
+        
+        # カーソルを変更
+        from PyQt6.QtGui import QCursor
+        self.parent_window.setCursor(Qt.CursorShape.CrossCursor)
+    
+    def _on_element_picked(self, widget):
+        """要素が選択されたときに呼ばれる。"""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        # 無効なターゲットをチェック
+        if not widget or widget == self.parent_window:
+            QMessageBox.warning(
+                self.parent_window,
+                _("Invalid Target"),
+                _("Cannot target the main window. Please select a specific UI element.")
+            )
+            return
+        
+        # 付箋自身や他の付箋をターゲットにしない
+        if isinstance(widget, StickyHelpWidget) or widget == self or widget == self.text_edit:
+            QMessageBox.warning(
+                self.parent_window,
+                _("Invalid Target"),
+                _("Cannot target a sticky note. Please select a different UI element.")
+            )
+            return
+        
+        # 親が付箋の場合も除外
+        parent = widget.parent()
+        while parent:
+            if isinstance(parent, StickyHelpWidget):
+                QMessageBox.warning(
+                    self.parent_window,
+                    _("Invalid Target"),
+                    _("Cannot target a sticky note. Please select a different UI element.")
+                )
+                return
+            parent = parent.parent()
+        
+        self.target_widget = widget
+        # 自動的に要素追従モードに設定
+        self.anchor_mode = 3
+        self._recalc_offset_for_element_mode()
+        self.data_changed.emit()
+        
+        # 通知
+        widget_name = widget.objectName() or widget.__class__.__name__
+        QMessageBox.information(
+            self.parent_window,
+            _("Target Set"),
+            _("Target element set to: {name}").format(name=widget_name)
+            )
+    
+    def _show_current_target(self):
+        """現在のターゲット要素を表示。"""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        if not self.target_widget or self.target_widget == self.parent_window:
+            QMessageBox.information(
+                self.parent_window,
+                _("Current Target"),
+                _("No specific target element. (Window)")
+            )
+        else:
+            widget_name = self.target_widget.objectName() or self.target_widget.__class__.__name__
+            QMessageBox.information(
+                self.parent_window,
+                _("Current Target"),
+                _("Target: {name}").format(name=widget_name)
+            )
+
     def to_dict(self):
+        # target_widgetの識別子を保存（objectName またはクラス名）
+        target_name = None
+        if self.target_widget and self.target_widget != self.parent_window:
+            target_name = self.target_widget.objectName() or self.target_widget.__class__.__name__
+        
         return {
             "body_size": [self.body_size.width(), self.body_size.height()],
             "offset": [self.offset.x(), self.offset.y()],
@@ -435,7 +703,9 @@ class StickyHelpWidget(QWidget):
             "bg_style": self.bg_color.rgba(),
             "text_style": self.text_color.rgba(),
             "content": self.text_content,
-            "anchor_mode": self.anchor_mode
+            "anchor_mode": self.anchor_mode,
+            "target_widget_name": target_name,  # Phase 1.1.8: ターゲット保存
+            "show_tail": self.show_tail # Phase 1.1.10
         }
 
     def from_dict(self, data):
@@ -456,6 +726,36 @@ class StickyHelpWidget(QWidget):
             self.text_content = data["content"]
         if "anchor_mode" in data:
             self.anchor_mode = data["anchor_mode"]
+        if "show_tail" in data:
+            self.show_tail = data["show_tail"]
         
         self.text_edit.setPlainText(self.text_content)
+        
+        # Phase 1.1.8: target_widgetの復元（要素追従モードの場合）
+        if "target_widget_name" in data and data["target_widget_name"] and self.parent_window:
+            target_name = data["target_widget_name"]
+            # objectNameで検索
+            found = self.parent_window.findChild(QWidget, target_name)
+            if found:
+                self.target_widget = found
+            else:
+                # objectNameがない場合、クラス名で検索（最初に見つかったもの）
+                for child in self.parent_window.findChildren(QWidget):
+                    if child.__class__.__name__ == target_name:
+                        self.target_widget = child
+                        break
+        
+        # Phase 1.1.7.3: 保存/復元時にスクリーン位置も確定
+        if self.parent_window:
+            self._last_win_geo = self.parent_window.geometry()
+            # offset から復元
+            self._screen_pos = self._last_win_geo.topLeft() + self.offset
+            
+            w = self._last_win_geo.width()
+            h = self._last_win_geo.height()
+            if w > 0 and h > 0:
+                rel_x = (self._screen_pos.x() - self._last_win_geo.x()) / w
+                rel_y = (self._screen_pos.y() - self._last_win_geo.y()) / h
+                self._proportional_pos = (rel_x, rel_y)
+        
         self.update_position()

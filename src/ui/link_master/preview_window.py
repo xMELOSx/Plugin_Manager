@@ -324,20 +324,19 @@ class PreviewWindow(QWidget):
         prop_layout.setContentsMargins(10, 10, 10, 10)
         prop_layout.setSpacing(10)
         
-        # Checkboxes (horizontal layout)
-        checkbox_layout = QHBoxLayout()
-        
+        # Row 1: Link & Visibility
+        status_layout = QHBoxLayout()
         self.deploy_check = QCheckBox(_("Link Enabled"))
-        # Actual deploy/unlink will happen on save, not immediately
-        checkbox_layout.addWidget(self.deploy_check)
-        
+        status_layout.addWidget(self.deploy_check)
         self.visible_check = QCheckBox(_("Visibility"))
-        # Actual visibility change will happen on save, not immediately
-        checkbox_layout.addWidget(self.visible_check)
+        status_layout.addWidget(self.visible_check)
+        status_layout.addStretch()
+        prop_layout.addLayout(status_layout)
         
-        # Favorite & Score (Moved to top right of visibility)
-        checkbox_layout.addSpacing(10)
-        # Favorite button
+        # Row 2: Favorite & Score (Centered)
+        fav_score_layout = QHBoxLayout()
+        fav_score_layout.addStretch()
+        
         is_fav = bool(self.folder_config.get('is_favorite', False))
         self.favorite_btn = QPushButton(_("★Favorite") if is_fav else _("☆Favorite"), self)
         self.favorite_btn.setCheckable(True)
@@ -346,7 +345,7 @@ class PreviewWindow(QWidget):
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
                 background-color: transparent; color: #ccc; border: none; outline: none;
-                text-align: left; padding: 2px 5px; min-width: 100px;
+                text-align: center; padding: 2px 5px; min-width: 100px;
             }
             QPushButton:hover {
                 background-color: #444;
@@ -355,23 +354,20 @@ class PreviewWindow(QWidget):
                 background-color: transparent; color: #f1c40f; font-weight: bold; border: none; outline: none;
             }
         """)
-        # Only update UI text on toggle, actual save happens on save button
         self.favorite_btn.toggled.connect(self._on_favorite_ui_update)
-        checkbox_layout.addWidget(self.favorite_btn)
+        fav_score_layout.addWidget(self.favorite_btn)
         
-        checkbox_layout.addSpacing(15)
-        
-        # Score label and CompactDial
+        fav_score_layout.addSpacing(15)
         score_label = QLabel(_("Score:"), self)
         score_label.setStyleSheet("color: #ccc; font-size: 11px;")
-        checkbox_layout.addWidget(score_label)
+        fav_score_layout.addWidget(score_label)
         
         self.score_dial = CompactDial(self, digits=3, show_arrows=True)
         self.score_dial.valueChanged.connect(self._on_score_changed)
-        checkbox_layout.addWidget(self.score_dial)
+        fav_score_layout.addWidget(self.score_dial)
+        fav_score_layout.addStretch()
         
-        checkbox_layout.addStretch()
-        prop_layout.addLayout(checkbox_layout)
+        prop_layout.addLayout(fav_score_layout)
         
         # Folder Name (read-only) with folder open button
         folder_row = QHBoxLayout()

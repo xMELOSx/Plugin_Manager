@@ -83,3 +83,4 @@ class ThumbnailManager(QObject):
             
         worker = ThumbnailGenWorker(source_path, target_path, self.target_size)
         self.thread_pool.start(worker)
+

@@ -1,9 +1,34 @@
 import os
 import json
 import logging
-from PyQt6.QtCore import QObject, QPoint, QEvent
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QObject, QPoint, QEvent, QTimer, Qt
+from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtGui import QColor, QPainter
 from src.ui.link_master.help_sticky import StickyHelpWidget
+
+
+class HelpEditOverlay(QWidget):
+    """ヘルプ編集モード中にクリックをブロックする半透明オーバーレイ。"""
+    
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 30);")
+        self.hide()
+    
+    def mousePressEvent(self, event):
+        # クリックを吸収するが、ターゲットピッカーモードの場合は特別な処理
+        # 親のhelp_managerにクリックを通知
+        if hasattr(self.parent(), 'help_manager'):
+            manager = self.parent().help_manager
+            if hasattr(manager, '_on_overlay_clicked'):
+                manager._on_overlay_clicked(event.globalPosition().toPoint())
+        event.accept()  # イベントを消費
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 30))
 
 class StickyHelpManager(QObject):
     """
@@ -25,6 +50,15 @@ class StickyHelpManager(QObject):
         from src.core.lang_manager import get_lang_manager
         get_lang_manager().language_changed.connect(self._on_language_changed)
         self._needs_reload = False
+        
+        # Phase 1.1.7: 要素追従モード用のポーリングタイマー
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll_element_positions)
+        self._poll_timer.setInterval(100)  # 100ms間隔
+        
+        # Phase 1.1.8: ヘルプ編集モード用クリックブロッカーオーバーレイ
+        self._edit_overlay = None
+        self._picking_sticky = None  # ターゲット選択中の付箋
 
     def register_sticky(self, element_id, target_widget):
         """特定のUI要素に紐づくヘルプ付箋を登録する。"""
@@ -32,8 +66,11 @@ class StickyHelpManager(QObject):
             return
             
         sticky = StickyHelpWidget(element_id, target_widget, self.parent_window)
+        # ターゲットウィジェットの動きも監視
+        if target_widget and target_widget != self.parent_window:
+            target_widget.installEventFilter(self)
+            
         # リアルタイム保存を廃止（トグル時のみ保存にする）
-        # sticky.data_changed.connect(self.save_all)
         self.stickies[element_id] = sticky
         
         # 保存されたデータがあればロード
@@ -108,12 +145,75 @@ class StickyHelpManager(QObject):
             # if eid in ["target_app", "tag_bar"]:
             #     # self.parent_window.logger.info(f"[HelpProfile] show_all check: eid={eid}, textlen={len(sticky.text_content)}")
         self.is_help_visible = True
+        
+        # Phase 1.1.7: 要素追従モード用タイマーを開始
+        self._poll_timer.start()
 
     def hide_all(self):
+        # Phase 1.1.7: ポーリングタイマーを停止
+        self._poll_timer.stop()
+        
         for sticky in self.stickies.values():
             sticky.hide()
         self.is_help_visible = False
         # toggle_help側で必要に応じてsave_allを呼ぶため、ここでは呼ばない
+
+    def _poll_element_positions(self):
+        """要素追従モード (mode 3) の付箋を定期的に更新。"""
+        if not self.is_help_visible:
+            return
+        
+        for sticky in self.stickies.values():
+            # mode 3 (要素追従) のみ更新
+            if sticky.anchor_mode == 3:
+                sticky.update_position()
+
+    def _show_edit_overlay(self):
+        """編集モード用オーバーレイを表示。"""
+        if self._edit_overlay is None:
+            self._edit_overlay = HelpEditOverlay(self.parent_window)
+        
+        # オーバーレイをメインコンテンツエリアに合わせる
+        if hasattr(self.parent_window, 'container'):
+            container = self.parent_window.container
+            self._edit_overlay.setGeometry(container.geometry())
+            self._edit_overlay.setParent(container)
+        else:
+            self._edit_overlay.setGeometry(self.parent_window.rect().adjusted(0, 50, 0, 0))
+        
+        self._edit_overlay.show()
+        self._edit_overlay.raise_()
+    
+    def _hide_edit_overlay(self):
+        """編集モード用オーバーレイを非表示。"""
+        if self._edit_overlay:
+            self._edit_overlay.hide()
+        self._picking_sticky = None
+    
+    def start_picking_for_sticky(self, sticky):
+        """特定の付箋のターゲット選択を開始。"""
+        self._picking_sticky = sticky
+        if self._edit_overlay:
+            self._edit_overlay.setCursor(Qt.CursorShape.CrossCursor)
+    
+    def _on_overlay_clicked(self, global_pos):
+        """オーバーレイがクリックされたときに呼ばれる。"""
+        if self._picking_sticky is not None:
+            # オーバーレイを一時的に非表示にして、下にあるウィジェットを取得
+            if self._edit_overlay:
+                self._edit_overlay.hide()
+            
+            widget = QApplication.widgetAt(global_pos)
+            
+            if self._edit_overlay:
+                self._edit_overlay.show()
+                self._edit_overlay.setCursor(Qt.CursorShape.ArrowCursor)
+            
+            # 付箋のターゲット設定を呼び出す
+            if self._picking_sticky and hasattr(self._picking_sticky, '_on_element_picked'):
+                self._picking_sticky._on_element_picked(widget)
+            
+            self._picking_sticky = None
 
     def eventFilter(self, obj, event):
         # 親ウィンドウの移動やリサイズを検知
@@ -130,11 +230,24 @@ class StickyHelpManager(QObject):
                         # 復元されたら、ヘルプが有効だった場合のみ再表示
                         self.show_all()
 
-            elif event.type() in [QEvent.Type.Move, QEvent.Type.Resize]:
                 if self.is_help_visible:
                     # 全ての付箋の位置を更新
                     for sticky in self.stickies.values():
                         sticky.update_position()
+            
+            # 親ウィンドウ自体の移動/リサイズ時にも全付箋を更新
+            elif event.type() in [QEvent.Type.Move, QEvent.Type.Resize]:
+                if self.is_help_visible:
+                    for sticky in self.stickies.values():
+                        sticky.update_position()
+        
+        # ターゲットウィジェットの移動・リサイズを検知
+        elif self.is_help_visible and event.type() in [QEvent.Type.Move, QEvent.Type.Resize]:
+            # 動いたウィジェットがターゲットになっている付箋を探して更新
+            for sticky in self.stickies.values():
+                if sticky.target_widget == obj:
+                    sticky.update_position()
+                    
         return super().eventFilter(obj, event)
 
     def add_free_sticky(self):
@@ -151,6 +264,42 @@ class StickyHelpManager(QObject):
         sticky.set_edit_mode(True)
         sticky.show()
         return sticky
+
+    def bring_all_to_screen(self):
+        """画面外に飛んでしまった付箋をウィンドウ内に戻す。"""
+        if not self.parent_window:
+            return
+        
+        win_geo = self.parent_window.geometry()
+        # ウィンドウの中心付近にリセット
+        reset_x = win_geo.x() + win_geo.width() // 2
+        reset_y = win_geo.y() + win_geo.height() // 2
+        
+        from PyQt6.QtCore import QPoint
+        for sticky in self.stickies.values():
+            screen_pos = sticky._screen_pos
+            
+            # 画面外かどうかチェック (ウィンドウ範囲から大きくはみ出ているか)
+            margin = 100
+            is_off_screen = (
+                screen_pos.x() < win_geo.x() - margin or
+                screen_pos.x() > win_geo.x() + win_geo.width() + margin or
+                screen_pos.y() < win_geo.y() - margin or
+                screen_pos.y() > win_geo.y() + win_geo.height() + margin
+            )
+            
+            if is_off_screen:
+                # Phase 1.1.8: モードを「固定」に変更して無限移動を停止
+                sticky.anchor_mode = 1
+                
+                # ウィンドウ中央にリセット
+                sticky._screen_pos = QPoint(reset_x, reset_y)
+                
+                # 割合位置も更新
+                if win_geo.width() > 0 and win_geo.height() > 0:
+                    sticky._proportional_pos = (0.5, 0.5)
+                
+                sticky.update_position()
 
     def save_all(self):
         """全付箋のデータをYAMLに保存（言語毎）。"""

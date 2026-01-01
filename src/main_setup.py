@@ -69,4 +69,5 @@ def setup_error_handling():
 
     sys.excepthook = handle_exception
     status = "ACTIVE" if HAS_RICH else "INACTIVE (rich not found)"
-    logging.info(f"--- LinkMaster Production Session Started (Rich Traceback: {status}) ---")
+    from src.core.version import VERSION_STRING
+    logging.info(f"--- {VERSION_STRING} Production Session Started (Rich Traceback: {status}) ---")

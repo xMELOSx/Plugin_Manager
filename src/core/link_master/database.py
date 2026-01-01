@@ -56,6 +56,13 @@ class LinkMasterRegistry:
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN url_list TEXT DEFAULT '[]'")
             except: pass
+            # App-level favorites and scoring
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN is_favorite INTEGER DEFAULT 0")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN score INTEGER DEFAULT 0")
+            except: pass
 
             conn.commit()
 
@@ -97,8 +104,8 @@ class LinkMasterRegistry:
             return [dict(row) for row in cursor.fetchall()]
 
     def add_app(self, data: dict):
-        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, default_subpath, managed_folder_name, conflict_policy, deployment_type, cover_image)
-                 VALUES (:name, :storage_root, :target_root, :target_root_2, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :cover_image)'''
+        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, default_subpath, managed_folder_name, conflict_policy, deployment_type, cover_image, is_favorite, score)
+                 VALUES (:name, :storage_root, :target_root, :target_root_2, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :cover_image, :is_favorite, :score)'''
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(sql, data)
@@ -108,7 +115,8 @@ class LinkMasterRegistry:
     def update_app(self, app_id: int, data: dict):
         valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'managed_folder_name', 
                       'default_subpath', 'conflict_policy', 'deployment_type', 'cover_image', 'last_target',
-                      'default_category_style', 'default_package_style', 'executables', 'url_list']
+                      'default_category_style', 'default_package_style', 'executables', 'url_list',
+                      'is_favorite', 'score']
 
         parts = []
         params = []
@@ -237,6 +245,14 @@ class LinkMasterDB:
                 name TEXT NOT NULL,
                 sort_order INTEGER DEFAULT 0,
                 is_expanded INTEGER DEFAULT 1
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_lib_folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER DEFAULT NULL,
+                sort_order INTEGER DEFAULT 0,
+                is_expanded INTEGER DEFAULT 1,
+                FOREIGN KEY(parent_id) REFERENCES lm_lib_folders(id) ON DELETE CASCADE
             )'''
         ]
         with self.get_connection() as conn:
@@ -327,6 +343,10 @@ class LinkMasterDB:
             except: pass
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_hidden INTEGER DEFAULT 0")
+            except: pass
+            
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN lib_folder_id INTEGER DEFAULT NULL")
             except: pass
             
             try:
@@ -568,6 +588,7 @@ class LinkMasterDB:
                       'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
                       'is_favorite', 'score', 'url_list',
                       'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
+                      'lib_folder_id',
                       'has_logical_conflict', 'is_library_alt_version',
                       'size_bytes', 'scanned_at']
         updates = []
@@ -713,6 +734,45 @@ class LinkMasterDB:
     def set_setting(self, key: str, value: str):
         with self.get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO lm_settings (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+
+    # --- Library Folders ---
+    def get_lib_folders(self) -> list:
+        """Get all library folders."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, parent_id, sort_order, is_expanded FROM lm_lib_folders ORDER BY sort_order, name")
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def add_lib_folder(self, name: str, parent_id: int = None) -> int:
+        """Add a new library folder."""
+        sql = "INSERT INTO lm_lib_folders (name, parent_id) VALUES (?, ?)"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, (name, parent_id))
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_lib_folder(self, folder_id: int, **kwargs):
+        """Update a library folder's details."""
+        if not kwargs: return
+        fields = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        sql = f"UPDATE lm_lib_folders SET {fields} WHERE id = ?"
+        params = list(kwargs.values()) + [folder_id]
+        with self.get_connection() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
+    def delete_lib_folder(self, folder_id: int):
+        """Delete a library folder and move contents to root."""
+        with self.get_connection() as conn:
+            # Move items in the folder to root (null)
+            conn.execute("UPDATE lm_folder_config SET lib_folder_id = NULL WHERE lib_folder_id = ?", (folder_id,))
+            # Move child folders to root (null)
+            conn.execute("UPDATE lm_lib_folders SET parent_id = NULL WHERE parent_id = ?", (folder_id,))
+            # Delete the folder itself
+            conn.execute("DELETE FROM lm_lib_folders WHERE id = ?", (folder_id,))
             conn.commit()
 
 # Singletons / Helpers

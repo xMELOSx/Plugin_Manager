@@ -34,6 +34,10 @@ class TagWidget(QLabel):
             if os.path.exists(icon_path):
                  self._set_icon(icon_path)
 
+        # Phase 1.1.8: Set unique objectName based on tag value
+        tag_val = self.tag_data.get('value', 'unnamed')
+        self.setObjectName(f"tag_btn_{tag_val}")
+
         if not is_special_btn:
              # display_mode can be: 'text', 'text_symbol', 'symbol', 'image'
              self.display_mode = tag_data.get('display_mode', 'text')
@@ -231,6 +235,7 @@ class TagBar(QWidget):
         from src.core.lang_manager import _
         # Integrated Edit Button
         self.edit_btn = QPushButton("E")
+        self.edit_btn.setObjectName("tagbar_edit_btn")
         self.edit_btn.setFixedSize(24, 24)
         self.edit_btn.setToolTip(_("Edit Frequent Tags"))
         self.edit_btn.clicked.connect(self.request_edit_tags.emit)

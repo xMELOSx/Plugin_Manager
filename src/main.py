@@ -10,8 +10,19 @@ from datetime import datetime
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from src.apps.link_master_window import LinkMasterWindow
-
 # setup_error_handling is now imported from main_setup and called at the top of this file.
+
+def set_app_user_model_id():
+    """Ensure the process name and taskbar icon are correctly identified as Dionys Control."""
+    if sys.platform == 'win32':
+        import ctypes
+        from src.core.version import VERSION
+        # APPID format: CompanyName.ProductName.SubProduct.VersionInformation
+        myappid = f'xMELOSx.DionysControl.LinkMaster.{VERSION}'
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            logging.error(f"Failed to set AppUserModelID: {e}")
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -23,9 +34,15 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def main():
-    
+    set_app_user_model_id()
     try:
         app = QApplication(sys.argv)
+        # Set application name for the OS to see
+        from src.core.version import APP_NAME
+        app.setApplicationName(APP_NAME)
+        
+        # Use Fusion style as a workaround for background transparency issues on Windows context menus
+        app.setStyle("Fusion")
         
         # アイコンの読み込み (EXE対応)
         icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
@@ -36,7 +53,8 @@ def main():
             window.setWindowIcon(QIcon(icon_path))
         
         window.show()
-        logging.info("Launched LinkMaster Window.")
+        from src.core.version import VERSION_STRING
+        logging.info(f"Launched {VERSION_STRING} Window.")
         
         sys.exit(app.exec())
     except Exception:

@@ -6,10 +6,72 @@ import os
 import logging
 import ctypes
 from src.core import core_handler
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def _parallel_link_worker(source_path: str, target_link_path: str, conflict_policy: str):
+    """
+    Top-level worker for parallel execution. Handles a single link creation.
+    Returns a result dict for the main process to aggregate.
+    """
+    import os
+    import ctypes
+    
+    # Simple check for admin/dev mode (informative for errors)
+    def is_admin():
+        try: return ctypes.windll.shell32.IsUserAnAdmin()
+        except: return False
+
+    if not os.path.exists(source_path):
+        return {"status": "error", "path": target_link_path, "msg": f"Source missing: {source_path}"}
+    
+    # Ensure target directory
+    os.makedirs(os.path.dirname(target_link_path), exist_ok=True)
+    
+    # Conflict handling (Simplified for parallel worker: backup or overwrite)
+    action_taken = "none"
+    if os.path.lexists(target_link_path):
+        if conflict_policy == 'skip':
+            return {"status": "skip", "path": target_link_path}
+        
+        try:
+            if conflict_policy == 'overwrite':
+                if os.path.islink(target_link_path) or os.path.isfile(target_link_path):
+                    os.unlink(target_link_path)
+                elif os.path.isdir(target_link_path):
+                    import shutil
+                    shutil.rmtree(target_link_path)
+                action_taken = "overwrite"
+            elif conflict_policy == 'backup':
+                import time
+                import random
+                import string
+                suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                backup_path = f"{target_link_path}.bak_{int(time.time())}_{suffix}"
+                os.rename(target_link_path, backup_path)
+                action_taken = "backup"
+        except Exception as e:
+            return {"status": "error", "path": target_link_path, "msg": f"Conflict handle failed: {e}"}
+
+    try:
+        is_dir = os.path.isdir(source_path)
+        os.symlink(source_path, target_link_path, target_is_directory=is_dir)
+        return {"status": "success", "path": target_link_path, "action": action_taken}
+    except OSError as e:
+        msg = str(e)
+        if not is_admin():
+            msg += " (Admin/DevMode may be required)"
+        return {"status": "error", "path": target_link_path, "msg": msg}
 
 class Deployer:
     def __init__(self):
         self.logger = logging.getLogger("LinkMasterDeployer")
+        self.last_actions = [] # Phase 1.1.6: Track actions for UI reporting
+        # Cap max_workers to 60 to avoid Windows ProcessPoolExecutor limit (61)
+        count = os.cpu_count() or 4
+        self.max_workers = min(count, 60)
+    
+    def clear_actions(self):
+        self.last_actions = []
 
     def _is_admin(self):
         try:
@@ -27,7 +89,10 @@ class Deployer:
             return False
 
         if os.path.lexists(target_link_path):
-            if not self._handle_conflict(target_link_path, conflict_policy):
+            action = self._handle_conflict(target_link_path, conflict_policy)
+            if action == 'skip':
+                return False
+            if action == 'error':
                 return False
 
         # Ensure target directory exists
@@ -52,11 +117,12 @@ class Deployer:
                 self.logger.warning("Symlink creation often requires Administrator privileges or Developer Mode on Windows.")
             return False
 
-    def _handle_conflict(self, path: str, policy: str) -> bool:
-        """Handles existing path according to policy. Returns True if okay to proceed, False otherwise."""
+    def _handle_conflict(self, path: str, policy: str) -> str:
+        """Handles existing path according to policy. Returns action taken: 'backup', 'overwrite', 'skip', 'error', 'none'."""
         if policy == 'skip':
             self.logger.info(f"Policy: SKIP - preserving {path}")
-            return False
+            self.last_actions.append({'type': 'skip', 'path': path})
+            return 'skip'
         
         if policy == 'overwrite':
             try:
@@ -66,10 +132,11 @@ class Deployer:
                     import shutil
                     shutil.rmtree(path)
                 self.logger.info(f"Policy: OVERWRITE - removed {path}")
-                return True
+                self.last_actions.append({'type': 'overwrite', 'path': path})
+                return 'overwrite'
             except Exception as e:
                 self.logger.error(f"Failed to overwrite {path}: {e}")
-                return False
+                return 'error'
                 
         if policy == 'backup':
             try:
@@ -77,12 +144,13 @@ class Deployer:
                 backup_path = f"{path}.bak_{int(time.time())}"
                 os.rename(path, backup_path)
                 self.logger.info(f"Policy: BACKUP - moved {path} to {backup_path}")
-                return True
+                self.last_actions.append({'type': 'backup', 'path': path, 'backup_path': backup_path})
+                return 'backup'
             except Exception as e:
                 self.logger.error(f"Failed to backup {path}: {e}")
-                return False
+                return 'error'
         
-        return False
+        return 'error'
 
     def remove_link(self, target_link_path: str, source_path_hint: str = None) -> bool:
         """
@@ -218,6 +286,7 @@ class Deployer:
                 return False
 
         success = True
+        links_to_create = []
         try:
             for root, dirs, files in os.walk(source_path):
                 rel_root = os.path.relpath(root, source_path)
@@ -256,14 +325,19 @@ class Deployer:
                             f_target = os.path.join(target_link_path, f)
                     
                     f_source = os.path.join(root, f)
-                    
-                    # Ensure parent exists for the link (vital for partial deployment)
-                    os.makedirs(os.path.dirname(f_target), exist_ok=True)
-                    
-                    if not self.deploy_link(f_source, f_target, conflict_policy):
-                        # If skip, it returns False but we might want to continue other files
-                        if conflict_policy != 'skip':
-                             success = False
+                    links_to_create.append((f_source, f_target))
+            
+            if not links_to_create:
+                return True
+                
+            # Execute batch deployment in parallel
+            self.logger.info(f"Parallel bulk deployment: {len(links_to_create)} files")
+            results = self.deploy_links_batch(links_to_create, conflict_policy)
+            
+            # Re-check for any errors
+            for res in results:
+                if res['status'] == 'error' and conflict_policy != 'skip':
+                    success = False
                          
         except Exception as e:
             self.logger.error(f"Filtered deploy failed: {e}")
@@ -271,14 +345,53 @@ class Deployer:
             
         return success
 
+    def deploy_links_batch(self, link_pairs: list, conflict_policy: str = 'backup') -> list:
+        """
+        Processes multiple link creations in parallel using ProcessPoolExecutor.
+        link_pairs: List of (source_path, target_link_path)
+        """
+        import time
+        t0 = time.perf_counter()
+        results = []
+        
+        # Collect results
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_path = {
+                executor.submit(_parallel_link_worker, src, tgt, conflict_policy): (src, tgt) 
+                for src, tgt in link_pairs
+            }
+            
+            for future in as_completed(future_to_path):
+                try:
+                    res = future.result()
+                    results.append(res)
+                    # Sync back to internal actions tracker for reporting
+                    if res['status'] != 'error' and res.get('action') != 'none':
+                        self.last_actions.append({'type': res.get('action'), 'path': res['path']})
+                    if res['status'] == 'error':
+                        self.logger.error(f"Batch link failed: {res['path']} -> {res['msg']}")
+                except Exception as exc:
+                    pair = future_to_path[future]
+                    self.logger.error(f"Worker generated an exception for {pair}: {exc}")
+                    results.append({"status": "error", "path": pair[1], "msg": str(exc)})
+
+        self.logger.info(f"Parallel batch ({len(link_pairs)} items) took {time.perf_counter()-t0:.3f}s")
+        return results
+
     def _is_excluded(self, rel_path: str, exclude_list: list) -> bool:
         import fnmatch
         path_norm = rel_path.replace("\\", "/")
-        # Phase 28: Global hard-coded exclusions for internal folders
-        base = os.path.basename(path_norm)
-        if base in ["_Backup", "_Trash"] or base.startswith('.'):
-            return True
+        parts = path_norm.split("/")
         
+        # Phase 28: Global hard-coded exclusions for internal folders
+        # Check if ANY part of the path is restricted
+        restricted = {"_Backup", "_Trash"}
+        for part in parts:
+            if part in restricted or part.startswith('.'):
+                return True
+        
+        # Check custom patterns against both full rel_path and basename
+        base = parts[-1] if parts else ""
         for pattern in exclude_list:
             if fnmatch.fnmatch(path_norm, pattern) or fnmatch.fnmatch(base, pattern):
                 return True
@@ -353,9 +466,16 @@ class Deployer:
         """
         Sweeps through a list of search roots and removes ANY symlink found
         that points specifically into the source_root.
+        Uses ThreadPoolExecutor for parallel deletion.
         """
+        import time
+        t0 = time.perf_counter()
         source_root_norm = self._normalize_path(source_root)
         self.logger.info(f"Sweeping for orphaned links pointing to: {source_root_norm}")
+        
+        # Phase 1: Collect all orphaned links
+        orphan_links = []
+        empty_dirs = []
         
         for root_dir in search_roots:
             if not os.path.isdir(root_dir): continue
@@ -372,13 +492,38 @@ class Deployer:
                                 real = os.path.join(os.path.dirname(path), real)
                                 
                             if self._normalize_path(real).startswith(source_root_norm):
-                                os.unlink(path)
-                                self.logger.info(f"Sweep removed orphaned link: {path}")
+                                orphan_links.append(path)
                         except: pass
                 
-                # Cleanup empty folders (except the search root itself)
+                # Track empty folders for later cleanup (except the search root itself)
                 if root != root_dir:
-                    try:
-                        if not os.listdir(root):
-                            os.rmdir(root)
-                    except: pass
+                    empty_dirs.append(root)
+        
+        # Phase 2: Parallel deletion using ThreadPoolExecutor
+        removed_count = 0
+        if orphan_links:
+            def _unlink_safe(path):
+                try:
+                    os.unlink(path)
+                    return True
+                except:
+                    return False
+            
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                results = list(executor.map(_unlink_safe, orphan_links))
+                removed_count = sum(results)
+        
+        # Phase 3: Cleanup empty folders (sequential, as order matters)
+        dirs_removed = 0
+        for d in empty_dirs:
+            try:
+                if os.path.isdir(d) and not os.listdir(d):
+                    os.rmdir(d)
+                    dirs_removed += 1
+            except: pass
+        
+        elapsed = time.perf_counter() - t0
+        self.logger.info(f"Sweep completed: Removed {removed_count} orphaned links, {dirs_removed} empty dirs in {elapsed:.3f}s")
+
+
+

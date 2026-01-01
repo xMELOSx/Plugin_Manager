@@ -108,6 +108,7 @@ class LMPresetsMixin:
         preset_paths = set()
         preset_categories = set()
         
+        links_to_create = []
         is_append_mode = (clicked == btn_append)
         
         for item in items:
@@ -118,13 +119,22 @@ class LMPresetsMixin:
             # In append mode, skip if target already exists (don't create .bak)
             if is_append_mode and os.path.exists(target):
                 skipped_count += 1
-            elif self.deployer.deploy_link(source, target):
-                success_count += 1
+                continue
+            
+            links_to_create.append((source, target))
             
             preset_paths.add(rel_path)
             parts = rel_path.replace('/', os.sep).split(os.sep)
             if len(parts) >= 1:
                 preset_categories.add(parts[0])
+        
+        if links_to_create:
+            self.logger.info(f"Loading preset in parallel ({len(links_to_create)} items)...")
+            results = self.deployer.deploy_links_batch(links_to_create, 'backup' if not is_append_mode else 'skip')
+            success_count = sum(1 for r in results if r['status'] == 'success')
+            error_count = sum(1 for r in results if r['status'] == 'error')
+            if error_count > 0:
+                self.logger.error(f"Preset load had {error_count} errors.")
                 
         QMessageBox.information(self, "Deployed", f"Deployed {success_count}/{len(items)} items from preset.")
         
@@ -216,3 +226,4 @@ class LMPresetsMixin:
                 self._on_app_changed(self.app_combo.currentIndex()) # Refresh view
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Unload failed: {e}")
+

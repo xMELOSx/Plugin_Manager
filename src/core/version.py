@@ -1,12 +1,12 @@
 """
-Dyonys Control - Version Constants
+Dionys Control - Version Constants
 This file contains version information for the application.
 Update VERSION_PATCH when code changes are made.
 """
 
-APP_NAME = "Dyonys Control"
+APP_NAME = "Dionys Control"
 VERSION_MAJOR = 1
-VERSION_MINOR = 0
+VERSION_MINOR = 1
 VERSION_PATCH = 8
 VERSION = f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"
 VERSION_STRING = f"{APP_NAME} v{VERSION}"

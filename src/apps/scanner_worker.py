@@ -66,12 +66,29 @@ class ScannerWorker(QObject):
             
             # Phase 28 Optimization: Pre-group folder configs by parent for O(1) child scan
             self._parent_config_map = {}
+            # Phase Hierarchical Filtering: Pre-calculate ancestor paths for favorites and links
+            self._favorite_ancestors = set()
+            self._linked_ancestors = set()
+            
             for rel, cfg in folder_configs.items():
                 p_rel = os.path.dirname(rel).replace('\\', '/')
                 if p_rel == ".": p_rel = ""
                 if p_rel not in self._parent_config_map:
                     self._parent_config_map[p_rel] = []
                 self._parent_config_map[p_rel].append((rel, cfg))
+                
+                # Ancestor tracking
+                if cfg.get('is_favorite', 0):
+                    parts = rel.split('/')
+                    for i in range(len(parts)):
+                        ancestor = '/'.join(parts[:i])
+                        self._favorite_ancestors.add(ancestor)
+                
+                if cfg.get('last_known_status') in ('linked', 'partial'):
+                    parts = rel.split('/')
+                    for i in range(len(parts)):
+                        ancestor = '/'.join(parts[:i])
+                        self._linked_ancestors.add(ancestor)
             
             if self.search_config:
                 # 1. Recursive Search Mode
@@ -147,6 +164,10 @@ class ScannerWorker(QObject):
         # Clean up optimization map after use
         if hasattr(self, '_parent_config_map'):
             del self._parent_config_map
+        if hasattr(self, '_favorite_ancestors'):
+            del self._favorite_ancestors
+        if hasattr(self, '_linked_ancestors'):
+            del self._linked_ancestors
         return results
 
     def _recursive_search(self, folder_configs):
@@ -319,11 +340,15 @@ class ScannerWorker(QObject):
                 self.logger.warning(f"Failed to sync status for {item_rel}: {e}")
 
         # 3. Child Status Check (Folders only)
-        has_linked = False
+        has_linked = item_rel in getattr(self, '_linked_ancestors', set())
+        has_favorite = item_rel in getattr(self, '_favorite_ancestors', set())
         has_conflict = False
         t_child_start = time.perf_counter()
-        if os.path.isdir(item_abs_path):
-            has_linked, has_conflict = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
+        if os.path.isdir(item_abs_path) and not (has_linked and has_favorite):
+            # Fallback to direct scan if not caught by pre-calc (e.g. physical status not in DB)
+            h_l, h_c = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
+            has_linked = has_linked or h_l
+            has_conflict = h_c
         t_child_end = time.perf_counter()
         
         # 4. Misplaced Detection (Phase 18.11 Enhanced)
@@ -376,6 +401,7 @@ class ScannerWorker(QObject):
             'parent_path': parent_path,
             'config': item_config,
             'has_linked': has_linked,
+            'has_favorite': has_favorite, # Add explicit flag
             'has_conflict': has_conflict,
             'link_status': link_status,
             'is_misplaced': is_misplaced,

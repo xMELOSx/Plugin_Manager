@@ -16,6 +16,7 @@ import shutil
 import zipfile
 import subprocess
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from src.core.lang_manager import _
 
 
 class LMImportMixin:
@@ -91,16 +92,21 @@ class LMImportMixin:
                 return
 
             if result == "folder":
-                path = QFileDialog.getExistingDirectory(self, f"Select Folder to Import as {target_type}")
+                type_name = _("Folder") if target_type == "category" else _("Package")
+                path = QFileDialog.getExistingDirectory(self, _("Select Folder to Import as {type}").format(type=type_name))
+                paths = [path] if path else []
             elif result == "zip":
-                path, _filter = QFileDialog.getOpenFileName(self, f"Select Zip to Import as {target_type}", "", "Zip Files (*.zip);;All Files (*.*)")
+                type_name = _("Folder") if target_type == "category" else _("Package")
+                paths, _filter = QFileDialog.getOpenFileNames(self, _("Select Zip(s) to Import as {type}").format(type=type_name), "", _("Zip Files (*.zip);;All Files (*.*)"))
             else:
                 return
 
-            if path:
+            if paths:
                 if self.preset_filter_mode:
                     self.preset_filter_mode = False
-                self._handle_drop(path, target_type)
+                
+                for path in paths:
+                    self._handle_drop(path, target_type)
                 # Optimized Refresh
                 if target_type == "package" and getattr(self, 'current_path', None):
                     self.search_bar.blockSignals(True)
@@ -153,7 +159,7 @@ class LMImportMixin:
                     zip_ref.extractall(dest_path)
                 self.logger.info(f"Extracted {source_path} to {dest_path}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to extract zip: {e}")
+                QMessageBox.critical(self, _("Error"), _("Failed to extract zip: {error}").format(error=e))
                 return
         # Handle Folder
         elif os.path.isdir(source_path):
@@ -168,7 +174,7 @@ class LMImportMixin:
                 shutil.copytree(source_path, dest_path)
                 self.logger.info(f"Copied folder {source_path} to {dest_path}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to copy folder: {e}")
+                QMessageBox.critical(self, _("Error"), _("Failed to copy folder: {error}").format(error=e))
                 return
         else:
             return

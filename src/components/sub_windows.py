@@ -298,7 +298,7 @@ class OptionsWindow(FramelessWindow):
         spin.blockSignals(False)
         
         apply_func(value)
-        self._save_settings()  # Auto-save on change
+        # Removed: auto-save on change - now saved on close only
 
     def _apply_bg_opacity(self, value):
         if self.parent_debug_window:
@@ -405,10 +405,11 @@ class OptionsWindow(FramelessWindow):
     def _on_always_top_toggled(self, checked):
         if self.parent_debug_window:
             self.parent_debug_window.set_pin_state(checked)
-        self._save_settings()
+        # Removed: _save_settings() - now saved on close only
 
     def _on_remember_geo_toggled(self, checked):
-        self._save_settings()
+        # Removed: _save_settings() - now saved on close only
+        pass
 
     def update_state_from_parent(self, is_pinned: bool):
         """Called when parent changes state to sync checkbox."""
@@ -417,9 +418,11 @@ class OptionsWindow(FramelessWindow):
         self.always_top_cb.blockSignals(block)
     
     def closeEvent(self, event):
-        """Override to emit closed signal when X button is clicked."""
+        """Override to emit closed signal and save settings when closed."""
+        self._save_settings()  # Save settings only on close
         self.closed.emit()
         super().closeEvent(event)
+
 
 class HelpWindow(FramelessWindow):
     closed = pyqtSignal()  # Signal emitted when window is closed via X button
@@ -488,9 +491,16 @@ class AboutWindow(FramelessWindow):
         self.setWindowTitle("About")
         
         # Ensure no maximize/minimize, just tool window behavior
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        # MSWindowsFixedSizeDialogHint removes min/max buttons on Windows
+        self.setWindowFlags(
+            self.windowFlags() 
+            | Qt.WindowType.Tool 
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.MSWindowsFixedSizeDialogHint
+        )
         self.resize(380, 320)
         self.set_resizable(False)
+        self.hide_min_max_buttons()  # Hide min/max buttons for About dialog
         self._init_ui()
     
     def _init_ui(self):

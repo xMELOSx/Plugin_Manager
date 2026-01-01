@@ -36,8 +36,9 @@ from src.apps.scanner_worker import ScannerWorker
 from src.apps.size_scanner_worker import SizeScannerWorker
 from PyQt6.QtCore import QThread, QTimer
 
-# Refactoring Phase 2: Import Mixins
-from src.apps.lm_batch_ops import LMBatchOpsMixin
+# Refactoring Phase 4: Functional Mixin split
+from src.apps.lm_batch_deployment_ops import LMDeploymentOpsMixin
+from src.apps.lm_batch_file_ops import LMFileOpsMixin
 from src.apps.lm_presets import LMPresetsMixin
 from src.apps.lm_trash import LMTrashMixin
 from src.apps.lm_search import LMSearchMixin
@@ -54,7 +55,11 @@ from src.ui.link_master.help_sticky import StickyHelpWidget
 from src.core.link_master.help_manager import StickyHelpManager
 from src.apps.lm_file_management import LMFileManagementMixin
 
-class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPortabilityMixin, LMImportMixin, LMScanHandlerMixin, LMNavigationMixin, LMDisplayMixin, LMCardSettingsMixin, LMBatchOpsMixin, LMPresetsMixin, LMTrashMixin, LMSearchMixin, LMSelectionMixin, FramelessWindow, OptionsMixin):
+# Factory Modules
+from .lm_ui_factory import setup_ui
+from .lm_context_menu_factory import create_item_context_menu
+
+class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPortabilityMixin, LMImportMixin, LMScanHandlerMixin, LMNavigationMixin, LMDisplayMixin, LMCardSettingsMixin, LMDeploymentOpsMixin, LMFileOpsMixin, LMPresetsMixin, LMTrashMixin, LMSearchMixin, LMSelectionMixin, FramelessWindow, OptionsMixin):
     def __init__(self):
         self._init_start_t = time.perf_counter()
         super().__init__()
@@ -133,6 +138,19 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Link Filter State (for linked/unlinked category filtering)
         self.link_filter_mode = None  # 'linked', 'unlinked', or None
+        self.favorite_filter_mode = False
+
+        # Phase 4 Style Sync: Base Button Styles
+        self.btn_normal_style = "background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px;"
+        self.btn_selected_style = "background-color: #3498db; color: #fff; border: 1px solid #5dade2; border-radius: 4px; padding: 2px; font-weight: bold;"
+        self.btn_no_override_style = "background-color: #2c3e50; color: #888; border: 1px solid #444; border-radius: 4px; padding: 2px;"
+
+        # Initialize panel attributes to None to avoid early Access AttributeError
+        self.library_panel = None
+        self.presets_panel = None
+        self.notes_panel = None
+        self.tools_panel = None
+        self.explorer_panel = None
 
         
         self.resize(1400, 850)
@@ -448,20 +466,40 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     def _init_title_buttons(self):
         # 1. Option Button
         self.opt_btn = TitleBarButton("⚙", is_toggle=True)
+        self.opt_btn.setObjectName("titlebar_options_btn")
         self.opt_btn.clicked.connect(self.toggle_options)
         self.add_title_bar_button(self.opt_btn, index=0)
 
         # 2. Pin Button (Leftmost custom button)
         self.pin_btn = TitleBarButton("📌", is_toggle=True)
+        self.pin_btn.setObjectName("titlebar_pin_btn")
         self.pin_btn.clicked.connect(self.toggle_pin_click)
         self.add_title_bar_button(self.pin_btn, index=0)
         
         # 3. Help Button (To the right of pin)
         self.help_btn = TitleBarButton("?", is_toggle=True)
+        self.help_btn.setObjectName("titlebar_help_btn")
         self.help_btn.clicked.connect(self.toggle_help)
         self.help_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.help_btn.customContextMenuRequested.connect(self._show_help_button_menu)
         self.add_title_bar_button(self.help_btn, index=1)
+
+        # 4. Favorite Switcher Area (Next to Title)
+        # We insert this after the title label in the title bar layout
+        # index 0: icon_label, index 1: title_label, index 2: STRETCH
+        # Let's find index of title_label and insert after it.
+        self.fav_switcher_container = QWidget()
+        self.fav_switcher_container.setObjectName("fav_switcher_container")
+        self.fav_switcher_layout = QHBoxLayout(self.fav_switcher_container)
+        self.fav_switcher_layout.setContentsMargins(5, 0, 5, 0)
+        self.fav_switcher_layout.setSpacing(2)
+        
+        # In FramelessWindow._init_frameless_ui:
+        # self.title_bar_layout.addWidget(self.icon_label) # index 0
+        # self.title_bar_layout.addWidget(self.title_label) # index 1
+        # self.title_bar_layout.addStretch() # index 2
+        # We want it between title and stretch.
+        self.title_bar_layout.insertWidget(2, self.fav_switcher_container)
 
 
     def _restore_ui_state(self):
@@ -499,623 +537,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.logger.error(f"Failed to save UI state: {e}")
 
     def _init_ui(self):
-        t_start = time.perf_counter()
-        main_widget = QWidget()
-        main_widget.setStyleSheet("""
-            QWidget { background-color: transparent; }
-            QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
-            QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; }
-            QComboBox:hover { border-color: #3498db; background-color: #444; }
-            QComboBox::drop-down { border: none; }
-            QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #3498db; border: 1px solid #555; }
-            QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-            QLineEdit:hover { border-color: #3498db; background-color: #444; }
-            QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
-            QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
-        """)
-        
-        main_layout = QVBoxLayout(main_widget)
-        main_layout.setContentsMargins(5, 2, 5, 5)
-        
-        # 1. Header
-        header_layout = QHBoxLayout()
-        header_layout.setAlignment(Qt.AlignmentFlag.AlignTop) # Keep header at the top
-        
-        self.app_combo = QComboBox()
-        self.app_combo.setMinimumWidth(200)
-        self.app_combo.setMouseTracking(True)
-        self.app_combo.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.app_combo.currentIndexChanged.connect(self._on_app_changed)
-        self.target_app_lbl = QLabel(_("Target App:"))
-        self.target_app_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        header_layout.addWidget(self.target_app_lbl)
-        header_layout.addWidget(self.app_combo)
-        
-        self.edit_app_btn = QPushButton(_("Edit"))
-        self.edit_app_btn.clicked.connect(self._open_edit_dialog)
-        self.edit_app_btn.setFixedWidth(55)
-        self.edit_app_btn.setStyleSheet("""
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
-            QPushButton:pressed { background-color: #222; padding-top: 5px; padding-left: 5px; }
-        """)
-        header_layout.addWidget(self.edit_app_btn)
-        
-        self.web_btn = QPushButton("🌐")
-        self.web_btn.setFixedSize(32, 28)
-        self.web_btn.setToolTip(_("Open Preferred URL in Browser"))
-        self.web_btn.clicked.connect(self._open_preferred_url)
-        self.web_btn.setStyleSheet("""
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QPushButton:hover { background-color: #3498db; border-color: #3498db; }
-            QPushButton:pressed { background-color: #222; font-size: 13px; }
-        """)
-        header_layout.addWidget(self.web_btn)
-        
-        self.register_app_btn = QPushButton("➕")
-        self.register_app_btn.clicked.connect(self._open_register_dialog)
-        self.register_app_btn.setFixedSize(32, 28) # Fixed sqaure-ish size to prevent squashing
-        self.register_app_btn.setToolTip(_("Register New App"))
-        self.register_app_btn.setStyleSheet("""
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
-            QPushButton:pressed { background-color: #222; font-size: 13px; }
-        """)
-        header_layout.addWidget(self.register_app_btn)
-        
-        header_layout.addSpacing(20)
-        self.logger.info(f"[Profile] _init_ui (Header) took {time.perf_counter()-t_start:.3f}s")
-        t_sidebar = time.perf_counter()
-        
-        from src.ui.link_master.tag_bar import TagBar
-        t_tag = time.perf_counter()
-        self.tag_bar = TagBar()
-        self.logger.info(f"[Profile] TagBar init took {time.perf_counter()-t_tag:.3f}s")
-        self.tag_bar.tags_changed.connect(self._on_tags_changed)
-        self.tag_bar.request_edit_tags.connect(self._open_tag_manager)
-        self.tag_bar.tag_icon_updated.connect(self._on_tag_icon_updated)
-        header_layout.addWidget(self.tag_bar, 1) # Give TagBar stretch factor 1
-        
-        header_layout.addSpacing(10)
-        self.search_logic = QComboBox()
-        self.search_logic.setMouseTracking(True)
-        self.search_logic.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.search_logic.addItem(_("OR"), "or")
-        self.search_logic.addItem(_("AND"), "and")
-        self.search_logic.setFixedWidth(60)
-        header_layout.addWidget(self.search_logic)
-        
-        self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText(_("Search by name or tags..."))
-        self.search_bar.setFixedWidth(300)
-        self.search_bar.setMouseTracking(True)
-        self.search_bar.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.search_bar.returnPressed.connect(self._perform_search)
-        header_layout.addWidget(self.search_bar)
-        
-        self.search_mode = QComboBox()
-        self.search_mode.setMouseTracking(True)
-        self.search_mode.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.search_mode.addItem(_("📦 All Packages"), "all_packages")
-        self.search_mode.addItem(_("📁 Categories Only"), "categories_only")
-        self.search_mode.addItem(_("📁+📦 Cats with Pkgs"), "cats_with_packages")
-        self.search_mode.setFixedWidth(150)
-        header_layout.addWidget(self.search_mode)
-        
-        from PyQt6.QtWidgets import QCheckBox
-        self.search_global_chk = QCheckBox(_("Global"))
-        self.search_global_chk.setChecked(True)
-        self.search_global_chk.hide()
-        
-        self.search_btn = QPushButton("🔍")
-        self.search_btn.setObjectName("header_btn")
-        self.search_btn.setFixedSize(30, 28)
-        self.search_btn.setMouseTracking(True)
-        self.search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.search_btn.clicked.connect(self._perform_search)
-        header_layout.addWidget(self.search_btn)
-        
-        self.clear_search_btn = QPushButton("✕")
-        self.clear_search_btn.setObjectName("header_btn")
-        self.clear_search_btn.setFixedSize(30, 28)
-        self.clear_search_btn.setMouseTracking(True)
-        self.clear_search_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.clear_search_btn.clicked.connect(self._clear_search)
-        header_layout.addWidget(self.clear_search_btn)
-        
-        main_layout.addLayout(header_layout)
-
-        # 2. Content Area: [ThinDrawerBtn] [Splitter: SidebarDrawer | CardView]
-
-
-        self.content_wrapper = QWidget()
-        content_wrapper_layout = QHBoxLayout(self.content_wrapper)
-        content_wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        content_wrapper_layout.setSpacing(0)
-        
-        # Left Edge: Vertical button strip
-        t_sidebar_btns = time.perf_counter()
-        btn_strip = QWidget()
-        btn_strip.setFixedWidth(28)
-        btn_strip.setStyleSheet("background-color: #222; border-right: 1px solid #333;")
-        btn_strip_layout = QVBoxLayout(btn_strip)
-        btn_strip_layout.setContentsMargins(1, 82, 1, 2)
-        btn_strip_layout.setSpacing(10) # More space between tools
-        
-        # Explorer Toggle Button (🌲 at top)
-        self.btn_drawer = QPushButton("🌲")
-        self.btn_drawer.setFixedSize(24, 30)
-        self.btn_drawer.setCheckable(True)
-        self.btn_drawer.clicked.connect(self._toggle_explorer)
-        self.btn_drawer.setStyleSheet("""
-            QPushButton { font-size: 16px; padding: 2px; border: none; background: transparent; }
-            QPushButton:hover { background: #555; border-radius: 4px; }
-            QPushButton:checked { background: #27ae60; border-radius: 4px; }
-        """)
-        self.btn_drawer.setToolTip(_("Toggle Explorer Panel"))
-        btn_strip_layout.addWidget(self.btn_drawer)
-
-        # Library Toggle Button (📚)
-        self.btn_libraries = QPushButton("📚")
-        self.btn_libraries.setFixedSize(24, 30)
-        self.btn_libraries.setCheckable(True)
-        self.btn_libraries.clicked.connect(lambda: self._toggle_sidebar_tab(0))
-        self.btn_libraries.setStyleSheet("""
-            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
-            QPushButton:hover { background: #555; border-radius: 4px; }
-            QPushButton:checked { background: #16a085; border-radius: 4px; }
-        """)
-        self.btn_libraries.setToolTip(_("Library Management"))
-        btn_strip_layout.addWidget(self.btn_libraries)
-
-        # Presets Toggle Button
-        self.btn_presets = QPushButton("📋")
-        self.btn_presets.setFixedSize(24, 30)
-        self.btn_presets.setCheckable(True)
-        self.btn_presets.clicked.connect(lambda: self._toggle_sidebar_tab(1))
-        self.btn_presets.setStyleSheet("""
-            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
-            QPushButton:hover { background: #555; border-radius: 4px; }
-            QPushButton:checked { background: #2980b9; border-radius: 4px; }
-        """)
-        self.btn_presets.setToolTip(_("Toggle Presets"))
-        btn_strip_layout.addWidget(self.btn_presets)
-        
-        # Notes Toggle Button (📒)
-        self.btn_notes = QPushButton("📒")
-        self.btn_notes.setFixedSize(24, 30)
-        self.btn_notes.setCheckable(True)
-        self.btn_notes.clicked.connect(lambda: self._toggle_sidebar_tab(2))
-        self.btn_notes.setStyleSheet("""
-            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
-            QPushButton:hover { background: #555; border-radius: 4px; }
-            QPushButton:checked { background: #8e44ad; border-radius: 4px; }
-        """)
-        self.btn_notes.setToolTip(_("Toggle Quick Notes"))
-        btn_strip_layout.addWidget(self.btn_notes)
-
-        # Tools Toggle Button (🔧)
-        self.btn_tools = QPushButton("🔧")
-        self.btn_tools.setFixedSize(24, 30)
-        self.btn_tools.setCheckable(True)
-        self.btn_tools.clicked.connect(lambda: self._toggle_sidebar_tab(3))
-        self.btn_tools.setStyleSheet("""
-            QPushButton { font-size: 14px; padding: 2px; border: none; background: transparent; }
-            QPushButton:hover { background: #555; border-radius: 4px; }
-            QPushButton:checked { background: #d35400; border-radius: 4px; }
-        """)
-        self.btn_tools.setToolTip(_("Special Actions"))
-        btn_strip_layout.addWidget(self.btn_tools)
-        
-        # Shared Sidebar Drawer setup
-        self.library_panel = None
-        self.presets_panel = None
-        self.notes_panel = None
-        self.tools_panel = None
-        
-        btn_strip_layout.addStretch()
-        content_wrapper_layout.addWidget(btn_strip)
-        self.logger.info(f"[Profile] Sidebar Button Strip setup took {time.perf_counter()-t_sidebar_btns:.3f}s")
-        
-        # Resizable Sidebar Splitter (Horizontal)
-        self.sidebar_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.sidebar_splitter.setHandleWidth(4)
-        self.sidebar_splitter.setStyleSheet("QSplitter::handle { background-color: #444; } QSplitter::handle:hover { background-color: #666; }")
-        
-        # Sidebar Drawer (Shared)
-        self.drawer_widget = QWidget()
-        self.drawer_ui_layout = QVBoxLayout(self.drawer_widget)
-        self.drawer_ui_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.sidebar_tabs = QTabWidget()
-        self.sidebar_tabs.setTabPosition(QTabWidget.TabPosition.North)
-        self.sidebar_tabs.tabBar().hide() # Hide tab bar, use sidebar buttons
-        self.sidebar_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
-        t_tabs_add = time.perf_counter()
-        
-        # Add empty placeholders for lazy loading
-        self.sidebar_tabs.addTab(QWidget(), "Libraries")
-        self.sidebar_tabs.addTab(QWidget(), "Presets")
-        self.sidebar_tabs.addTab(QWidget(), "Notes")
-        self.sidebar_tabs.addTab(QWidget(), "Tools")
-        self.logger.info(f"[Profile] Sidebar Tabs add took {time.perf_counter()-t_tabs_add:.3f}s")
-        
-        self.drawer_ui_layout.addWidget(self.sidebar_tabs)
-        self.drawer_widget.setMinimumWidth(200) # Minimum width for drawer
-        self.drawer_widget.hide()
-        
-        self.sidebar_splitter.addWidget(self.drawer_widget)
-        self.sidebar_splitter.setCollapsible(0, True) # Allow collapsing the drawer widget
-        
-        # Monitor splitter size changes for persistence
-        self.sidebar_splitter.splitterMoved.connect(self._on_sidebar_splitter_moved)
-        self.logger.info(f"[Profile] _init_ui (Sidebar) took {time.perf_counter()-t_sidebar:.3f}s")
-        t_card = time.perf_counter()
-        
-        # Card View (Main Content)
-        right_widget = QWidget()
-        self.sidebar_splitter.addWidget(right_widget)
-        self.sidebar_splitter.setStretchFactor(1, 1) # Card view stretches
-        content_wrapper_layout.addWidget(self.sidebar_splitter, 1)
-
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Navigation Bar (History Buttons + Breadcrumbs)
-        nav_bar_layout = QHBoxLayout()
-        nav_bar_layout.setContentsMargins(5, 5, 5, 5)
-        nav_bar_layout.setSpacing(5)
-        
-        nav_btn_style = """
-            QPushButton { background-color: #3b3b3b; color: #fff; font-size: 14px; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #999; }
-            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 8px; }
-            QPushButton:disabled { background-color: #222; color: #555; border-color: #333; }
-        """
-        
-        self.btn_back = QPushButton("←")
-        self.btn_back.setFixedSize(30, 26)
-        self.btn_back.setStyleSheet(nav_btn_style)
-        self.btn_back.setEnabled(False)
-        self.btn_back.clicked.connect(self._navigate_back)
-        nav_bar_layout.addWidget(self.btn_back)
-        
-        self.btn_forward = QPushButton("→")
-        self.btn_forward.setFixedSize(30, 26)
-        self.btn_forward.setStyleSheet(nav_btn_style)
-        self.btn_forward.setEnabled(False)
-        self.btn_forward.clicked.connect(self._navigate_forward)
-        nav_bar_layout.addWidget(self.btn_forward)
-
-        # Breadcrumbs
-        self.breadcrumb_layout = QHBoxLayout()
-        self.breadcrumb_layout.setSpacing(5)
-        nav_bar_layout.addLayout(self.breadcrumb_layout)
-        
-        nav_bar_layout.addStretch()
-        
-        # Filter and Action Buttons (on breadcrumb line)
-        filter_btn_style = """
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
-            QPushButton:pressed { background-color: #222; }
-            QPushButton:checked { background-color: #27ae60; border-color: #2ecc71; }
-        """
-        
-        self.btn_filter_linked = QPushButton("🔗")
-        self.btn_filter_linked.setFixedSize(28, 26)
-        self.btn_filter_linked.setCheckable(True)
-        self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
-        self.btn_filter_linked.setStyleSheet(filter_btn_style)
-        self.btn_filter_linked.clicked.connect(self._toggle_linked_filter)
-        nav_bar_layout.addWidget(self.btn_filter_linked)
-        
-        self.btn_filter_unlinked = QPushButton("⛓️‍💥")
-        self.btn_filter_unlinked.setFixedSize(32, 26)
-        self.btn_filter_unlinked.setCheckable(True)
-        self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
-        self.btn_filter_unlinked.setStyleSheet(filter_btn_style)
-        self.btn_filter_unlinked.clicked.connect(self._toggle_unlinked_filter)
-        nav_bar_layout.addWidget(self.btn_filter_unlinked)
-        
-        nav_sep1 = QLabel("|")
-        nav_sep1.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        nav_sep1.setStyleSheet("color: #555;")
-        nav_bar_layout.addWidget(nav_sep1)
-        
-        # Red style for unlink button
-        unlink_btn_style = """
-            QPushButton { background-color: #c0392b; color: #fff; border: 1px solid #e74c3c; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #e74c3c; border-color: #fff; }
-            QPushButton:pressed { background-color: #922b21; }
-        """
-        
-        self.btn_unlink_all = QPushButton("🔓")
-        self.btn_unlink_all.setFixedSize(28, 26)
-        self.btn_unlink_all.setToolTip(_("Unlink All Active Links"))
-        self.btn_unlink_all.setStyleSheet(unlink_btn_style)
-        self.btn_unlink_all.clicked.connect(self._unload_active_links)
-        nav_bar_layout.addWidget(self.btn_unlink_all)
-        
-        # Separator before trash
-        nav_sep2 = QLabel("|")
-        nav_sep2.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        nav_sep2.setStyleSheet("color: #555;")
-        nav_bar_layout.addWidget(nav_sep2)
-        
-        self.btn_trash = QPushButton("🗑")
-        self.btn_trash.setFixedSize(28, 26)
-        self.btn_trash.setToolTip(_("Open Trash"))
-        self.btn_trash.setStyleSheet(filter_btn_style)
-        self.btn_trash.clicked.connect(self._open_trash_view)
-        nav_bar_layout.addWidget(self.btn_trash)
-        
-        right_layout.addLayout(nav_bar_layout)
-
-        
-        # Vertical Splitter: Categories | Packages (fixed height mode)
-        self.v_splitter = QSplitter(Qt.Orientation.Vertical)
-
-        
-        # Phase 4: Use consistent 2px borders even for normal buttons 
-        # to prevent layout shifts and event glitches during sweeping.
-        btn_style = """
-            QPushButton { background-color: #3b3b3b; color: #fff; font-size: 14px; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #999; }
-            QPushButton:pressed { background-color: #222; padding-top: 4px; padding-left: 8px; }
-        """
-        btn_selected = """
-            QPushButton { background-color: #27ae60; color: #fff; font-size: 14px; border: 1px solid #2ecc71; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #2ecc71; border-color: #fff; }
-            QPushButton:pressed { background-color: #1e8449; padding-top: 4px; padding-left: 8px; }
-        """
-        btn_default = """
-            QPushButton { background-color: #2980b9; color: #fff; font-size: 14px; border: 1px solid #3498db; border-radius: 4px; padding: 2px 6px; }
-            QPushButton:hover { background-color: #3498db; border-color: #fff; }
-            QPushButton:pressed { background-color: #1a5276; padding-top: 4px; padding-left: 8px; }
-        """
-
-        # Categories Area
-        cat_group = QWidget()
-        cat_group_layout = QVBoxLayout(cat_group)
-        cat_group_layout.setContentsMargins(0, 0, 0, 0)
-        
-        cat_header = QHBoxLayout()
-        cat_header.setContentsMargins(5, 5, 5, 5)
-        cat_header.setSpacing(8)
-        
-        # Import Button
-        # Import Button
-        self.btn_import_cat = QPushButton("📁")
-        self.btn_import_cat.setFixedSize(30, 26)
-        self.btn_import_cat.setToolTip(_("Import Folder or Zip to Categories"))
-        self.btn_import_cat.setStyleSheet(btn_style)
-        self.btn_import_cat.clicked.connect(lambda: self._open_import_dialog("category"))
-        cat_header.addWidget(self.btn_import_cat)
-
-        
-        self.cat_title_lbl = QLabel(_("<b>Categories</b>"))
-        self.cat_title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        cat_header.addWidget(self.cat_title_lbl)
-        self.cat_result_label = QLabel("")
-        self.cat_result_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.cat_result_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-        cat_header.addWidget(self.cat_result_label)
-        cat_header.addStretch()
-        
-        # Display Mode Buttons
-        # Already initialized in __init__:
-        # self.cat_display_override = None
-
-        self.btn_normal_style = btn_style
-        self.btn_selected_style = btn_selected
-        self.btn_no_override_style = btn_default
-        
-        self.btn_cat_text = QPushButton("T")
-        self.btn_cat_text.setFixedSize(36, 26)
-        self.btn_cat_text.setStyleSheet(btn_style)
-        self.btn_cat_text.clicked.connect(lambda: self._toggle_cat_display_mode("text_list"))
-        cat_header.addWidget(self.btn_cat_text)
-        
-        self.btn_cat_image = QPushButton("🖼")
-        self.btn_cat_image.setFixedSize(36, 26)
-        self.btn_cat_image.setStyleSheet(btn_default)
-        self.btn_cat_image.clicked.connect(lambda: self._toggle_cat_display_mode("mini_image"))
-        cat_header.addWidget(self.btn_cat_image)
-        
-        self.btn_cat_both = QPushButton("🖼T")
-        self.btn_cat_both.setFixedSize(44, 26)
-        self.btn_cat_both.setStyleSheet(btn_style)
-        self.btn_cat_both.clicked.connect(lambda: self._toggle_cat_display_mode("image_text"))
-        cat_header.addWidget(self.btn_cat_both)
-        
-        sep1 = QLabel("|")
-        sep1.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        sep1.setStyleSheet("color: #555;")
-        cat_header.addWidget(sep1)
-        
-        # Show Hidden Button (＝ when OFF, 👁 when ON)
-        self.show_hidden = False
-        self.btn_show_hidden = QPushButton("＝")  
-        self.btn_show_hidden.setFixedSize(28, 26)
-        self.btn_show_hidden.setMouseTracking(True)
-        self.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
-        self.btn_show_hidden.setStyleSheet(btn_style)
-        self.btn_show_hidden.clicked.connect(self._toggle_show_hidden)
-        cat_header.addWidget(self.btn_show_hidden)
-        
-        # Store for translation
-        # self.target_app_lbl = target_app_lbl # This line is now redundant as target_app_lbl is already an attribute
-        
-        sep2 = QLabel("|")
-        sep2.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        sep2.setStyleSheet("color: #555;")
-        cat_header.addWidget(sep2)
-        
-        # Card Settings Button (📓)
-
-        self.btn_card_settings = QPushButton("📓")
-        self.btn_card_settings.setFixedSize(28, 26)
-        self.btn_card_settings.setMouseTracking(True)
-        self.btn_card_settings.setToolTip(_("Card Size Settings"))
-        self.btn_card_settings.setStyleSheet(btn_style)
-        self.btn_card_settings.clicked.connect(self._show_settings_menu)
-        cat_header.addWidget(self.btn_card_settings)
-
-        
-        cat_group_layout.addLayout(cat_header)
-        
-        self.cat_container = QWidget()
-        self.cat_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.cat_container.customContextMenuRequested.connect(self._show_cat_context_menu)
-        # Allow container to shrink freely - ignore content size for splitter flexibility
-        from PyQt6.QtWidgets import QSizePolicy
-        self.cat_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
-        self.cat_layout = FlowLayout(self.cat_container, margin=10, spacing=10)
-        self.cat_scroll = QScrollArea()
-        self.cat_scroll.setWidgetResizable(True)
-        self.cat_scroll.setWidget(self.cat_container)
-        self.cat_scroll.setMinimumHeight(50)  # Reduced for user flexibility
-        cat_group_layout.addWidget(self.cat_scroll)
-        
-        # Packages Area
-        pkg_group = QWidget()
-        pkg_group_layout = QVBoxLayout(pkg_group)
-        pkg_group_layout.setContentsMargins(0, 0, 0, 0)
-        
-        pkg_header = QHBoxLayout()
-        pkg_header.setContentsMargins(5, 5, 5, 5)
-        pkg_header.setSpacing(8)
-        
-        self.btn_import_pkg = QPushButton("📁")
-        self.btn_import_pkg.setFixedSize(30, 26)
-        self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
-        self.btn_import_pkg.setStyleSheet(btn_style) 
-        self.btn_import_pkg.clicked.connect(lambda: self._open_import_dialog("package"))
-        pkg_header.addWidget(self.btn_import_pkg)
-
-        self.pkg_title_lbl = QLabel(_("<b>Packages</b>"))
-        self.pkg_title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        pkg_header.addWidget(self.pkg_title_lbl)
-        
-        self.total_link_count_label = QLabel(_("Total Links: 0"))
-        self.total_link_count_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.total_link_count_label.setStyleSheet("color: #3498db; font-weight: bold;")
-        self.total_link_count_label.setToolTip(_("Total Link Count"))
-        pkg_header.addWidget(self.total_link_count_label)
-        
-        # Separator
-        sep_counts = QLabel("|")
-        sep_counts.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        sep_counts.setStyleSheet("color: #555;")
-        pkg_header.addWidget(sep_counts)
-        
-        # Category link count (current view)
-        self.pkg_link_count_label = QLabel("")
-        self.pkg_link_count_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.pkg_link_count_label.setStyleSheet("color: #27ae60; font-weight: bold;")
-        self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
-        pkg_header.addWidget(self.pkg_link_count_label)
-        
-        self.pkg_result_label = QLabel("")
-        self.pkg_result_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.pkg_result_label.setStyleSheet("color: #888;")
-        self.pkg_result_label.setToolTip(_("Package Count"))
-        pkg_header.addWidget(self.pkg_result_label)
-        
-        pkg_header.addStretch()
-        
-        # Separator before display mode buttons
-        sep_pkg = QLabel("|")
-        sep_pkg.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        sep_pkg.setStyleSheet("color: #555;")
-        pkg_header.addWidget(sep_pkg)
-
-        # Package Display Mode Buttons
-
-        self.btn_pkg_text = QPushButton("T")
-        self.btn_pkg_text.setFixedSize(36, 26)
-        self.btn_pkg_text.setStyleSheet(btn_style)
-        self.btn_pkg_text.clicked.connect(lambda: self._toggle_pkg_display_mode("text_list"))
-        pkg_header.addWidget(self.btn_pkg_text)
-        
-        self.btn_pkg_image = QPushButton("🖼")
-        self.btn_pkg_image.setFixedSize(36, 26)
-        self.btn_pkg_image.setStyleSheet(btn_default)
-        self.btn_pkg_image.clicked.connect(lambda: self._toggle_pkg_display_mode("mini_image"))
-        pkg_header.addWidget(self.btn_pkg_image)
-        
-        self.btn_pkg_image_text = QPushButton("🖼T")
-        self.btn_pkg_image_text.setFixedSize(36, 26)
-        self.btn_pkg_image_text.setStyleSheet(btn_style)
-        self.btn_pkg_image_text.clicked.connect(lambda: self._toggle_pkg_display_mode("image_text"))
-        pkg_header.addWidget(self.btn_pkg_image_text)
-
-        
-        pkg_group_layout.addLayout(pkg_header)
-
-        
-        self.pkg_container = QWidget()
-        self.pkg_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.pkg_container.customContextMenuRequested.connect(self._show_pkg_context_menu)
-        # Allow container to shrink freely
-        from PyQt6.QtWidgets import QSizePolicy
-        self.pkg_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
-        self.pkg_layout = FlowLayout(self.pkg_container, margin=10, spacing=10)
-        self.pkg_scroll = QScrollArea()
-        self.pkg_scroll.setWidgetResizable(True)
-        self.pkg_scroll.setWidget(self.pkg_container)
-        pkg_group_layout.addWidget(self.pkg_scroll)
-        
-        self.v_splitter.addWidget(cat_group)
-        self.v_splitter.addWidget(pkg_group)
-        
-        # Load saved category height or use default
-        saved_cat_height = self.registry.get_global("category_view_height", 200)
-        self._category_fixed_height = saved_cat_height
-        self.v_splitter.setSizes([saved_cat_height, 400])
-        
-        # Disable stretch factors to prevent proportional resizing
-        self.v_splitter.setStretchFactor(0, 0)  # Category: no stretch
-        self.v_splitter.setStretchFactor(1, 1)  # Package: takes all extra space
-        
-        # Connect splitter moved signal to save category height
-        self.v_splitter.splitterMoved.connect(self._on_splitter_moved)
-        
-        right_layout.addWidget(self.v_splitter, 1) 
-
-        
-
-
-        
-        main_layout.addWidget(self.content_wrapper, 1)
-        self.set_content_widget(main_widget)
-        self.logger.info(f"[Profile] _init_ui (CardArea) took {time.perf_counter()-t_card:.3f}s")
-        t_explorer = time.perf_counter()
-
-        # 3. Floating Explorer Panel (Overlay - does NOT push content)
-        # Explorer Panel initialization
-        self.explorer_panel = ExplorerPanel(self)
-        
-        self.explorer_panel.path_selected.connect(lambda p: self._handle_tree_navigation(p, is_double_click=True))
-        self.explorer_panel.item_clicked.connect(lambda p: self._handle_tree_navigation(p, is_double_click=False))
-        self.explorer_panel.context_menu_provider = self._create_item_context_menu
-        self.explorer_panel.config_changed.connect(self._refresh_current_view)
-        # Phase 28: Connect redirection edit request from explorer/breadcrumbs
-        self.explorer_panel.request_properties_edit.connect(self._handle_explorer_properties_edit)
-        # Phase 32: Save panel width on resize
-        self.explorer_panel.width_changed.connect(self._on_explorer_panel_width_changed)
-        self.explorer_panel.hide()
-
-        self.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
-        self.logger.info(f"[Profile] _init_ui (Explorer) took {time.perf_counter()-t_explorer:.3f}s")
-
-        # Initial translation
-        self.retranslate_ui()
-        
-        # Restore UI state (splitters, panels)
-        self._restore_ui_state()
+        """Build the UI using the factory."""
+        setup_ui(self)
         
     def retranslate_ui(self):
         """Update all UI strings when language changes."""
@@ -1161,11 +584,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'pkg_link_count_label'): self.pkg_link_count_label.setToolTip(_("Link Count In Category"))
         if hasattr(self, 'pkg_result_label'): self.pkg_result_label.setToolTip(_("Package Count"))
         
-        # Update panels if they exist
-        if self.library_panel: self.library_panel.retranslate_ui()
-        if self.presets_panel: self.presets_panel.retranslate_ui()
-        if self.notes_panel: self.notes_panel.retranslate_ui()
-        if self.tools_panel: self.tools_panel.retranslate_ui()
+        # Update panels if they exist (using getattr for safety against uninitialized attributes)
+        if getattr(self, 'library_panel', None): self.library_panel.retranslate_ui()
+        if getattr(self, 'presets_panel', None): self.presets_panel.retranslate_ui()
+        if getattr(self, 'notes_panel', None): self.notes_panel.retranslate_ui()
+        if getattr(self, 'tools_panel', None): self.tools_panel.retranslate_ui()
         
         # Search & Logic
         if hasattr(self, 'search_bar'):
@@ -1279,7 +702,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             save_btn = QPushButton(_("Save"))
             save_btn.setFixedWidth(50)
             save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #2ecc71; }")
-            save_btn.clicked.connect(self._settings_panel.hide)
+            def confirm_and_hide():
+                self._save_card_settings()
+                self._settings_panel.hide()
+            save_btn.clicked.connect(confirm_and_hide)
             header.addWidget(save_btn)
             
             cancel_btn = QPushButton(_("Reset"))
@@ -1319,23 +745,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 tab_layout.setContentsMargins(5, 10, 5, 5)
                 
                 # Category section
-                tab_layout.addWidget(QLabel(f"📁 <b>Category</b>"))
-                tab_layout.addLayout(self._create_mode_slider("CardW:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
+                tab_layout.addWidget(QLabel(_("📁 <b>Category</b>")))
+                tab_layout.addLayout(self._create_mode_slider("Card W:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
                 h_min = 20 if mode_icon == "text_list" else 50
-                tab_layout.addLayout(self._create_mode_slider("CardH:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
-                tab_layout.addLayout(self._create_mode_slider("ImgW:", f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
-                tab_layout.addLayout(self._create_mode_slider("ImgH:", f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
+                tab_layout.addLayout(self._create_mode_slider("Card H:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
+                
+                if mode_icon != "text_list":
+                    tab_layout.addLayout(self._create_mode_slider("Img W:", f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider("Img H:", f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
                 # Move Scale directly under Size
                 tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
                 
                 tab_layout.addSpacing(10)
                 
                 # Package section
-                tab_layout.addWidget(QLabel(f"📦 <b>Package</b>"))
-                tab_layout.addLayout(self._create_mode_slider("CardW:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
-                tab_layout.addLayout(self._create_mode_slider("CardH:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
-                tab_layout.addLayout(self._create_mode_slider("ImgW:", f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
-                tab_layout.addLayout(self._create_mode_slider("ImgH:", f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
+                tab_layout.addWidget(QLabel(_("📦 <b>Package</b>")))
+                tab_layout.addLayout(self._create_mode_slider("Card W:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
+                tab_layout.addLayout(self._create_mode_slider("Card H:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
+                
+                if mode_icon != "text_list":
+                    tab_layout.addLayout(self._create_mode_slider("Img W:", f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
+                    tab_layout.addLayout(self._create_mode_slider("Img H:", f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
                 # Move Scale directly under Size
                 tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
                 
@@ -1345,8 +775,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 
                 # Link Button Overlay Toggle
                 tab_layout.addWidget(QLabel(_("  <font color='#888'>Link Button (🌐)</font>")))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Category"), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Package"), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Folder Area"), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in Item Area"), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
                 
                 # Deploy Button Toggle
                 tab_layout.addWidget(QLabel(_("  <font color='#888'>Deploy Button (🔵)</font>")))
@@ -1437,6 +867,61 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
 
     
+    def _open_quick_view_manager(self):
+        """Open the Quick View Manager for currently visible category items."""
+        from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
+        
+        # 1. Collect all items in cat_layout (including hidden/filtered ones)
+        items_data = []
+        for i in range(self.cat_layout.count()):
+            w = self.cat_layout.itemAt(i).widget()
+            if w:
+                # Skip items that are in trash
+                if hasattr(w, 'is_trash_view') and w.is_trash_view:
+                    continue
+                
+                # Extract current state from card
+                # We need rel_path for DB updates
+                rel_path = None
+                if self.storage_root:
+                    try:
+                        rel_path = os.path.relpath(w.path, self.storage_root).replace('\\', '/')
+                    except: continue
+                
+                if not rel_path: continue
+                
+                items_data.append({
+                    'rel_path': rel_path,
+                    'display_name': getattr(w, 'display_name', ''),
+                    'tags': getattr(w, 'tags_raw', ''), # ItemCard should store raw tag string
+                    'image_path': getattr(w, 'image_path_raw', getattr(w, '_current_image_path', ''))
+                })
+        
+        if not items_data:
+            from src.core.lang_manager import _
+            QMessageBox.information(self, _("Info"), _("No visible items to manage."))
+            return
+            
+        # Get frequent tags for current app
+        frequent_tags = []
+        if hasattr(self, '_load_frequent_tags'):
+            frequent_tags = self._load_frequent_tags()
+            
+        dialog = QuickViewManagerDialog(
+            self, 
+            items_data=items_data, 
+            frequent_tags=frequent_tags,
+            db=self.db, 
+            storage_root=self.storage_root,
+            show_hidden=getattr(self, 'show_hidden', True)
+        )
+        if dialog.exec():
+            # If changes were made, refresh the view
+            if dialog.results:
+                # Instead of full scan, we can just update cards if we're brave, 
+                # but a re-scan is safer to ensure all Mixins/Filters pick up changes.
+                self._refresh_current_view(force=True)
+
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)
         act.setDefaultWidget(widget)
@@ -1631,14 +1116,69 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _load_apps(self):
         apps = self.registry.get_apps()
+        # Sort: Favorites first by score desc, then others by name
+        favs = sorted([a for a in apps if a.get('is_favorite')], key=lambda x: x.get('score', 0), reverse=True)
+        others = sorted([a for a in apps if not a.get('is_favorite')], key=lambda x: x.get('name', ''))
+        sorted_apps = favs + others
+        
         self.app_combo.clear()
         self.app_combo.addItem("Select App...", None)
-        for app in apps:
-            self.app_combo.addItem(app['name'], app)
+        for app in sorted_apps:
+            display_name = f"★ {app['name']}" if app.get('is_favorite') else app['name']
+            self.app_combo.addItem(display_name, app)
+            
+        # Update quick switcher buttons in title bar
+        self._update_favorite_quick_switcher(favs)
             
         # Restore last opened state
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(100, self._restore_last_state)
+
+    def _update_favorite_quick_switcher(self, fav_apps):
+        """Update the quick switch buttons immediately after the title."""
+        # Clear existing in fav_switcher_layout
+        while self.fav_switcher_layout.count() > 0:
+            item = self.fav_switcher_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        from src.ui.title_bar_button import TitleBarButton
+        from PyQt6.QtGui import QIcon, QPixmap
+        import os
+
+        for app in fav_apps:
+            # Use initials or icon
+            app_name = app.get('name', '?')
+            initials = app_name[0].upper() if app_name else '?'
+            
+            btn = TitleBarButton(initials, is_toggle=True)
+            btn.setToolTip(f"Switch to: {app_name}")
+            btn.setFixedSize(28, 28) # Slightly smaller for title area
+            btn.setStyleSheet(btn.styleSheet() + "QPushButton { font-size: 13px; }")
+            
+            cover_img = app.get('cover_image')
+            if cover_img and os.path.exists(cover_img):
+                pixmap = QPixmap(cover_img)
+                if not pixmap.isNull():
+                    btn.setIcon(QIcon(pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
+                    btn.setText("")
+
+            app_id = app.get('id')
+            btn.clicked.connect(lambda _, aid=app_id: self._switch_to_app_by_id(aid))
+            
+            if self.current_app_id == app_id:
+                btn._force_state(True)
+
+            self.fav_switcher_layout.addWidget(btn)
+
+    def _switch_to_app_by_id(self, app_id):
+        """Find the app in combo box and switch to it."""
+        for i in range(self.app_combo.count()):
+            data = self.app_combo.itemData(i)
+            if data and data.get('id') == app_id:
+                if self.app_combo.currentIndex() != i:
+                    self.app_combo.setCurrentIndex(i)
+                break
 
     # --- Drag & Drop ---
     # Import/drop methods moved to LMImportMixin
@@ -1654,11 +1194,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.cat_scanner_worker.set_db(self.db)  # Phase 18.13/19.x
             self.pkg_scanner_worker.set_db(self.db)
             
-            if self.presets_panel:
+            if getattr(self, 'presets_panel', None):
                 self.presets_panel.set_db(self.db)  # Must be called before set_app
                 self.presets_panel.set_app(self.current_app_id)
             
-            if self.library_panel:
+            if getattr(self, 'library_panel', None):
                 self.library_panel.set_app(self.current_app_id, self.db)
 
             # Refresh notes and presets
@@ -1711,11 +1251,29 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             # Update Executable Links (Phase 28)
             self._update_exe_links(app_data)
+
+            # Update Favorite Quick Switcher Button States
+            for i in range(self.title_bar_center_layout.count()):
+                w = self.title_bar_center_layout.itemAt(i).widget()
+                if w:
+                    # We need to know which app this button belongs to
+                    # Let's store app_id in the button's property or name
+                    # For now, we'll re-check by tooltip or just re-run update if count is small
+                    # But better to just update state if we can.
+                    pass
+            
+            # Simpler: Just refresh all buttons to ensure correct active state
+            apps = self.registry.get_apps()
+            favs = sorted([a for a in apps if a.get('is_favorite')], key=lambda x: x.get('score', 0), reverse=True)
+            self._update_favorite_quick_switcher(favs)
+            
+            # AND restore the EXE links to the center layout
+            self._update_exe_links(app_data)
         else:
             self.current_app_id = None
-            if self.presets_panel: self.presets_panel.set_app(None)
-            if self.library_panel: self.library_panel.set_app(None, None)
-            self.explorer_panel.set_storage_root(None)
+            if getattr(self, 'presets_panel', None): self.presets_panel.set_app(None)
+            if getattr(self, 'library_panel', None): self.library_panel.set_app(None, None)
+            if getattr(self, 'explorer_panel', None): self.explorer_panel.set_storage_root(None)
             
             self.edit_app_btn.setEnabled(False)
             self.btn_drawer.setEnabled(False)
@@ -2710,99 +2268,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     # Tag methods moved to LMTagsMixin
 
     def _create_item_context_menu(self, rel_path):
-        """Centralized factory to create a context menu for any item (Category or Package).
-        Used by ItemCard, ExplorerPanel, and Breadcrumbs.
-        """
-        if not self.storage_root: return None
-        full_src = os.path.join(self.storage_root, rel_path)
-        if not os.path.exists(full_src): return None
-        
-        config = self.db.get_folder_config(rel_path) or {}
-        is_trash_view = "_Trash" in rel_path.replace('\\', '/')
-        
-        menu = QMenu(self)
-        menu.setStyleSheet(self._menu_style())
-        
-        folder_name = os.path.basename(rel_path) if rel_path else _("Root")
-        menu.addAction(_("Folder: {name}").format(name=folder_name)).setEnabled(False)
-        menu.addSeparator()
-
-        # 1. Deployment Actions (or Restore if in Trash)
-        if is_trash_view:
-            act_restore = menu.addAction(_("📦 Restore to Original"))
-            act_restore.triggered.connect(lambda: self._on_package_restore(full_src))
-        else:
-            app_data = self.app_combo.currentData()
-            target_dir = app_data.get(self.current_target_key) if app_data else None
-            
-            if self.deployer and target_dir:
-                target_link = config.get('target_override') or os.path.join(target_dir, folder_name)
-                status_res = self.deployer.get_link_status(target_link, expected_source=full_src)
-                status = status_res.get('status', 'none')
-                
-                # Phase 28: Check Tag Conflict
-                tag_conflict = self._check_tag_conflict(rel_path, config, app_data)
-                
-                if status == 'linked':
-                    act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))
-                    act_rem.triggered.connect(lambda: self._handle_unlink_single(rel_path))
-                elif status == 'conflict':
-                    menu.addAction(_("⚠ Conflict: File Exists")).setEnabled(False)
-                    act_swap = menu.addAction(_("🔄 Overwrite Target with Link"))
-                    act_swap.setToolTip(_("Delete the conflicting file in target and create a symlink to this source."))
-                    act_swap.triggered.connect(lambda: self._handle_conflict_swap(rel_path, target_link))
-                elif tag_conflict:
-                    # Phase 28: Tag Conflict Menu
-                    menu.addAction(_("⚠ Conflict: Tag '{tag}'").format(tag=tag_conflict['tag'])).setEnabled(False)
-                    act_swap = menu.addAction(_("🔄 Overwrite Target (Swap)"))
-                    act_swap.setToolTip(_("Disable '{name}' and enable this item.").format(name=tag_conflict['name']))
-                    # Route to _handle_deploy_single which now has the Swap Dialog
-                    act_swap.triggered.connect(lambda: self._handle_deploy_single(rel_path))
-                else:
-                    act_dep = menu.addAction(_("🚀 Deploy Link"))
-                    act_dep.triggered.connect(lambda: self._handle_deploy_single(rel_path))
-
-        # 2. Visibility
-        if not is_trash_view:
-            is_hidden = (config.get('is_visible', 1) == 0)  # is_visible=0 means hidden
-            if is_hidden:
-                act_vis = menu.addAction(_("👁 Show Item"))
-                act_vis.triggered.connect(lambda: self._update_folder_visibility(rel_path, False))
-            else:
-                act_vis = menu.addAction(_("👻 Hide Item"))
-                act_vis.triggered.connect(lambda: self._update_folder_visibility(rel_path, True))
-
-        menu.addSeparator()
-        
-        # 3. Properties & Explorer
-        act_props_view = menu.addAction(_("📋 View Properties"))
-        act_props_view.triggered.connect(lambda: self._show_property_view_for_card(full_src))
-
-        act_props = menu.addAction(_("📝 Edit Properties"))
-        # Phase 28: Use centralized pinpoint property edit
-        # Note: _batch_edit_properties_selected uses current selection (which is set before menu shows)
-        act_props.triggered.connect(self._batch_edit_properties_selected)
-        
-        act_files = menu.addAction(_("🛠 Manage Files (Exclude/Move)..."))
-        act_files.triggered.connect(lambda: self._open_file_management(rel_path))
-        
-        menu.addSeparator()
-        
-        act_explore = menu.addAction(_("📁 Open in Explorer"))
-        act_explore.triggered.connect(lambda: self._open_path_in_explorer(full_src))
-
-        menu.addSeparator()
-        
-        # 4. Trash / Restore (Bottom section)
-        if rel_path:
-            if not is_trash_view:
-                act_trash = menu.addAction(_("🗑 Move to Trash"))
-                act_trash.triggered.connect(lambda: self._on_package_move_to_trash(full_src))
-            else:
-                # Optionally add "Delete Permanently" here if trash view logic matures
-                pass
-            
-        return menu
+        """Centralized factory to create a context menu. Delegated to factory module."""
+        return create_item_context_menu(self, rel_path)
 
     def _open_path_in_explorer(self, path):
         import subprocess
@@ -3075,13 +2542,22 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 QPushButton {{ 
                     background-color: {bg_color}; 
                     color: {tx_color}; 
-                    border: none; 
-                    padding: 4px 10px; 
+                    border: 1px solid rgba(255, 255, 255, 0.1); 
+                    padding: 4px 12px; 
                     border-radius: 4px;
                     font-size: 11px;
+                    font-weight: bold;
+                    min-width: 60px;
                 }}
-                QPushButton:hover {{ background-color: {hover_q}; }}
-                QPushButton:pressed {{ background-color: {press_q}; }}
+                QPushButton:hover {{ 
+                    background-color: {hover_q}; 
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                }}
+                QPushButton:pressed {{ 
+                    background-color: {press_q}; 
+                    padding-top: 5px;
+                    padding-left: 11px;
+                }}
             """)
             
             # Capture path/args for lambda
@@ -3149,12 +2625,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             return
 
         menu = QMenu(self)
-        add_sticky_action = menu.addAction("Add New Help Note")
+        add_sticky_action = menu.addAction(_("Add New Help Note"))
+        bring_to_screen_action = menu.addAction(_("⭐ Bring Off-Screen to View"))
         
         # Import all help data from other language
         from src.core.lang_manager import get_lang_manager
         lang_manager = get_lang_manager()
-        import_menu = menu.addMenu("Import All from Language...")
+        import_menu = menu.addMenu(_("Import All from Language..."))
         import_actions = {}
         for lang_code, lang_name in lang_manager.get_available_languages():
             if lang_code != lang_manager.current_language:
@@ -3162,7 +2639,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 import_actions[action] = lang_code
         
         menu.addSeparator()
-        cancel_edit_action = menu.addAction("Cancel (Exit Edit Mode)")
+        cancel_edit_action = menu.addAction(_("Cancel (Exit Edit Mode)"))
         
         # Calculate global position for context menu
         global_pos = self.help_btn.mapToGlobal(pos)
@@ -3171,6 +2648,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if action == add_sticky_action:
             self.help_manager.add_free_sticky()
             self.help_btn._force_state(True)
+        elif action == bring_to_screen_action:
+            self.help_manager.bring_all_to_screen()
         elif action == cancel_edit_action:
             # 変更を破棄してEdit Modeを抜ける
             self.help_manager.cancel_all_edits()

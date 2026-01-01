@@ -31,432 +31,311 @@ class LMScanHandlerMixin:
     def _on_scan_results_ready(self, results, original_path, context="view"):
         """Populates the category and package layouts based on scan results and context."""
         import time
-        scan_start_time = time.perf_counter()
-        t_start = scan_start_time
+        start_t = time.perf_counter()
         
-        # Phase 28: Scan version tracking to prevent race condition duplicates
-        # Increment counter and check if this result is stale (superseded by newer scan)
+        # 1. Validate context and prevent race conditions
+        if not self._validate_scan_context(original_path, context):
+            return
+            
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        
+        # 2. Get display configurations and folder configs
+        configs = self._get_display_configs(original_path, context, storage_root, app_data)
+        folder_configs = configs['folder_configs']
+        view_config = configs['view_config']
+        
+        # 3. Sort results
+        results = self._get_sorted_results(results, storage_root, folder_configs)
+        
+        # 4. Prepare layouts (Clear, release cards, batch mode)
+        self._prepare_layouts_for_redraw(context, app_data, view_config)
+        
+        # 5. Populate layouts with cards
+        counts = self._populate_cards(results, context, storage_root, folder_configs, configs)
+        
+        # 6. Finalize UI (Labels, margins, styles)
+        self._finalize_scan_ui(counts, context, original_path, start_t)
+
+    def _validate_scan_context(self, original_path, context):
+        """Phase 28: Scan version tracking and context validation to prevent stale results."""
         if not hasattr(self, '_scan_version'):
             self._scan_version = 0
-        
-        # Check if path matches current expected path to avoid stale results
+            
         current_view = getattr(self, 'current_view_path', None)
         current_selection = getattr(self, 'current_path', None)
         
         if context == "view":
-            # View results should match current_view_path
             if current_view and original_path:
-                view_norm = os.path.normpath(current_view).replace('\\', '/')
-                path_norm = os.path.normpath(original_path).replace('\\', '/')
-                if view_norm != path_norm:
-                    # print(f"[Profiling] IGNORING stale view scan: expected={view_norm}, got={path_norm}")
-                    return
+                if os.path.normpath(current_view).replace('\\', '/') != os.path.normpath(original_path).replace('\\', '/'):
+                    return False
         elif context == "contents":
-            # Phase 28 FIX: If current_path is None, we've navigated away, so ignore contents results
             if current_selection is None and original_path:
-                # print(f"[Profiling] IGNORING contents scan - navigation occurred: path={original_path}")
-                return
-            # Contents results should match current_path (selected category)
+                return False
             if current_selection and original_path:
-                sel_norm = os.path.normpath(current_selection).replace('\\', '/')
-                path_norm = os.path.normpath(original_path).replace('\\', '/')
-                if sel_norm != path_norm:
-                    # print(f"[Profiling] IGNORING stale contents scan: expected={sel_norm}, got={path_norm}")
-                    return
-        
-        # print(f"[Profiling] _on_scan_results_ready: context={context}, items={len(results)}, path={original_path}, time={scan_start_time:.3f}")
-        
-        app_data = self.app_combo.currentData()
-        if not app_data: return
-        storage_root = app_data.get('storage_root')
-        target_root = app_data.get(self.current_target_key)
-        app_name = app_data.get('name')
-        app_deploy_default = app_data.get('deployment_type', 'folder')
-        app_conflict_default = app_data.get('conflict_policy', 'backup')
-        app_cat_style_default = app_data.get('default_category_style', 'image')
-        app_pkg_style_default = app_data.get('default_package_style', 'image')
+                if os.path.normpath(current_selection).replace('\\', '/') != os.path.normpath(original_path).replace('\\', '/'):
+                    return False
+        return True
 
-        # Context-based Layout Clearing
-        has_selection = bool(getattr(self, 'current_path', None))
+    def _get_display_configs(self, original_path, context, storage_root, app_data):
+        """Resolve all display modes, folder configs, and common app settings."""
+        app_name = app_data.get('name')
         
-        if context == "view" or context == "search":
-            if not has_selection or context == "search":
-                self.pkg_result_label.setText("")
-            self.cat_result_label.setText("")
-        elif context == "contents":
-            self.pkg_result_label.setText("")
+        # Load configs from DB
+        from src.core.link_master.database import get_lm_db
+        db = get_lm_db(app_name)
+        raw_configs = db.get_all_folder_configs()
+        folder_configs = {k.replace('\\', '/'): v for k, v in raw_configs.items()}
         
-        # Get container style for the CURRENT VIEW
-        # Phase 28 FIX: Use original_path (from scan) instead of mutable instance vars
-        # to prevent race condition where concurrent scans get wrong config
+        # Resolve view relation
         if context == "contents":
             view_path = original_path if original_path else storage_root
         else:
             view_path = original_path if original_path else getattr(self, 'current_view_path', storage_root)
         try:
-            view_rel = os.path.relpath(view_path, storage_root)
+            view_rel = os.path.relpath(view_path, storage_root).replace('\\', '/')
             if view_rel == ".": view_rel = ""
         except: view_rel = ""
         
-        from src.core.link_master.database import get_lm_db
-        db = get_lm_db(app_name)
-        raw_configs = db.get_all_folder_configs()
-        folder_configs = {k.replace('\\', '/'): v for k, v in raw_configs.items()}
-        view_config = folder_configs.get(view_rel.replace('\\', '/'), {})
-        t_configs = time.perf_counter()
-
-        level_default = 'mini_image' 
+        view_config = folder_configs.get(view_rel, {})
+        level_default = 'mini_image'
         
-        # Determine view_display_mode (Category area)
+        # Resolve Category display mode
         if self.cat_display_override is not None:
             view_display_mode = self.cat_display_override
         else:
             raw_mode = view_config.get('display_style') or level_default
             mapping = {'image': 'mini_image', 'text': 'text_list'}
             view_display_mode = mapping.get(raw_mode, raw_mode)
-            
-        self.current_view_display_mode = view_display_mode  # Persist for refresh sync
-            
-        # Update category header button styles
-        self._update_cat_button_styles(view_config, level_default)
+        self.current_view_display_mode = view_display_mode
+        
+        # Resolve Package display mode
+        if self.pkg_display_override is not None:
+            pkg_display_mode = self.pkg_display_override
+        elif context == "search" and getattr(self, 'current_pkg_display_mode', None):
+            pkg_display_mode = self.current_pkg_display_mode
+        else:
+            raw_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style', 'mini_image')
+            mapping = {'image': 'mini_image', 'text': 'text_list'}
+            pkg_display_mode = mapping.get(raw_pkg_mode, raw_pkg_mode)
+        self.current_pkg_display_mode = pkg_display_mode
+        
+        return {
+            'folder_configs': folder_configs,
+            'view_config': view_config,
+            'view_display_mode': view_display_mode,
+            'pkg_display_mode': pkg_display_mode,
+            'app_name': app_name,
+            'app_deploy_default': app_data.get('deployment_type', 'folder'),
+            'app_conflict_default': app_data.get('conflict_policy', 'backup'),
+            'app_cat_style_default': app_data.get('default_category_style', 'image'),
+            'app_pkg_style_default': app_data.get('default_package_style', 'image'),
+            'target_root': app_data.get(self.current_target_key)
+        }
 
-        # Sort results
+    def _get_sorted_results(self, results, storage_root, folder_configs):
+        """Sort scan results based on Favorite, Score, Sort Order, and Name."""
         def sort_key(r):
             item_abs = r['abs_path']
             try:
                 rel = os.path.relpath(item_abs, storage_root).replace('\\', '/')
             except: rel = ""
             cfg = folder_configs.get(rel, {})
-            # Sorting Priority:
-            # 1. Favorite (Descending)
-            # 2. Score (Descending)
-            # 3. Sort Order (Ascending)
-            # 4. Name (Ascending)
             is_fav = cfg.get('is_favorite', 0) or r.get('is_favorite', 0)
             score = cfg.get('score', 0) or r.get('score', 0)
             return (
-                0 if is_fav else 1,   # Favorites (1) come before non-favorites (0) logically if we use 0/1, but we want 1 first -> (0 if is_fav else 1)
-                -int(score or 0),     # Higher score first
+                0 if is_fav else 1,
+                -int(score or 0),
                 cfg.get('sort_order', 0), 
                 r['item']['name'].lower()
             )
-        
         results.sort(key=sort_key)
-        t_sort = time.perf_counter()
-        
-        self.logger.info(f"[DisplayMode] context={context}, view_rel='{view_rel}', FINAL={view_display_mode}")
+        return results
 
-        # Determine pkg_display_mode
-        if self.pkg_display_override is not None:
-            pkg_display_mode = self.pkg_display_override
-        elif context == "search" and hasattr(self, 'current_pkg_display_mode') and self.current_pkg_display_mode:
-            # Phase 28: For search context, preserve the previously set display mode
-            # instead of recalculating from potentially empty view_config
-            pkg_display_mode = self.current_pkg_display_mode
-        else:
-            raw_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style', 'mini_image')
-            mapping = {'image': 'mini_image', 'text': 'text_list'}
-            pkg_display_mode = mapping.get(raw_pkg_mode, raw_pkg_mode)
+    def _prepare_layouts_for_redraw(self, context, app_data, view_config):
+        """Clear headers, release cards, and enable batch modes."""
+        has_selection = bool(getattr(self, 'current_path', None))
+        if context == "view" or context == "search":
+            if not has_selection or context == "search":
+                self.pkg_result_label.setText("")
+            self.cat_result_label.setText("")
+        elif context == "contents":
+            self.pkg_result_label.setText("")
             
-        self.current_pkg_display_mode = pkg_display_mode  # Persist for refresh sync
-        
-        # Phase 28 Debug: Log pkg display mode resolution
-        self.logger.info(f"[DisplayMode] pkg_display_mode={pkg_display_mode}, raw_pkg_mode={raw_pkg_mode if 'raw_pkg_mode' in dir() else 'N/A'}, override={self.pkg_display_override}")
-        
-        # Phase 28: CARD POOLING - Release previous active cards back to pool
-        # print(f"[Profiling] Releasing cards: context={context}, active_cat={len(self._active_cat_cards)}, active_pkg={len(self._active_pkg_cards)}, pkg_layout_count={self.pkg_layout.count()}")
-        self._release_all_active_cards(context)
-        t_release = time.perf_counter()
-        
-        # Phase 31: Fetch current visibility settings for all modes being populated here
-        # Note: view_display_mode is for categories, pkg_display_mode is for packages
-        cat_show_link = getattr(self, f'cat_{view_display_mode}_show_link', True)
-        cat_show_deploy = getattr(self, f'cat_{view_display_mode}_show_deploy', True)
-        pkg_show_link = getattr(self, f'pkg_{pkg_display_mode}_show_link', True)
-        pkg_show_deploy = getattr(self, f'pkg_{pkg_display_mode}_show_deploy', True)
-        opacity = getattr(self, 'deploy_button_opacity', 0.8)
-            
-        # Update package header button styles
+        self._update_cat_button_styles(view_config, 'mini_image')
         self._update_pkg_button_styles(view_config)
-
-        cat_count = 0
-        pkg_count = 0
-        is_trash_view = False
-
-        if app_data:
-            trash_path = os.path.abspath(os.path.join(app_data['storage_root'], "_Trash"))
-            if os.path.abspath(original_path) == trash_path:
-                is_trash_view = True
-            app_deploy_default = app_data.get('deployment_type', 'folder')
-            app_conflict_default = app_data.get('conflict_policy', 'backup')
-
+        self._release_all_active_cards(context)
+        
         if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(False)
         if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(False)
-        
-        # Phase 1.0.7: Batch adding for FlowLayout
         if hasattr(self, 'pkg_layout') and hasattr(self.pkg_layout, 'setBatchMode'):
             self.pkg_layout.setBatchMode(True)
         if hasattr(self, 'cat_layout') and hasattr(self.cat_layout, 'setBatchMode'):
             self.cat_layout.setBatchMode(True)
 
-        t_loop_start = time.perf_counter()
-        t_acquire = 0
-        t_update = 0
-        t_layout = 0
+    def _populate_cards(self, results, context, storage_root, folder_configs, configs):
+        """Acquire and update cards for all results."""
+        cat_count = 0
+        pkg_count = 0
+        current_has_selection = bool(getattr(self, 'current_path', None))
+        
+        # Cache mode-specific settings
+        vd_mode = configs['view_display_mode']
+        pk_mode = configs['pkg_display_mode']
+        
+        settings = {
+            'cat_show_link': getattr(self, f'cat_{vd_mode}_show_link', True),
+            'cat_show_deploy': getattr(self, f'cat_{vd_mode}_show_deploy', True),
+            'pkg_show_link': getattr(self, f'pkg_{pk_mode}_show_link', True),
+            'pkg_show_deploy': getattr(self, f'pkg_{pk_mode}_show_deploy', True),
+            'opacity': getattr(self, 'deploy_button_opacity', 0.8)
+        }
+        
         for r in results:
-            item = r['item']
             item_abs_path = r['abs_path']
             try:
-                item_rel = os.path.relpath(item_abs_path, storage_root)
+                item_rel = os.path.relpath(item_abs_path, storage_root).replace('\\', '/')
                 if item_rel == ".": item_rel = ""
             except: item_rel = ""
             
-            item_rel_std = item_rel.replace('\\', '/')
-            item_config = folder_configs.get(item_rel_std, {})
-            
+            item_config = folder_configs.get(item_rel, {})
             is_package = r.get('is_package', False)
-            # Item can be a string (folder name) or a dict from advanced scanners
-            item_name = item['name'] if isinstance(item, dict) else str(item)
-            display_name = item_config.get('display_name') or item_name
-            
-            # Phase 18.x: Config-based Thumbnail vs Auto-scan
-            img_path = None
-            cfg_img = item_config.get('image_path')
-            auto_img = r.get('thumbnail')
-            
-            if cfg_img:
-                if os.path.isabs(cfg_img):
-                    img_path = cfg_img
-                else:
-                    img_path = os.path.join(storage_root, cfg_img)
-            elif auto_img:
-                img_path = os.path.join(item_abs_path, auto_img)
-
-            final_deploy_type = item_config.get('deploy_type') or app_deploy_default
-            final_conflict_policy = item_config.get('conflict_policy') or app_conflict_default
-
-            is_visible = item_config.get('is_visible', 1)
-            is_hidden = (is_visible == 0)
-            if is_hidden and not self.show_hidden:
-                continue
-            
-            if item['name'] == '_Trash' and not self.show_hidden:
-                continue
-
-            # Preset Filter
-            if self.preset_filter_mode:
-                try:
-                    comp_rel = item_rel.replace('\\', '/')
-                    if context == "contents":
-                        if comp_rel not in self.preset_filter_paths:
-                            continue
-                    else:
-                        if is_package:
-                            if comp_rel not in self.preset_filter_paths:
-                                continue
-                        else:
-                            if comp_rel not in self.preset_filter_categories:
-                                continue
-                except: continue
-
-            # Link Filter - filter by linked/unlinked status
-            if hasattr(self, 'link_filter_mode') and self.link_filter_mode:
-                # Check item's own link status
-                link_status = r.get('link_status', 'none')
-                is_item_linked = (link_status == 'linked')
-                
-                # Check if children are linked (for categories)
-                has_linked_children = r.get('has_linked', False)
-                
-                # Combined: item is "linked" if itself OR its children are linked
-                is_linked_or_has_linked = is_item_linked or has_linked_children
-                
-                if self.link_filter_mode == 'linked':
-                    # Show only items that are linked or have linked children
-                    if not is_linked_or_has_linked:
-                        continue
-                elif self.link_filter_mode == 'unlinked':
-                    # Show only items that are NOT linked and don't have linked children
-                    if is_linked_or_has_linked:
-                        continue
-
-            item_is_misplaced = r.get('is_misplaced', False) if (not is_package and context != "contents") else False
-
-            # Phase 28: Acquire card from pool and update its data
-            item_type = "package" if (is_package or context == "contents") else "category"
-            
-            # Phase 31: Use pkg settings if item is a package OR in contents context
             use_pkg_settings = (is_package or context == "contents")
             
-            t_pre_aq = time.perf_counter()
+            # Card Acquisition
+            item_type = "package" if use_pkg_settings else "category"
             card = self._acquire_card(item_type)
-            t_acquire += (time.perf_counter() - t_pre_aq)
             
-            t_pre_up = time.perf_counter()
-            card.update_data(
-                name=display_name,
-                path=item_abs_path,
-                image_path=img_path,
-                is_registered=(item_rel_std in folder_configs),
-                target_override=item_config.get('target_override'),
-                deployment_rules=item_config.get('deployment_rules'),
-                manual_preview_path=item_config.get('manual_preview_path'),
-                is_hidden=(item_config.get('is_visible', 1) == 0),
-                deploy_type=item_config.get('deploy_type') or app_deploy_default,
-                conflict_policy=item_config.get('conflict_policy') or app_conflict_default,
-                storage_root=storage_root,
-                db=self.db,
-                has_linked=r.get('has_linked', False), # For categories
-                has_conflict_children=r.get('has_conflict', False), # For categories
-                link_status=r.get('link_status', 'none'), # For packages
-                has_logical_conflict=r.get('has_logical_conflict', False),
-                has_name_conflict=r.get('has_name_conflict', False),
-                has_target_conflict=r.get('has_target_conflict', False),
-                is_misplaced=item_is_misplaced,
-                is_package=is_package,
-                is_trash_view=is_trash_view,
-                loader=self.image_loader,
-                deployer=self.deployer,
-                target_dir=target_root,
-                app_name=app_name,
-                thumbnail_manager=self.thumbnail_manager,
-                app_deploy_default=app_deploy_default,
-                app_conflict_default=app_conflict_default,
-                app_cat_style_default=app_cat_style_default,
-                app_pkg_style_default=app_pkg_style_default,
-                is_partial=r.get('is_partial', False),
-                conflict_tag=item_config.get('conflict_tag'),
-                conflict_scope=item_config.get('conflict_scope'),
-                is_favorite=r.get('is_favorite', 0),
-                score=r.get('score', 0),
-                url_list=r.get('url_list', '[]'),
-                lib_name=item_config.get('lib_name', ''),
-                is_library_alt_version=r.get('is_library_alt_version', False),
-                # Phase 31: Visibility & Opacity
-                show_link=(pkg_show_link if use_pkg_settings else cat_show_link),
-                show_deploy=(pkg_show_deploy if use_pkg_settings else cat_show_deploy),
-                deploy_button_opacity=opacity
-            )
-            t_update += (time.perf_counter() - t_pre_up)
-
-            if item_abs_path in self.selected_paths:
-                card.set_selected(True)
-            elif item_abs_path == getattr(self, 'current_path', None):
+            # Data Update
+            self._update_card_from_result(card, r, item_rel, item_config, storage_root, configs, settings, context)
+            
+            # Selection State
+            if item_abs_path in self.selected_paths or item_abs_path == getattr(self, 'current_path', None):
                 card.set_selected(True)
                 if item_abs_path not in self.selected_paths:
                     self.selected_paths.add(item_abs_path)
-
-            # Connect signals only once when card is created, not on update_data
-            # card.request_move_to_unclassified.connect(self._on_package_move_to_unclassified)
-            # card.request_move_to_trash.connect(self._on_package_move_to_trash)
-            # card.request_restore.connect(self._on_package_restore)
-            # card.request_reorder.connect(self._reorder_item)
-            # card.deploy_changed.connect(self._refresh_category_cards)
-
-            t_pre_la = time.perf_counter()
+            
+            # Layout Allocation
             if item_type == "package":
-                # Phase 28: Real-time check for selection to prevent race condition
-                # Don't show view-context packages if a category has been selected (contents scan running)
-                current_has_selection = bool(getattr(self, 'current_path', None))
-                if context == "view" and current_has_selection:
-                    card.hide() # Hide card if it's a package in view context with selection
-                    self._release_card(card)  # Return to pool immediately
-                    continue
-
-                card.set_display_mode(pkg_display_mode)
-                
-                scale = getattr(self, f'pkg_{pkg_display_mode}_scale', 1.0)
-                base_w = getattr(self, f'pkg_{pkg_display_mode}_card_w', 160)
-                base_h = getattr(self, f'pkg_{pkg_display_mode}_card_h', 200)
-                base_img_w = getattr(self, f'pkg_{pkg_display_mode}_img_w', 140)
-                base_img_h = getattr(self, f'pkg_{pkg_display_mode}_img_h', 120)
-                
-                card.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
-
-                # card.single_clicked.connect(lambda p: self._handle_item_click(p, "package"))
-                # card.double_clicked.connect(lambda p: self._batch_edit_properties_selected())
-                # print(f"[Profiling] Adding pkg to layout: context={context}, name={item_name}, mode={pkg_display_mode}, layout_count={self.pkg_layout.count()}")
+                self._setup_card_layout(card, pk_mode, "pkg")
                 self.pkg_layout.addWidget(card)
                 pkg_count += 1
             else:
-                card.set_display_mode(view_display_mode)
-                
-                scale = getattr(self, f'cat_{view_display_mode}_scale', 1.0)
-                base_w = getattr(self, f'cat_{view_display_mode}_card_w', 160)
-                base_h = getattr(self, f'cat_{view_display_mode}_card_h', 200)
-                base_img_w = getattr(self, f'cat_{view_display_mode}_img_w', 140)
-                base_img_h = getattr(self, f'cat_{view_display_mode}_img_h', 120)
-                
-                card.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
-                
-                # card.single_clicked.connect(lambda p: self._handle_item_click(p, "category"))
-                # card.double_clicked.connect(self._navigate_to_path)
+                self._setup_card_layout(card, vd_mode, "cat")
                 self.cat_layout.addWidget(card)
                 cat_count += 1
+            card.show()
             
-            card.show() # Ensure card is visible after reuse
-            t_layout += (time.perf_counter() - t_pre_la)
+        return {'cat': cat_count, 'pkg': pkg_count}
 
-        # Update labels - now split into link count and package count
-        link_count = sum(1 for r in results if r.get('link_status') == 'linked')
+    def _update_card_from_result(self, card, r, item_rel, item_config, storage_root, configs, settings, context):
+        """Unified method to update card data from a scan result."""
+        is_package = r.get('is_package', False)
+        use_pkg_settings = (is_package or context == "contents")
         
-        # Calculate/Update total link count
+        # Resolve Image
+        img_path = None
+        cfg_img = item_config.get('image_path')
+        if cfg_img:
+            img_path = cfg_img if os.path.isabs(cfg_img) else os.path.join(storage_root, cfg_img)
+        elif r.get('thumbnail'):
+            img_path = os.path.join(r['abs_path'], r['thumbnail'])
+
+        card.update_data(
+            name=item_config.get('display_name') or r['item']['name'],
+            path=r['abs_path'],
+            image_path=img_path,
+            is_registered=(item_rel in configs['folder_configs']),
+            target_override=item_config.get('target_override'),
+            deployment_rules=item_config.get('deployment_rules'),
+            manual_preview_path=item_config.get('manual_preview_path'),
+            is_hidden=(item_config.get('is_visible', 1) == 0),
+            deploy_type=item_config.get('deploy_type') or configs['app_deploy_default'],
+            conflict_policy=item_config.get('conflict_policy') or configs['app_conflict_default'],
+            storage_root=storage_root,
+            db=self.db,
+            has_linked=r.get('has_linked', False),
+            has_favorite=r.get('has_favorite', False),
+            has_conflict_children=r.get('has_conflict', False),
+            link_status=r.get('link_status', 'none'),
+            has_logical_conflict=r.get('has_logical_conflict', False),
+            has_name_conflict=r.get('has_name_conflict', False),
+            has_target_conflict=r.get('has_target_conflict', False),
+            is_misplaced=r.get('is_misplaced', False) if (not is_package and context != "contents") else False,
+            is_package=is_package,
+            is_trash_view=r.get('is_trash_view', False),
+            loader=self.image_loader,
+            deployer=self.deployer,
+            target_dir=configs['target_root'],
+            app_name=configs['app_name'],
+            thumbnail_manager=self.thumbnail_manager,
+            app_deploy_default=configs['app_deploy_default'],
+            app_conflict_default=configs['app_conflict_default'],
+            app_cat_style_default=configs['app_cat_style_default'],
+            app_pkg_style_default=configs['app_pkg_style_default'],
+            is_partial=r.get('is_partial', False),
+            conflict_tag=item_config.get('conflict_tag'),
+            conflict_scope=item_config.get('conflict_scope'),
+            is_favorite=r.get('is_favorite', 0),
+            score=r.get('score', 0),
+            url_list=r.get('url_list', '[]'),
+            lib_name=item_config.get('lib_name', ''),
+            is_library_alt_version=r.get('is_library_alt_version', False),
+            tags_raw=item_config.get('tags', ''),
+            show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
+            show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
+            deploy_button_opacity=settings['opacity']
+        )
+        card.context = context
+        card.rel_path = item_rel
+
+    def _setup_card_layout(self, card, mode, prefix):
+        """Apply scale and dimensions to a card based on its display mode."""
+        card.set_display_mode(mode)
+        scale = getattr(self, f'{prefix}_{mode}_scale', 1.0)
+        base_w = getattr(self, f'{prefix}_{mode}_card_w', 160)
+        base_h = getattr(self, f'{prefix}_{mode}_card_h', 200)
+        base_img_w = getattr(self, f'{prefix}_{mode}_img_w', 140)
+        base_img_h = getattr(self, f'{prefix}_{mode}_img_h', 120)
+        card.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
+
+    def _finalize_scan_ui(self, counts, context, original_path, start_t):
+        """Update result labels, adjust spacing, and resume layout updates."""
+        # 1. Update Labels
         self._update_total_link_count()
-        
         if self.search_bar.text().strip() or self.tag_bar.get_selected_tags():
-            self.cat_result_label.setText(f"({cat_count})")
-            self.pkg_result_label.setText(_("Package Count: {count}").format(count=pkg_count))
+            self.cat_result_label.setText(f"({counts['cat']})")
         
         if self.preset_filter_mode:
-            total_in_preset = len(self.preset_filter_paths)
-            self.pkg_result_label.setText(_("Package Count: {count}/{total}").format(count=pkg_count, total=total_in_preset))
+            self.pkg_result_label.setText(_("Package Count: {count}/{total}").format(
+                count=counts['pkg'], total=len(self.preset_filter_paths)))
         else:
-            self.pkg_result_label.setText(_("Package Count: {count}").format(count=pkg_count))
+            self.pkg_result_label.setText(_("Package Count: {count}").format(count=counts['pkg']))
 
-        # ユーザー要望: カード間の隙間をスケールに合わせて調整
-        # Categories
-        cat_scale = getattr(self, f'cat_{view_display_mode}_scale', 1.0)
-        self.cat_layout.setSpacing(max(2, int(10 * cat_scale)))
-        cat_margin = max(4, int(10 * cat_scale))
-        self.cat_layout.setContentsMargins(cat_margin, cat_margin, cat_margin, cat_margin)
-        
-        # Packages
-        pkg_scale = getattr(self, f'pkg_{pkg_display_mode}_scale', 1.0)
-        self.pkg_layout.setSpacing(max(2, int(10 * pkg_scale)))
-        pkg_margin = max(4, int(10 * pkg_scale))
-        self.pkg_layout.setContentsMargins(pkg_margin, pkg_margin, pkg_margin, pkg_margin)
+        # 2. Adjust Spacing
+        vd_mode = self.current_view_display_mode
+        pk_mode = self.current_pkg_display_mode
+        for mode, prefix, layout in [(vd_mode, 'cat', self.cat_layout), (pk_mode, 'pkg', self.pkg_layout)]:
+            scale = getattr(self, f'{prefix}_{mode}_scale', 1.0)
+            spacing = max(2, int(10 * scale))
+            margin = max(4, int(10 * scale))
+            layout.setSpacing(spacing)
+            layout.setContentsMargins(margin, margin, margin, margin)
+            layout.invalidate()
+            if layout.parentWidget():
+                layout.parentWidget().updateGeometry()
 
-        # Phase 28: Force layout recalculation after all cards added with correct sizes
-        # This fixes pooled card positioning issues when switching display modes
-        if hasattr(self, 'pkg_layout') and self.pkg_layout:
-            self.pkg_layout.invalidate()
-            if hasattr(self.pkg_layout, 'parentWidget') and self.pkg_layout.parentWidget():
-                self.pkg_layout.parentWidget().updateGeometry()
-        if hasattr(self, 'cat_layout') and self.cat_layout:
-            self.cat_layout.invalidate()
-            if hasattr(self.cat_layout, 'parentWidget') and self.cat_layout.parentWidget():
-                self.cat_layout.parentWidget().updateGeometry()
-        
-        t_end = time.perf_counter()
-        self.logger.info(f"[Profile] Redraw Breakdown: "
-                         f"Configs: {t_configs - t_start:.3f}s / "
-                         f"Sort: {t_sort - t_configs:.3f}s / "
-                         f"Release: {t_release - t_sort:.3f}s / "
-                         f"Loop(Total): {t_end - t_loop_start:.3f}s (Aq:{t_acquire:.3f}s, Up:{t_update:.3f}s, Ly:{t_layout:.3f}s) / "
-                         f"Total: {t_end - t_start:.3f}s")
-        
-        # Phase 1.0.7: Resume layout updates
-        if hasattr(self, 'pkg_layout') and hasattr(self.pkg_layout, 'setBatchMode'):
-            self.pkg_layout.setBatchMode(False)
-        if hasattr(self, 'cat_layout') and hasattr(self.cat_layout, 'setBatchMode'):
-            self.cat_layout.setBatchMode(False)
-
+        # 3. Resume Updates
+        for layout in [self.pkg_layout, self.cat_layout]:
+            if hasattr(layout, 'setBatchMode'): layout.setBatchMode(False)
         if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(True)
         if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(True)
+
+        self._apply_card_filters()
         
-        # Performance Fix: DO NOT call self._refresh_category_cards() here!
-        # The card loop above already updated all cards with correct linkage/child status.
-        # Calling this triggers O(N) os.scandir calls which adds ~0.7s - ~1s of lag.
+        duration = time.perf_counter() - start_t
+        self.logger.info(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
 
     def _update_cat_button_styles(self, view_config, level_default):
         """Update category display mode button styles."""

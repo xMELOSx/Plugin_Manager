@@ -403,220 +403,69 @@ class LMSearchMixin:
         """Display search results in respective areas."""
         ctx = self._search_context
         query = ctx['query']
-        target_root = ctx['target_root']
         storage_root = ctx['storage_root']
-        
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+
+        # 1. Update Labels
         self.cat_result_label.setText(_("🔍 {n} hit(s)").format(n=len(cat_results)) if cat_results else _("🔍 0 hits"))
         self.pkg_result_label.setText(_("🔍 {n} hit(s)").format(n=len(pkg_results)) if pkg_results else _("🔍 0 hits"))
         
-        # Phase 28: CARD POOLING - Respect the toggle
-        use_pool = getattr(self, 'search_cache_enabled', False)
+        # 2. Get Configurations (Reuse helper from LMScanHandlerMixin)
+        configs = self._get_display_configs(storage_root, "search", storage_root, app_data)
+        folder_configs = configs['folder_configs']
         
-        # Phase 32: Remove orphan QLabel widgets (e.g., "No packages match" message) from layouts
-        # before releasing ItemCard instances.
-        for layout in [getattr(self, 'cat_layout', None), getattr(self, 'pkg_layout', None)]:
+        # 3. Prepare Layouts (Clear, release cards, batch mode)
+        # Phase 32: Remove orphan QLabel widgets (e.g., "No packages match" message)
+        for layout in [self.cat_layout, self.pkg_layout]:
             if layout:
-                items_to_remove = []
+                orphans = []
                 for i in range(layout.count()):
-                    item = layout.itemAt(i)
-                    if item and item.widget() and isinstance(item.widget(), QLabel):
-                        items_to_remove.append(item.widget())
-                for widget in items_to_remove:
-                    layout.removeWidget(widget)
-                    widget.deleteLater()
+                    w = layout.itemAt(i).widget()
+                    if w and isinstance(w, QLabel):
+                        orphans.append(w)
+                for w in orphans:
+                    layout.removeWidget(w)
+                    w.deleteLater()
         
-        # Always use release call to ensure tracking lists are cleared correctly
-        # If use_pool is False, the cards will be released to the pool, but 
-        # not acquired back in the loop below (which uses ItemCard directly).
         self._release_all_active_cards("all")
-
-        # Phase 31: Fetch visibility per mode
-        cat_mode = getattr(self, 'cat_display_override', None) or getattr(self, 'current_view_display_mode', None) or 'mini_image'
-        pkg_mode = getattr(self, 'pkg_display_override', None) or getattr(self, 'current_pkg_display_mode', None) or 'mini_image'
         
-        cat_show_link = getattr(self, f'cat_{cat_mode}_show_link', True)
-        cat_show_deploy = getattr(self, f'cat_{cat_mode}_show_deploy', True)
-        pkg_show_link = getattr(self, f'pkg_{pkg_mode}_show_link', True)
-        pkg_show_deploy = getattr(self, f'pkg_{pkg_mode}_show_deploy', True)
-        opacity = getattr(self, 'deploy_button_opacity', 0.8)
+        # 4. Normalize results to the format expected by _populate_cards Helper
+        def normalize_results(results):
+            norm = []
+            for r in results:
+                nr = r.copy()
+                nr['abs_path'] = r['path']
+                nr['item'] = {'name': r['name']}
+                nr['is_package'] = (r['type'] == 'package')
+                norm.append(nr)
+            return norm
 
-        # 1. Categories
-        if cat_results:
-            self.logger.info(f"[Profile] Search: Displaying {min(len(cat_results), 50)} categories...")
+        # 5. Populate Layouts using unified helpers
+        # Categories (Limit to 50 for performance)
+        norm_cats = normalize_results(cat_results[:50])
+        self._populate_cards(norm_cats, "search", storage_root, folder_configs, configs)
         
-        # Pull app_data once outside loops
-        app_data = self.app_combo.currentData()
-        app_name = app_data.get('name') if app_data else "Unknown"
+        # Packages (Limit to 100 for performance)
+        norm_pkgs = normalize_results(pkg_results[:100])
+        self._populate_cards(norm_pkgs, "search", storage_root, folder_configs, configs)
 
-        for r in cat_results[:50]:
-            item_abs_path = r['path']
-            
-            img_path = None
-            thumb = self.thumbnail_manager.get_thumbnail_path(app_name, r['rel_path'])
-            if os.path.exists(thumb):
-                img_path = thumb
-            elif r['config'].get('image_path') and os.path.exists(r['config'].get('image_path')):
-                 img_path = r['config'].get('image_path')
-            
-            is_package_val = (r['type'] == 'package')
-
-            if use_pool:
-                card = self._acquire_card("category")
-                card.update_data(
-                    name=r['name'],
-                    path=item_abs_path,
-                    image_path=img_path,
-                    target_dir=target_root,
-                    storage_root=storage_root,
-                    db=self.db,
-                    app_name=app_name,
-                    thumbnail_manager=self.thumbnail_manager,
-                    show_link=cat_show_link,
-                    show_deploy=cat_show_deploy,
-                    deploy_button_opacity=opacity,
-                    # Pass full scanner metadata
-                    **{k: v for k, v in r.items() if k not in ['name', 'path', 'item', 'config']}
-                )
-            else:
-                card = ItemCard(
-                    name=r['name'], path=item_abs_path, image_path=img_path,
-                    loader=self.image_loader, deployer=self.deployer, target_dir=target_root,
-                    storage_root=storage_root, db=self.db,
-                    app_name=app_name,
-                    is_package=is_package_val,
-                    is_registered=bool(r['config']),
-                    thumbnail_manager=self.thumbnail_manager,
-                    show_link=cat_show_link,
-                    show_deploy=cat_show_deploy,
-                    deploy_button_opacity=opacity,
-                    # Pass config specifically if it exists
-                    target_override=r['config'].get('target_override'),
-                    deployment_rules=r['config'].get('deployment_rules'),
-                    manual_preview_path=r['config'].get('manual_preview_path'),
-                )
-                self._active_cat_cards.append(card)
-                # Connect signals for non-pooled cards manually
-                card.single_clicked.connect(lambda p=item_abs_path: self._handle_item_click(p, "category"))
-                if not is_package_val:
-                    card.double_clicked.connect(self._on_category_selected)
-
-            # Scaling & Layout
-            cat_mode = getattr(self, 'cat_display_override', None) or getattr(self, 'current_view_display_mode', None) or 'mini_image'
-            card.set_display_mode(cat_mode)
-            
-            # Apply proper card dimensions
-            scale = getattr(self, f'cat_{cat_mode}_scale', 1.0)
-            base_w = getattr(self, f'cat_{cat_mode}_card_w', 160)
-            base_h = getattr(self, f'cat_{cat_mode}_card_h', 200)
-            base_img_w = getattr(self, f'cat_{cat_mode}_img_w', 140)
-            base_img_h = getattr(self, f'cat_{cat_mode}_img_h', 120)
-            card.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
-            
-            self.cat_layout.addWidget(card)
-            card.show()
-        
-        if cat_results:
-            self.logger.info(f"[Profile] Search: Category display finished.")
-        else:
+        # 6. Finalize UI (Empty states, indicator, refresh)
+        if not cat_results:
             lbl = QLabel(_("No categories match: {q}").format(q=query))
             lbl.setStyleSheet("color: #888; font-style: italic;")
             self.cat_layout.addWidget(lbl)
-        
-        # 2. Packages
-        if pkg_results:
-            self.logger.info(f"[Profile] Search: Displaying {min(len(pkg_results), 100)} packages...")
-
-        for r in pkg_results[:100]:
-            item_abs_path = r['path']
             
-            img_path = None
-            thumb = self.thumbnail_manager.get_thumbnail_path(app_name, r['rel_path'])
-            if os.path.exists(thumb):
-                img_path = thumb
-            elif r['config'].get('image_path') and os.path.exists(r['config'].get('image_path')):
-                 img_path = r['config'].get('image_path')
-            
-            display_name = r['config'].get('display_name') or r['name']
-
-            if use_pool:
-                card = self._acquire_card("package")
-                card.update_data(
-                    name=display_name,
-                    path=item_abs_path,
-                    image_path=img_path,
-                    target_dir=target_root,
-                    storage_root=storage_root,
-                    db=self.db,
-                    app_name=app_name,
-                    thumbnail_manager=self.thumbnail_manager,
-                    show_link=pkg_show_link,
-                    show_deploy=pkg_show_deploy,
-                    deploy_button_opacity=opacity,
-                    # Pass full scanner metadata (is_partial, is_library_alt_version, has_logical_conflict, etc)
-                    **{k: v for k, v in r.items() if k not in ['name', 'path', 'item', 'config']}
-                )
-            else:
-                card = ItemCard(
-                    name=display_name, path=item_abs_path, image_path=img_path,
-                    loader=self.image_loader, deployer=self.deployer, target_dir=target_root,
-                    storage_root=storage_root, db=self.db, 
-                    app_name=app_name,
-                    is_package=True,
-                    is_registered=bool(r['config']),
-                    thumbnail_manager=self.thumbnail_manager,
-                    show_link=pkg_show_link,
-                    show_deploy=pkg_show_deploy,
-                    deploy_button_opacity=opacity,
-                    # Pass config specifically if it exists
-                    target_override=r['config'].get('target_override'),
-                    deployment_rules=r['config'].get('deployment_rules'),
-                    manual_preview_path=r['config'].get('manual_preview_path'),
-                )
-                self._active_pkg_cards.append(card)
-                card.single_clicked.connect(lambda p=item_abs_path: self._handle_item_click(p, "package"))
-                card.deploy_changed.connect(self._refresh_category_cards)
-            
-            # Use pkg style setting
-            pkg_mode = getattr(self, 'pkg_display_override', None) or getattr(self, 'current_pkg_display_mode', None) or 'mini_image'
-            card.set_display_mode(pkg_mode)
-            
-            # Apply proper card dimensions
-            scale = getattr(self, f'pkg_{pkg_mode}_scale', 1.0)
-            base_w = getattr(self, f'pkg_{pkg_mode}_card_w', 160)
-            base_h = getattr(self, f'pkg_{pkg_mode}_card_h', 200)
-            base_img_w = getattr(self, f'pkg_{pkg_mode}_img_w', 140)
-            base_img_h = getattr(self, f'pkg_{pkg_mode}_img_h', 120)
-            card.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
-
-            self.pkg_layout.addWidget(card)
-            card.show()
-        
-        if pkg_results:
-            self.logger.info(f"[Profile] Search: Package display finished.")
-        else:
+        if not pkg_results:
             lbl = QLabel(_("No packages match: {q}").format(q=query))
             lbl.setStyleSheet("color: #888; font-style: italic;")
             self.pkg_layout.addWidget(lbl)
-        
+
         self._hide_search_indicator()
-        
-        # Phase 28: Force layout refresh to avoid overlapping/alignment issues
-        if hasattr(self, 'cat_layout'):
-            self.cat_layout.invalidate()
-            if self.cat_layout.parentWidget():
-                self.cat_layout.parentWidget().updateGeometry()
-        if hasattr(self, 'pkg_layout'):
-            self.pkg_layout.invalidate()
-            if self.pkg_layout.parentWidget():
-                self.pkg_layout.parentWidget().updateGeometry()
-        
-        # Refresh orange borders for categories with linked packages
         self._refresh_category_cards()
         
-        # Phase 28: Logging search profile
         if hasattr(self, 'logger'):
-            duration = time.time() - start_t if 'start_t' in locals() else -1
-            self.logger.info(f"[Profile] Search display finished. Total duration: {duration:.3f}s")
+            self.logger.info(f"[Profile] Search display finished.")
     
     def _show_search_indicator(self):
         """Show floating search indicator overlay with animated dots."""

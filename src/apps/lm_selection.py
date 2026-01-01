@@ -81,8 +81,10 @@ class LMSelectionMixin:
 
         if not self.selected_paths: return
 
-        menu = QMenu()
+        # Create menu with explicit parent to prevent style leakage
+        menu = QMenu(self)
         menu.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)  # Auto-cleanup
         
         from src.ui.styles import MenuStyles
         menu.setStyleSheet(MenuStyles.CONTEXT)
@@ -130,8 +132,9 @@ class LMSelectionMixin:
             from src.core.lang_manager import _
             from src.ui.styles import MenuStyles
 
-            menu = QMenu()
+            menu = QMenu(self)
             menu.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             menu.setStyleSheet(MenuStyles.CONTEXT)
             
             count = len(self.selected_paths)
@@ -152,6 +155,15 @@ class LMSelectionMixin:
             
             act_hide = menu.addAction(_("👻 Hide All"))
             act_hide.triggered.connect(lambda: self._batch_visibility_selected(False))
+            
+            menu.addSeparator()
+
+            # Favorite actions
+            act_fav = menu.addAction("🌟 " + _("Batch Add to Favorites"))
+            act_fav.triggered.connect(lambda: self._batch_favorite_selected(True))
+            
+            act_unfav = menu.addAction("❇ " + _("Batch Remove from Favorites"))
+            act_unfav.triggered.connect(lambda: self._batch_favorite_selected(False))
             
             menu.addSeparator()
 
@@ -178,6 +190,10 @@ class LMSelectionMixin:
             
             act_batch = menu.addAction(_("📝 Batch Edit Properties..."))
             act_batch.triggered.connect(self._batch_edit_properties_selected)
+            
+            # Phase 1.0.9: Quick View Manager
+            act_quick = menu.addAction(_("⚡ Quick View Manager..."))
+            act_quick.triggered.connect(self._open_quick_view_manager)
             
             act_explorer = menu.addAction(_("📂 Open Selected in Explorer"))
             act_explorer.triggered.connect(self._batch_open_in_explorer)

@@ -17,6 +17,8 @@ Link Master: Display Mode Mixin
 - storage_root: str
 """
 import os
+import logging
+import logging
 from src.core.lang_manager import _
 
 
@@ -107,12 +109,33 @@ class LMDisplayMixin:
             base_img_w = getattr(self, f'cat_{apply_mode}_img_w', 140)
             base_img_h = getattr(self, f'cat_{apply_mode}_img_h', 140)
 
-            for i in range(self.cat_layout.count()):
+            # Profiling
+            import time
+            t_start = time.perf_counter()
+            count = self.cat_layout.count()
+            
+            # Centralized update loop optimizations
+            # Phase 1.1.15: Enable Batch Mode to skip relayout on every item update
+            if hasattr(self.cat_layout, 'setBatchMode'):
+                self.cat_layout.setBatchMode(True)
+            
+            for i in range(count):
                 widget = self.cat_layout.itemAt(i).widget()
                 if hasattr(widget, 'set_display_mode'):
                     widget.set_display_mode(apply_mode)
-                if hasattr(widget, 'set_card_params'):
-                    widget.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
+            
+            t_mid = time.perf_counter()
+            
+            # Phase 1.1.5: Centralized apply to ensure dynamic spacing is updated correctly
+            if hasattr(self, '_apply_card_params_to_layout'):
+                self._apply_card_params_to_layout('category', apply_mode)
+                
+            # Finish batch mode (triggers one final layout)
+            if hasattr(self.cat_layout, 'setBatchMode'):
+                self.cat_layout.setBatchMode(False)
+                
+            t_end = time.perf_counter()
+            logging.info(f"[DisplayMode] Cat toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
 
     def _toggle_pkg_display_mode(self, mode, force=False):
         """Toggle package display mode button - click again to deselect and return to default."""
@@ -168,12 +191,24 @@ class LMDisplayMixin:
             base_img_w = getattr(self, f'pkg_{apply_mode}_img_w', 140)
             base_img_h = getattr(self, f'pkg_{apply_mode}_img_h', 140)
 
-            for i in range(self.pkg_layout.count()):
+            # Profiling
+            import time
+            t_start = time.perf_counter()
+            count = self.pkg_layout.count()
+
+            for i in range(count):
                 widget = self.pkg_layout.itemAt(i).widget()
                 if hasattr(widget, 'set_display_mode'):
                     widget.set_display_mode(apply_mode)
-                if hasattr(widget, 'set_card_params'):
-                    widget.set_card_params(base_w, base_h, base_img_w, base_img_h, scale)
+            
+            t_mid = time.perf_counter()
+
+            # Phase 1.1.5: Centralized apply to ensure dynamic spacing is updated correctly
+            if hasattr(self, '_apply_card_params_to_layout'):
+                self._apply_card_params_to_layout('package', apply_mode)
+                
+            t_end = time.perf_counter()
+            logging.info(f"[DisplayMode] Pkg toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
 
     def _toggle_show_hidden(self):
         """Toggle visibility of hidden folders."""
@@ -186,6 +221,16 @@ class LMDisplayMixin:
             self.btn_show_hidden.setText("=")
             self.btn_show_hidden.setToolTip(_("Show hidden folders"))
             self.btn_show_hidden.setStyleSheet(self.btn_normal_style)
+        self._apply_card_filters()
+
+    def _toggle_favorite_filter(self):
+        """Toggle filter to show only favorited items."""
+        is_checked = self.btn_filter_favorite.isChecked()
+        self.favorite_filter_mode = is_checked
+        if is_checked:
+            self.btn_filter_favorite.setStyleSheet(self.btn_selected_style)
+        else:
+            self.btn_filter_favorite.setStyleSheet(self.btn_normal_style)
         self._apply_card_filters()
 
     def _toggle_linked_filter(self):
@@ -270,17 +315,54 @@ class LMDisplayMixin:
 
     def _should_card_be_visible(self, card) -> bool:
         """Determines if a card should be visible based on current filters."""
-        # Check hidden filter
-        if not getattr(self, 'show_hidden', False) and getattr(card, 'is_hidden', False):
-            return False
+        is_show_hidden = getattr(self, 'show_hidden', False)
         
-        # Check link filter
+        # 1. Check hidden filter
+        if not is_show_hidden and getattr(card, 'is_hidden', False):
+            return False
+            
+        # 2. Check _Trash visibility
+        if not is_show_hidden:
+            card_path = getattr(card, 'path', "")
+            if os.path.basename(card_path) == '_Trash':
+                return False
+        
+        # 3. Check View Context Selection
+        # Requirement: In 'view' context (top area), if a category is selected (current_path set),
+        # we hide packages in that same area to avoid visual noise/confusion.
+        context = getattr(card, 'context', 'view')
+        current_selection = getattr(self, 'current_path', None)
+        if context == "view" and current_selection and getattr(card, 'is_package', False):
+            return False
+
+        # 4. Check Preset Filter
+        if getattr(self, 'preset_filter_mode', False):
+            rel_path = getattr(card, 'rel_path', "")
+            if context == "contents":
+                if rel_path not in getattr(self, 'preset_filter_paths', set()):
+                    return False
+            else:
+                if getattr(card, 'is_package', False):
+                    if rel_path not in getattr(self, 'preset_filter_paths', set()):
+                        return False
+                else:
+                    if rel_path not in getattr(self, 'preset_filter_categories', set()):
+                        return False
+
+        # 5. Check link filter
         link_mode = getattr(self, 'link_filter_mode', None)
         if link_mode == 'linked':
-            if card.link_status not in ['linked', 'partial'] and not getattr(card, 'has_linked_children', False):
+            if card.link_status not in ['linked', 'partial'] and not getattr(card, 'has_linked', False):
                 return False
         elif link_mode == 'unlinked':
-            if card.link_status in ['linked', 'partial'] or getattr(card, 'has_linked_children', False):
+            # Fix: Hide ONLY if completely linked/deployed. 
+            # If it's partial or unlinked, keep it visible so user can see what's missing.
+            if card.link_status == 'linked':
+                return False
+        
+        # 6. Check favorite filter
+        if getattr(self, 'favorite_filter_mode', False):
+            if not getattr(card, 'is_favorite', False) and not getattr(card, 'has_favorite', False):
                 return False
         
         return True

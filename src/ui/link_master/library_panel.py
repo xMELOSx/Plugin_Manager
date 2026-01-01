@@ -23,6 +23,7 @@ import webbrowser
 import urllib.request
 import urllib.error
 from PyQt6.QtCore import pyqtSignal, Qt, QUrl, QTimer
+from src.ui.link_master.dialogs.library_dialogs import LibrarySettingsDialog, DependentPackagesDialog
 
 
 class LibraryItemDelegate(QStyledItemDelegate):
@@ -70,7 +71,14 @@ class LibraryPanel(QWidget):
         layout.addWidget(self.header_lbl)
         
         # Library TreeWidget
-        self.lib_tree = QTreeWidget()
+        class LibraryTreeWidget(QTreeWidget):
+            dropped = pyqtSignal()
+            def dropEvent(self, event):
+                super().dropEvent(event)
+                self.dropped.emit()
+                
+        self.lib_tree = LibraryTreeWidget()
+        self.lib_tree.dropped.connect(self._sync_tree_to_db)
         self.lib_tree.setHeaderLabels([_("Library Name"), _("Status"), _("Latest"), _("Priority"), _("Deps")])
         self.lib_tree.setColumnWidth(0, 150)
         self.lib_tree.setColumnWidth(1, 40)
@@ -78,17 +86,33 @@ class LibraryPanel(QWidget):
         self.lib_tree.setColumnWidth(3, 100)  # For 最新 text
         self.lib_tree.setColumnWidth(4, 40)
         self.lib_tree.setMinimumHeight(150)
-        self.lib_tree.setRootIsDecorated(False)
+        self.lib_tree.setRootIsDecorated(True)  # Show folder expand/collapse arrows
+        self.lib_tree.setIndentation(20)  # Slightly larger indentation
+        self.lib_tree.setEditTriggers(QTreeWidget.EditTrigger.NoEditTriggers)  # Disable text editing
         self.lib_tree.setStyleSheet("""
-            QTreeWidget { background-color: #2b2b2b; border: 1px solid #444; color: #ddd; }
-            QTreeWidget::item { padding: 5px; min-height: 36px; }
+            QTreeWidget { background-color: #2b2b2b; border: 1px solid #444; color: #ddd; outline: none; }
+            QTreeWidget::item { padding: 4px 0px; min-height: 28px; }
             QTreeWidget::item:selected { background-color: #3498db; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
+            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 2px 5px; min-height: 32px; font-weight: bold; }
+            QComboBox { background: #333; color: #eee; border: 1px solid #555; height: 24px; font-size: 11px; margin: 2px 0px 0px 0px; }
         """)
         # Set custom delegate for consistent colors
         self.lib_tree.setItemDelegate(LibraryItemDelegate(self.lib_tree))
         self.lib_tree.itemSelectionChanged.connect(self._on_selection_changed)
+        self.lib_tree.itemDoubleClicked.connect(self._on_item_double_clicked)  # Double-click to toggle folders
         self.lib_tree.header().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Enable Drag & Drop
+        self.lib_tree.setDragEnabled(True)
+        self.lib_tree.setAcceptDrops(True)
+        self.lib_tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+        self.lib_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.lib_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lib_tree.customContextMenuRequested.connect(self._show_context_menu)
+        
+        # Connect expansion to save state
+        self.lib_tree.itemExpanded.connect(self._on_item_expanded_collapsed)
+        self.lib_tree.itemCollapsed.connect(self._on_item_expanded_collapsed)
         
         layout.addWidget(self.lib_tree, 1)
         
@@ -163,6 +187,15 @@ class LibraryPanel(QWidget):
         """)
         self.btn_hide.clicked.connect(self._toggle_visibility)
         row3.addWidget(self.btn_hide)
+
+        self.btn_new_folder = QPushButton(_("📁 New Folder"))
+        self.btn_new_folder.setToolTip(_("Create a new library folder"))
+        self.btn_new_folder.setStyleSheet("""
+            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
+            QPushButton:hover { background-color: #5d5d5d; }
+        """)
+        self.btn_new_folder.clicked.connect(lambda: self._create_new_folder())
+        row3.addWidget(self.btn_new_folder)
         
         self.btn_reg = QPushButton(_("🏷 Register Selected Package"))
         self.btn_reg.setToolTip(_("Register the selected folder as a library."))
@@ -221,6 +254,8 @@ class LibraryPanel(QWidget):
         self.btn_unregister.setToolTip(_("Unregister selected version from library"))
         self.btn_hide.setText(_("👁 Hide"))
         self.btn_hide.setToolTip(_("Hide from library list"))
+        self.btn_new_folder.setText(_("📁 New Folder"))
+        self.btn_new_folder.setToolTip(_("Create a new library folder"))
         self.btn_reg.setText(_("🏷 Register Selected Package"))
         self.btn_reg.setToolTip(_("Register the selected folder as a library."))
 
@@ -233,21 +268,27 @@ class LibraryPanel(QWidget):
     def refresh(self):
         if not self.db: return
         
+        # Fetch folders
+        folders_list = self.db.get_lib_folders()
         all_configs = self.db.get_all_folder_configs()
-        libraries = {}
         
+        libraries = {}
         for rel_path, cfg in all_configs.items():
             if cfg.get('is_library', 0):
                 lib_name = cfg.get('lib_name') or "Unnamed Library"
                 if lib_name not in libraries: 
-                    libraries[lib_name] = {'versions': [], 'any_linked': False}
+                    libraries[lib_name] = {'versions': [], 'any_linked': False, 'folder_id': None}
+                
                 cfg['_rel_path'] = rel_path
                 libraries[lib_name]['versions'].append(cfg)
+                
+                # Use the first non-null folder_id found among versions
+                if libraries[lib_name]['folder_id'] is None:
+                    libraries[lib_name]['folder_id'] = cfg.get('lib_folder_id')
+                
                 if cfg.get('last_known_status') == 'linked':
                     libraries[lib_name]['any_linked'] = True
                 if cfg.get('has_logical_conflict', 0) == 1 or cfg.get('last_known_status') == 'conflict':
-                    # Only mark as 'any_conflict' if ANY version has it, but used for summary?
-                    # The user wants specific detection for the selected version.
                     cfg['_has_local_conflict'] = True
                     libraries[lib_name].setdefault('any_conflict', True)
                 else:
@@ -255,26 +296,71 @@ class LibraryPanel(QWidget):
         
         dep_counts = self._count_dependent_packages(libraries.keys(), all_configs)
         
-        # In-place update to maintain focus/expansion
-        existing_items = {}
-        for i in range(self.lib_tree.topLevelItemCount()):
-            item = self.lib_tree.topLevelItem(i)
-            item_data = item.data(0, Qt.ItemDataRole.UserRole)
-            if item_data and item_data.get('name'):
-                existing_items[item_data['name']] = item
+        # Save current expansion and selection (simplified - based on item type and name/id)
+        expanded_folders = set()
+        selected_ids = [] # List of (type, id_or_name)
         
-        current_names = set(libraries.keys())
+        # Rebuild tree logic
+        self.lib_tree.clear() # Clear and rebuild is easier for hierarchy for now, but loses focus if not careful.
+        # However, let's try to maintain continuity if possible. 
+        # For simplicity in this complex view with widgets, we will rebuild.
         
+        folder_items = {} # folder_id -> item
+        
+        # 1. Create Folder items
+        # Sort folders to ensure parents are created before children if we were doing recursive, 
+        # but children might refer to non-yet-created parents. We'll do multiple passes or use a helper.
+        
+        pending_folders = list(folders_list)
+        while pending_folders:
+            deferred = []
+            for f in pending_folders:
+                parent_id = f.get('parent_id')
+                if parent_id is None:
+                    # Root folder
+                    item = QTreeWidgetItem(self.lib_tree)
+                elif parent_id in folder_items:
+                    # Child of an existing folder
+                    item = QTreeWidgetItem(folder_items[parent_id])
+                else:
+                    # Parent not yet created
+                    deferred.append(f)
+                    continue
+                
+                item.setText(0, f"📁 {f['name']}")
+                item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'id': f['id'], 'name': f['name']})
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
+                item.setExpanded(bool(f.get('is_expanded', 1)))
+                folder_items[f['id']] = item
+            
+            if len(pending_folders) == len(deferred):
+                # Circular dependency or missing parent - put rest at root
+                for f in deferred:
+                    item = QTreeWidgetItem(self.lib_tree)
+                    item.setText(0, f"📁 {f['name']}")
+                    item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'id': f['id'], 'name': f['name']})
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
+                    item.setExpanded(bool(f.get('is_expanded', 1)))
+                    folder_items[f['id']] = item
+                break
+            pending_folders = deferred
+
+        # 2. Create Library items
         for lib_name, lib_data in sorted(libraries.items()):
             versions = lib_data['versions']
             versions.sort(key=lambda x: x.get('lib_version', ''), reverse=True)
             latest_ver = versions[0].get('lib_version', 'Unknown') if versions else 'N/A'
+            
+            # Find folder
+            folder_id = lib_data.get('folder_id')
+            parent_item = folder_items.get(folder_id) if folder_id else self.lib_tree
             
             # Find priority version
             priority_ver = None
             priority_path = None
             priority_mode = 'fixed'
             
+            # (Logic for finding priority_path same as before)
             for v in versions:
                 if v.get('lib_priority', 0) > 0:
                     priority_ver = v.get('lib_version', 'Unknown')
@@ -295,16 +381,15 @@ class LibraryPanel(QWidget):
             
             priority_cfg = next((v for v in versions if v['_rel_path'] == priority_path), None)
             priority_status = priority_cfg.get('last_known_status', 'unlinked') if priority_cfg else 'unlinked'
-            # Correctly detect conflict ONLY for the selected (priority) version
             has_conflict = priority_cfg.get('_has_local_conflict', False) if priority_cfg else False
             is_hidden = bool(priority_cfg.get('lib_hidden', 0)) if priority_cfg else False
+            is_favorite = bool(priority_cfg.get('is_favorite', 0)) if priority_cfg else False
             
-            # Reuse or create
-            item = existing_items.get(lib_name)
-            if not item:
-                item = QTreeWidgetItem(self.lib_tree)
+            if isinstance(parent_item, QTreeWidget):
+                item = QTreeWidgetItem(parent_item)
+            else:
+                item = QTreeWidgetItem(parent_item)
             
-            # Sync Data
             item.setData(0, Qt.ItemDataRole.UserRole, {
                 'type': 'library',
                 'name': lib_name,
@@ -312,11 +397,14 @@ class LibraryPanel(QWidget):
                 'priority_path': priority_path,
                 'priority_status': priority_status,
                 'has_conflict': has_conflict,
-                'is_hidden': is_hidden
+                'is_hidden': is_hidden,
+                'is_favorite': is_favorite,
+                'folder_id': folder_id
             })
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled)
             
-            # Columns
-            item.setText(0, f"📚 {lib_name}")
+            # Columns - no prefix, just lib_name
+            item.setText(0, lib_name)
             if is_hidden:
                 item.setForeground(0, QBrush(QColor("#888")))
             else:
@@ -336,14 +424,10 @@ class LibraryPanel(QWidget):
             item.setText(2, latest_ver)
             
             # Version Dropdown
-            old_combo = self.lib_tree.itemWidget(item, 3)
-            if old_combo:
-                # Reuse if same versions and path? Actually recreating is safer for Qt internal sync.
-                # However, lets try to block signals to avoid triggering re-deploy logic if possible.
-                old_combo.blockSignals(True)
-            
             priority_combo = QComboBox()
-            priority_combo.setStyleSheet("background: #333; color: #eee; border: 1px solid #555;")
+            priority_combo.setFixedHeight(24)
+            priority_combo.setStyleSheet("background: #333; color: #eee; border: 1px solid #555; font-size: 11px; margin-top: 2px;")
+            priority_combo.blockSignals(True) # Prevent DB updates during refresh
             priority_combo.addItem(_("🔄 Latest"), "__LATEST__")
             for v in versions:
                 priority_combo.addItem(v.get('lib_version', 'Unknown'), v['_rel_path'])
@@ -353,6 +437,7 @@ class LibraryPanel(QWidget):
             elif priority_path:
                 idx = priority_combo.findData(priority_path)
                 if idx >= 0: priority_combo.setCurrentIndex(idx)
+            priority_combo.blockSignals(False)
             
             priority_combo.currentIndexChanged.connect(
                 lambda idx, name=lib_name, combo=priority_combo: self._on_priority_changed(name, combo)
@@ -363,12 +448,6 @@ class LibraryPanel(QWidget):
             item.setText(4, str(dep_counts.get(lib_name, 0)))
             item.setTextAlignment(4, Qt.AlignmentFlag.AlignCenter)
             
-        # Cleanup
-        for name, item in existing_items.items():
-            if name not in current_names:
-                root = self.lib_tree.invisibleRootItem()
-                root.removeChild(item)
-        
         self._update_buttons()
 
     def _count_dependent_packages(self, lib_names: list, all_configs: dict) -> dict:
@@ -410,18 +489,40 @@ class LibraryPanel(QWidget):
                 QPushButton { background-color: #555; color: #888; }
             """)
             self.btn_hide.setText(_("👁 Hide"))
+            self.btn_url.setEnabled(False)
+            self.btn_settings.setEnabled(False)
+            self.btn_props.setEnabled(False)
+            self.btn_deps.setEnabled(False)
+            self.btn_unregister.setEnabled(False)
             return
         
+        # Disable library specific buttons for folders
+        is_lib = data.get('type') == 'library'
+        self.btn_url.setEnabled(is_lib)
+        self.btn_settings.setEnabled(is_lib)
+        self.btn_props.setEnabled(is_lib)
+        self.btn_deps.setEnabled(is_lib)
+        self.btn_unregister.setEnabled(is_lib)
+        self.btn_hide.setEnabled(is_lib)
+
+        if not is_lib:
+            self.btn_deploy_unlink.setEnabled(False)
+            self.btn_deploy_unlink.setText(_("🚀 Deploy"))
+            self.btn_deploy_unlink.setStyleSheet("""
+                QPushButton { background-color: #555; color: #888; }
+            """)
+            return
+
         self.btn_deploy_unlink.setEnabled(True)
         
         if data.get('priority_status') == 'linked':
-            self.btn_deploy_unlink.setText(_("🔗 Unlink"))
+            self.btn_deploy_unlink.setText(_("🔗 解除"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #e67e22; color: white; }
                 QPushButton:hover { background-color: #f39c12; }
             """)
         else:
-            self.btn_deploy_unlink.setText(_("🚀 Deploy"))
+            self.btn_deploy_unlink.setText(_("🚀 デプロイ"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #27ae60; color: white; }
                 QPushButton:hover { background-color: #2ecc71; }
@@ -555,7 +656,7 @@ class LibraryPanel(QWidget):
         if not data:
             return
         # Make non-modal and keep reference to prevent garbage collection
-        self._settings_dialog = LibrarySettingsDialog(self, self.db, data['name'], data['versions'])
+        self._settings_dialog = LibrarySettingsDialog(self, self.db, data['name'], data['versions'], app_id=self.app_id)
         self._settings_dialog.setModal(False)
         self._settings_dialog.request_view_properties.connect(self.request_view_properties.emit)
         self._settings_dialog.request_edit_properties.connect(self.request_edit_properties.emit)
@@ -617,409 +718,160 @@ class LibraryPanel(QWidget):
                 self.lib_tree.setCurrentItem(item)
                 break
 
-
-class LibrarySettingsDialog(QDialog):
-    """ライブラリの詳細設定ダイアログ"""
-    request_view_properties = pyqtSignal(str)
-    request_edit_properties = pyqtSignal(str)
-    
-    def __init__(self, parent, db, lib_name: str, versions: list):
-        super().__init__(parent)
-        self.db = db
-        self.lib_name = lib_name
-        self.versions = versions
-        self.setWindowTitle(_("Library Settings: {name}").format(name=lib_name))
-        self.setMinimumSize(550, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QLineEdit, QTextEdit { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; padding: 4px; }
-            QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QTreeWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; min-height: 24px; }
-            QPushButton:hover { background-color: #5d5d5d; }
+    # --- Folder Management ---
+    def _show_context_menu(self, pos):
+        item = self.lib_tree.itemAt(pos)
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: #2b2b2b; color: #ffffff; border: 1px solid #555; }
+            QMenu::item { padding: 5px 20px; color: #ffffff; }
+            QMenu::item:selected { background-color: #3498db; color: white; }
+            QMenu::item:disabled { color: #777; }
         """)
-        self._init_ui()
+        
+        data = item.data(0, Qt.ItemDataRole.UserRole) if item else None
+        
+        new_folder_act = menu.addAction(_("📁 New Folder"))
+        new_folder_act.triggered.connect(lambda: self._create_new_folder(item if data and data.get('type') == 'folder' else None))
+        
+        if data and data.get('type') == 'folder':
+            menu.addSeparator()
+            rename_act = menu.addAction(_("✏️ Rename Folder"))
+            rename_act.triggered.connect(lambda: self._rename_folder(item))
+            
+            delete_act = menu.addAction(_("🗑 Delete Folder"))
+            delete_act.triggered.connect(lambda: self._delete_folder(item))
+            
+        elif data and data.get('type') == 'library':
+            lib_name = data.get('name', '')
+            menu.addSeparator()
+            # Title item
+            title_act = menu.addAction(lib_name)
+            title_act.setEnabled(False)
+            menu.addSeparator()
+            
+            if data.get('priority_status') == 'linked':
+                act_unlink = menu.addAction(_("🔗 解除"))
+                act_unlink.triggered.connect(self._toggle_deploy)
+            else:
+                act_deploy = menu.addAction(_("🚀 デプロイ"))
+                act_deploy.triggered.connect(self._toggle_deploy)
+            
+            act_settings = menu.addAction(_("⚙ Settings"))
+            act_settings.triggered.connect(self._open_lib_settings)
+            
+            menu.addSeparator()
+            
+            # Move to Folder submenu
+            move_menu = menu.addMenu(_("📁 Move into Folder"))
+            move_menu.setStyleSheet("""
+                QMenu { background-color: #2b2b2b; color: #ffffff; border: 1px solid #555; }
+                QMenu::item { padding: 5px 20px; color: #ffffff; }
+            """)
+            act_root = move_menu.addAction(_("(Root)"))
+            act_root.triggered.connect(lambda: self._move_to_folder_by_id(lib_name, None))
+            move_menu.addSeparator()
+            
+            folders = self.db.get_lib_folders() if self.db else []
+            for f in folders:
+                f_act = move_menu.addAction(f"📁 {f['name']}")
+                f_act.triggered.connect(lambda checked, fid=f['id'], ln=lib_name: self._move_to_folder_by_id(ln, fid))
+            
+            menu.addSeparator()
+            
+            if data.get('is_hidden'):
+                act_show = menu.addAction(_("👁 Show"))
+                act_show.triggered.connect(self._toggle_visibility)
+            else:
+                act_hide = menu.addAction(_("👻 Hide"))
+                act_hide.triggered.connect(self._toggle_visibility)
+            
+            menu.addSeparator()
+            act_unreg = menu.addAction(_("🗑 Unregister"))
+            act_unreg.triggered.connect(self._unregister_selected)
+            
+        menu.exec(self.lib_tree.viewport().mapToGlobal(pos))
 
-    def save_state(self):
-        """Save UI state like column widths."""
+    def _move_to_folder_by_id(self, lib_name, folder_id):
+        """Move all versions of a library to a specific folder id."""
         if not self.db: return
-        try:
-            state = self.lib_tree.header().saveState().data().hex()
-            self.db.set_setting(f'lib_panel_state_{self.app_id or "default"}', state)
-        except Exception as e:
-            print(f"Error saving lib state: {e}")
+        all_configs = self.db.get_all_folder_configs()
+        for rp, cfg in all_configs.items():
+            if cfg.get('lib_name') == lib_name and cfg.get('is_library', 0):
+                self.db.update_folder_display_config(rp, lib_folder_id=folder_id)
+        self.refresh()
+        self.library_changed.emit()
 
-    def restore_state(self):
-        """Restore UI state."""
-        if not self.db: return
-        try:
-             state_hex = self.db.get_setting(f'lib_panel_state_{self.app_id or "default"}')
-             if state_hex:
-                 from PyQt6.QtCore import QByteArray
-                 self.lib_tree.header().restoreState(QByteArray.fromHex(state_hex.encode()))
-        except Exception as e:
-            print(f"Error restoring lib state: {e}")
+    def _create_new_folder(self, parent_item=None):
+        name, ok = QInputDialog.getText(self, _("New Folder"), _("Folder Name:"))
+        if ok and name:
+            parent_id = parent_item.data(0, Qt.ItemDataRole.UserRole).get('id') if parent_item else None
+            self.db.add_lib_folder(name, parent_id)
+            self.refresh()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        form = QFormLayout()
-        
-        self.name_edit = QLineEdit(self.lib_name)
-        form.addRow(_("Library Name:"), self.name_edit)
-        
-        first_cfg = self.versions[0] if self.versions else {}
-        self.url_list_json = first_cfg.get('url_list', '[]') or '[]'
-        
-        url_manage_layout = QHBoxLayout()
-        self.url_btn = QPushButton(_("🌐 Manage URLs..."))
-        self.url_btn.clicked.connect(self._open_url_manager)
-        self.url_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; min-height: 24px;")
-        url_manage_layout.addWidget(self.url_btn)
-        
-        self.url_count_label = QLabel("(0)")
-        self.url_count_label.setStyleSheet("color: #888;")
-        url_manage_layout.addWidget(self.url_count_label)
-        url_manage_layout.addStretch()
-        form.addRow(_("URLs:"), url_manage_layout)
-        self._update_url_count_preview()
-        
-        self.author_edit = QLineEdit(first_cfg.get('author', ''))
-        form.addRow(_("Author:"), self.author_edit)
-        
-        layout.addLayout(form)
-        
-        layout.addWidget(QLabel(_("Registered Versions:")))
-        
-        self.ver_tree = QTreeWidget()
-        self.ver_tree.setEditTriggers(QTreeWidget.EditTrigger.DoubleClicked | QTreeWidget.EditTrigger.SelectedClicked)
-        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), _("URL"), _("View"), _("Edit"), _("Unreg")])
-        self.ver_tree.setColumnWidth(0, 80)
-        self.ver_tree.setColumnWidth(1, 150)
-        self.ver_tree.setColumnWidth(2, 120)
-        self.ver_tree.setColumnWidth(3, 50)
-        self.ver_tree.setColumnWidth(4, 50)
-        self.ver_tree.setColumnWidth(5, 50)
-        
-        for v in self.versions:
-            item = QTreeWidgetItem(self.ver_tree)
-            item.setText(0, v.get('lib_version', 'Unknown'))
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-            item.setText(1, os.path.basename(v['_rel_path']))
-            # Column 1 (Package Name) is explicitly not editable
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable if 1==1 else item.flags()) # Column flags apply to whole item usually, but we manage via triggers or check
-            
-            # URL Button
-            url_btn = QPushButton("🌐")
-            url_btn.setFixedSize(30, 24)
-            url_btn.setToolTip(_("URL Management"))
-            url_btn.clicked.connect(lambda _, p=v['_rel_path'], c=v.get('url_list', '[]'): self._open_version_url_manager(p, c))
-            self.ver_tree.setItemWidget(item, 2, url_btn)
-            
-            # Column 3 (View)
-            view_btn = QPushButton("📋")
-            view_btn.setFixedSize(30, 24)
-            view_btn.setToolTip(_("View Properties"))
-            view_btn.clicked.connect(lambda _, p=v['_rel_path']: self.request_view_properties.emit(p))
-            self.ver_tree.setItemWidget(item, 3, view_btn)
-            
-            # Column 4 (Edit)
-            edit_btn = QPushButton("✏")
-            edit_btn.setFixedSize(30, 24)
-            edit_btn.setToolTip(_("Edit Properties"))
-            edit_btn.clicked.connect(lambda _, p=v['_rel_path']: self.request_edit_properties.emit(p))
-            self.ver_tree.setItemWidget(item, 4, edit_btn)
-            
-            # Column 5 (Unregister)
-            unreg_btn = QPushButton("🗑")
-            unreg_btn.setFixedSize(30, 24)
-            unreg_btn.setStyleSheet("background-color: #c0392b; color: white; padding: 0;")
-            unreg_btn.clicked.connect(lambda _, p=v['_rel_path'], it=item: self._unregister_version(p, it))
-            self.ver_tree.setItemWidget(item, 5, unreg_btn)
-            
-            # Use fixed sizes for view/edit too
-            view_btn.setFixedSize(30, 24)
-            view_btn.setStyleSheet("padding: 0;")
-            edit_btn.setFixedSize(30, 24)
-            edit_btn.setStyleSheet("padding: 0;")
-            
-            item.setData(0, Qt.ItemDataRole.UserRole, v['_rel_path'])
-        
-        layout.addWidget(self.ver_tree)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        save_btn = QPushButton(_("Save"))
-        save_btn.setStyleSheet("background-color: #27ae60; color: white;")
-        save_btn.clicked.connect(self._save)
-        btn_layout.addWidget(save_btn)
-        
-        cancel_btn = QPushButton(_("Cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(btn_layout)
-    
-    def _unregister_version(self, path: str, item: QTreeWidgetItem):
+    def _rename_folder(self, item):
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        name, ok = QInputDialog.getText(self, _("Rename Folder"), _("New Name:"), QLineEdit.EchoMode.Normal, data.get('name'))
+        if ok and name:
+            self.db.update_lib_folder(data['id'], name=name)
+            self.refresh()
+
+    def _delete_folder(self, item):
+        data = item.data(0, Qt.ItemDataRole.UserRole)
         confirm = QMessageBox.question(
-            self, _("Unregister Library"), 
-            _("Unregister this version from the library?"),
+            self, _("Delete Folder"), 
+            _("Delete folder '{name}'? (Contents will be moved to root)").format(name=data['name']),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:
-            self.db.update_folder_display_config(path, is_library=0, lib_name=None, lib_version=None)
-            idx = self.ver_tree.indexOfTopLevelItem(item)
-            if idx >= 0:
-                self.ver_tree.takeTopLevelItem(idx)
-    
-    def _update_url_count_preview(self):
-        try:
-            ud = json.loads(self.url_list_json)
-            urls = []
-            if isinstance(ud, list): urls = ud
-            elif isinstance(ud, dict): urls = ud.get('urls', [])
-            self.url_count_label.setText(f"({len(urls)})")
-        except:
-            self.url_count_label.setText("(0)")
+            self.db.delete_lib_folder(data['id'])
+            self.refresh()
 
-    def _open_url_manager(self):
-        from src.ui.link_master.dialogs_legacy import URLListDialog
-        dialog = URLListDialog(self, url_list_json=self.url_list_json)
-        if dialog.exec():
-            self.url_list_json = dialog.get_data()
-            self._update_url_count_preview()
-
-    def _open_version_url_manager(self, path, current_json):
-        from src.ui.link_master.dialogs_legacy import URLListDialog
-        dialog = URLListDialog(self, url_list_json=current_json)
-        if dialog.exec():
-            new_json = dialog.get_data()
-            self.db.update_folder_display_config(path, url_list=new_json)
-            # Update legacy url as well
-            try:
-                import json
-                ud = json.loads(new_json)
-                urls = ud if isinstance(ud, list) else ud.get('urls', [])
-                if urls:
-                    self.db.update_folder_display_config(path, url=urls[0].get('url'))
-            except: pass
-
-    def _save(self):
-        new_lib_name = self.name_edit.text().strip()
-        common_url_list = self.url_list_json
-        # Also extract a single URL for legacy 'url' field
-        legacy_url = None
-        try:
-            ud = json.loads(common_url_list)
-            urls = ud if isinstance(ud, list) else ud.get('urls', [])
-            if urls:
-                legacy_url = urls[0].get('url')
-        except: pass
-        
-        common_author = self.author_edit.text().strip()
-        
-        for i in range(self.ver_tree.topLevelItemCount()):
-            item = self.ver_tree.topLevelItem(i)
-            path = item.data(0, Qt.ItemDataRole.UserRole)
-            new_ver = item.text(0).strip()
-            
-            # Update each version
-            self.db.update_folder_display_config(
-                path,
-                lib_name=new_lib_name or self.lib_name,
-                lib_version=new_ver,
-                url=legacy_url, # Legacy field
-                url_list=common_url_list, # Modern field
-                author=common_author or None
-            )
-        
-        self.accept()
-
-
-class DependentPackagesDialog(QDialog):
-    """依存パッケージ確認ダイアログ"""
-    request_view_properties = pyqtSignal(str)
-    request_edit_properties = pyqtSignal(str)
-    request_deploy = pyqtSignal(str)
-    request_unlink = pyqtSignal(str)
-    
-    def __init__(self, parent, db, lib_name: str, versions: list):
-        super().__init__(parent)
-        self.db = db
-        self.lib_name = lib_name
-        self.versions = versions
-        self.setWindowTitle(f"依存パッケージ: {lib_name}")
-        self.setMinimumSize(650, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QTreeWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-            QComboBox { background-color: #333; color: #eee; border: 1px solid #555; }
-        """)
-        self._init_ui()
-        self._load_deps()
-    
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        layout.addWidget(QLabel(f"「{self.lib_name}」を使用しているパッケージ:"))
-        
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["パッケージ", "状態", "使用", "🔗", "表示", "編集", "解除"])
-        self.tree.setColumnWidth(0, 180)
-        self.tree.setColumnWidth(1, 40)
-        self.tree.setColumnWidth(2, 80)
-        self.tree.setColumnWidth(3, 40)
-        self.tree.setColumnWidth(4, 40)
-        self.tree.setColumnWidth(5, 40)
-        self.tree.setColumnWidth(6, 40)
-        layout.addWidget(self.tree)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        close_btn = QPushButton("閉じる")
-        close_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-    
-    def _load_deps(self):
-        self.tree.clear()
-        all_configs = self.db.get_all_folder_configs()
-        
-        ver_options = ["最新版"]
-        for v in self.versions:
-            ver_options.append(v.get('lib_version', 'Unknown'))
-        
-        for rel_path, cfg in all_configs.items():
-            if cfg.get('is_library', 0):
-                continue
-            
-            lib_deps_json = cfg.get('lib_deps', '[]')
-            try:
-                lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
-            except:
-                lib_deps = []
-            
-            for dep in lib_deps:
-                dep_name = dep.get('name') if isinstance(dep, dict) else dep
-                if dep_name != self.lib_name:
-                    continue
-                
-                item = QTreeWidgetItem(self.tree)
-                display_name = cfg.get('display_name') or os.path.basename(rel_path)
-                item.setText(0, display_name)
-                
-                status = cfg.get('last_known_status', 'unlinked')
-                item.setText(1, "🟢" if status == 'linked' else "⚪")
-                item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
-                
-                # Version dropdown
-                combo = QComboBox()
-                combo.addItems(ver_options)
-                ver_mode = dep.get('version_mode', 'latest') if isinstance(dep, dict) else 'latest'
-                spec_ver = dep.get('version') if isinstance(dep, dict) else None
-                if ver_mode == 'latest':
-                    combo.setCurrentText("最新版")
-                elif spec_ver:
-                    combo.setCurrentText(spec_ver)
-                combo.currentTextChanged.connect(lambda t, rp=rel_path: self._on_version_changed(rp, t))
-                self.tree.setItemWidget(item, 2, combo)
-                
-                # Deploy/Unlink button
-                if status == 'linked':
-                    deploy_btn = QPushButton("🔗")
-                    deploy_btn.setStyleSheet("background-color: #e67e22;")
-                    deploy_btn.setToolTip("アンリンク")
-                    deploy_btn.clicked.connect(lambda _, rp=rel_path: self._unlink_pkg(rp))
-                else:
-                    deploy_btn = QPushButton("🚀")
-                    deploy_btn.setStyleSheet("background-color: #27ae60;")
-                    deploy_btn.setToolTip("デプロイ")
-                    deploy_btn.clicked.connect(lambda _, rp=rel_path: self._deploy_pkg(rp))
-                deploy_btn.setFixedWidth(35)
-                self.tree.setItemWidget(item, 3, deploy_btn)
-                
-                # View button - property view
-                view_btn = QPushButton("📋")
-                view_btn.setFixedWidth(35)
-                view_btn.setToolTip("プロパティ表示")
-                view_btn.clicked.connect(lambda _, rp=rel_path: self.request_view_properties.emit(rp))
-                self.tree.setItemWidget(item, 4, view_btn)
-                
-                # Edit button - property edit
-                edit_btn = QPushButton("✏")
-                edit_btn.setFixedWidth(35)
-                edit_btn.setToolTip("プロパティ編集")
-                edit_btn.clicked.connect(lambda _, rp=rel_path: self.request_edit_properties.emit(rp))
-                self.tree.setItemWidget(item, 5, edit_btn)
-                
-                # Remove dependency button
-                remove_btn = QPushButton("🗑")
-                remove_btn.setFixedWidth(35)
-                remove_btn.setStyleSheet("background-color: #c0392b;")
-                remove_btn.setToolTip("依存関係を解除")
-                remove_btn.clicked.connect(lambda _, rp=rel_path: self._remove_dependency(rp))
-                self.tree.setItemWidget(item, 6, remove_btn)
-                
-                item.setData(0, Qt.ItemDataRole.UserRole, rel_path)
-    
-    def _deploy_pkg(self, rel_path: str):
-        self.request_deploy.emit(rel_path)
-        self._load_deps()
-    
-    def _unlink_pkg(self, rel_path: str):
-        self.request_unlink.emit(rel_path)
-        self._load_deps()
-    
-    def _on_version_changed(self, rel_path: str, version_text: str):
-        cfg = self.db.get_folder_config(rel_path) or {}
-        lib_deps_json = cfg.get('lib_deps', '[]')
-        try:
-            lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
-        except:
-            lib_deps = []
-        
-        new_deps = []
-        for dep in lib_deps:
-            if isinstance(dep, dict) and dep.get('name') == self.lib_name:
-                if version_text == "最新版":
-                    new_deps.append({'name': self.lib_name, 'version_mode': 'latest'})
-                else:
-                    new_deps.append({'name': self.lib_name, 'version_mode': 'specific', 'version': version_text})
-            elif isinstance(dep, str) and dep == self.lib_name:
-                if version_text == "最新版":
-                    new_deps.append({'name': self.lib_name, 'version_mode': 'latest'})
-                else:
-                    new_deps.append({'name': self.lib_name, 'version_mode': 'specific', 'version': version_text})
-            else:
-                new_deps.append(dep)
-        
-        self.db.update_folder_display_config(rel_path, lib_deps=json.dumps(new_deps))
-    
-    def _remove_dependency(self, rel_path: str):
-        confirm = QMessageBox.question(
-            self, "依存関係を解除", 
-            f"このパッケージから「{self.lib_name}」への依存関係を解除しますか？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
+    def _on_item_double_clicked(self, item, column):
+        """Toggle folder expand/collapse on double-click."""
+        if not item:
             return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data and data.get('type') == 'folder':
+            item.setExpanded(not item.isExpanded())
+
+    def _on_item_expanded_collapsed(self, item):
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data and data.get('type') == 'folder':
+            self.db.update_lib_folder(data['id'], is_expanded=1 if item.isExpanded() else 0)
+
+    def _sync_tree_to_db(self):
+        """Recursively sync the entire tree structure to the database."""
+        if not self.db: return
         
-        cfg = self.db.get_folder_config(rel_path) or {}
-        lib_deps_json = cfg.get('lib_deps', '[]')
-        try:
-            lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
-        except:
-            lib_deps = []
+        def _process_item(item, parent_id, sort_order):
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if not data: return
+            
+            if data.get('type') == 'folder':
+                folder_id = data['id']
+                self.db.update_lib_folder(folder_id, parent_id=parent_id, sort_order=sort_order)
+                # Process children
+                for i in range(item.childCount()):
+                    _process_item(item.child(i), folder_id, i)
+            elif data.get('type') == 'library':
+                # Update all versions of this library
+                lib_name = data['name']
+                versions = data.get('versions', [])
+                for v in versions:
+                    rp = v.get('_rel_path')
+                    if rp:
+                        self.db.update_folder_display_config(rp, lib_folder_id=parent_id)
+
+        root = self.lib_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            _process_item(root.child(i), None, i)
         
-        new_deps = [d for d in lib_deps 
-                    if not (isinstance(d, dict) and d.get('name') == self.lib_name)
-                    and not (isinstance(d, str) and d == self.lib_name)]
-        
-        self.db.update_folder_display_config(rel_path, lib_deps=json.dumps(new_deps))
-        self._load_deps()
+        # Restore widgets by refreshing after move/reorder
+        self.refresh()
+
+    # To handle the drop, we'll monkey-patch or use a subclass. 
+    # Since we can't easily subclass now without changing the init, let's inject a dropEvent handler if possible, 
+    # but a safer way is to connect to a signal if it exists. 
+    # Unfortunately QTreeWidget doesn't have a 'dropped' signal.
+    # We will override the dropEvent by subclassing QTreeWidget and using it.

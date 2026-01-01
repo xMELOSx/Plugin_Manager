@@ -14,6 +14,7 @@ from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.link_master.utils import format_size
 from src.core.lang_manager import _
+from src.ui.window_mixins import OptionsMixin
 import os
 import subprocess
 import shutil
@@ -148,6 +149,34 @@ class AppRegistrationDialog(QDialog):
         cover_layout.addWidget(self.cover_crop_btn)
         form.addRow(_("Cover Image:"), cover_layout)
         
+        # Favorite System: ★ Toggle + Score
+        fav_score_layout = QHBoxLayout()
+        fav_score_layout.addStretch()
+        
+        self.favorite_btn = QPushButton(_("☆Favorite"))
+        self.favorite_btn.setCheckable(True)
+        self.favorite_btn.setFixedWidth(120)
+        self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.favorite_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: transparent; color: #ccc; border: none; outline: none;
+                text-align: center; padding: 0;
+            }
+            QPushButton:hover { background-color: #444; }
+            QPushButton:checked { color: #f1c40f; font-weight: bold; }
+        """)
+        self.favorite_btn.toggled.connect(lambda checked: self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite")))
+        fav_score_layout.addWidget(self.favorite_btn)
+        
+        fav_score_layout.addSpacing(20)
+        score_label = QLabel(_("Score:"))
+        fav_score_layout.addWidget(score_label)
+        
+        self.score_dial = CompactDial(self, digits=3, show_arrows=True)
+        fav_score_layout.addWidget(self.score_dial)
+        fav_score_layout.addStretch()
+        form.addRow("", fav_score_layout)
+        
         # App Preview Label (Phase 13 Refinement)
         self.preview_label = QLabel(_("No Image"))
         self.preview_label.setFixedSize(160, 120)
@@ -230,6 +259,12 @@ class AppRegistrationDialog(QDialog):
         # URLs
         self.url_list_json = self.app_data.get('url_list', '[]') or '[]'
         self._update_url_count()
+        
+        # Favorite and Score
+        is_fav = bool(self.app_data.get('is_favorite', 0))
+        self.favorite_btn.setChecked(is_fav)
+        self.favorite_btn.setText(_("★Favorite") if is_fav else _("☆Favorite"))
+        self.score_dial.setValue(int(self.app_data.get('score', 0) or 0))
 
     def _update_exe_count(self):
         count = len(self.executables)
@@ -385,6 +420,8 @@ class AppRegistrationDialog(QDialog):
             "conflict_policy": self.conflict_combo.currentText(),
             "deployment_type": self.deploy_combo.currentText(),
             "cover_image": cover_path if cover_path and cover_path not in [" [ Clipboard Image ] ", "[Cropped from Clipboard]"] else None,
+            "is_favorite": 1 if self.favorite_btn.isChecked() else 0,
+            "score": self.score_dial.value(),
             "default_category_style": self.cat_style_combo.currentText(),
             "default_package_style": self.pkg_style_combo.currentText(),
             "executables": json.dumps(self.executables) if self.executables else "[]",
@@ -1378,7 +1415,7 @@ class URLItemWidget(QWidget):
     
     def set_marked(self, marked: bool):
         self.is_marked = marked
-        self.mark_label.setText("🔗" if marked else "  ")
+        self.mark_btn.setText("🔗" if marked else "  ")
         self.mark_label.setStyleSheet("color: #2ecc71;" if marked else "color: #888;")
 
 
@@ -1887,7 +1924,7 @@ class FullPreviewDialog(QDialog):
             os.startfile(self.paths[self.current_index])
 
 
-class FolderPropertiesDialog(QDialog):
+class FolderPropertiesDialog(QDialog, OptionsMixin):
     """Dialog to configure folder-specific display properties."""
     def __init__(self, parent=None, folder_path: str = "", current_config: dict = None, 
                  batch_mode: bool = False, app_name: str = None, storage_root: str = None,
@@ -1980,9 +2017,8 @@ class FolderPropertiesDialog(QDialog):
             if geom: self.restoreGeometry(bytes.fromhex(geom))
 
     def closeEvent(self, event):
-        if hasattr(self, 'db') and self.db:
-            key = "geom_folder_props_batch" if self.batch_mode else "geom_folder_props"
-            self.db.set_setting(key, self.saveGeometry().toHex().data().decode())
+        """Save window geometry on close."""
+        self.save_options("folder_properties")
         super().closeEvent(event)
     
     def _detect_auto_thumbnail(self):
@@ -2073,6 +2109,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Favorite System: ★ Toggle + Score
         fav_layout = QHBoxLayout()
+        fav_layout.addStretch()
         
         is_fav = self.current_config.get('is_favorite', False)
         self.favorite_btn = QPushButton(_("★Favorite") if is_fav else _("☆Favorite"), self)
@@ -2094,13 +2131,11 @@ class FolderPropertiesDialog(QDialog):
         fav_layout.addSpacing(20)
         score_label = QLabel(_("Score:"))
         fav_layout.addWidget(score_label)
-        
         self.score_dial = CompactDial(self, digits=3, show_arrows=True)
-        self.score_dial.setValue(int(self.current_config.get('score', 0) or 0))
         fav_layout.addWidget(self.score_dial)
         fav_layout.addStretch()
         
-        display_form.addRow(_("Favorite:"), fav_layout)
+        display_form.addRow("", fav_layout)
         
         # --- Multi-Preview Launcher (Phase 18) ---
         self.manage_previews_btn = QPushButton(_("📂 Manage Full Previews..."))
@@ -2513,7 +2548,7 @@ class FolderPropertiesDialog(QDialog):
         
         # Actions
         btn_layout = QHBoxLayout()
-        self.ok_btn = QPushButton(_("Save"))
+        self.ok_btn = QPushButton(_("Save (Alt + Enter)"))
         self.ok_btn.setObjectName("save_btn")
         # Removed setDefault(True) - Use Alt+Enter instead
         self.ok_btn.clicked.connect(self.accept)
@@ -3175,7 +3210,7 @@ class TagManagerDialog(QDialog):
         self.overwrite_btn.clicked.connect(self._save_current_item_data)
         self.overwrite_btn.setStyleSheet("background-color: #2980b9; color: white;")
         
-        self.add_btn = QPushButton(_("新規追加"))
+        self.add_btn = QPushButton(_("Add New Tag"))
         self.add_btn.clicked.connect(self._add_tag_default)
         self.add_btn.setStyleSheet("background-color: #e67e22; color: white;")
         
@@ -3874,7 +3909,16 @@ class ImportTypeDialog(QDialog):
         layout.setSpacing(15)
         
         # Translating capitalized capitalized target_type name
-        title_text = _("Import Item") if self.target_type == "item" else ("Import Folder" if self.target_type == "category" else _("Import Package"))
+        if self.target_type == "item":
+            title_text = _("Import Item")
+            type_name = _("Item")
+        elif self.target_type == "category":
+            title_text = _("Import Category")
+            type_name = _("Category")
+        else:
+            title_text = _("Import Package")
+            type_name = _("Package")
+            
         title = QLabel(f"<b>{title_text}</b>")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 16px; color: #3498db; margin-bottom: 2px;")
@@ -3887,8 +3931,9 @@ class ImportTypeDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
         
-        desc = QLabel(_("Select how to import this {type}:").format(type=self.target_type))
+        desc = QLabel(_("Select how to import this {type}:").format(type=type_name))
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setWordWrap(True) # Fix clipping
         layout.addWidget(desc)
         
         # Buttons
