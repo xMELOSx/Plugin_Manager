@@ -2423,6 +2423,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.deploy_override_combo.addItem(_("App Default ({default})").format(default=self.app_deploy_default), None)
         self.deploy_override_combo.addItem(_("Folder"), "folder")
         self.deploy_override_combo.addItem(_("Flatten"), "flatten")
+        self.deploy_override_combo.addItem(_("実体コピー"), "copy")  # Phase 30: Copy mode
         
         curr_deploy = self.current_config.get('deploy_type')
         idx = self.deploy_override_combo.findData(curr_deploy)

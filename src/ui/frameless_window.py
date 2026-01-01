@@ -228,7 +228,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
                 border-color: #888;
                 background: #555;
             }}
-            QCheckBox::indicator:checked {{
+            QCheckBox::indicator:checked, QCheckBox::indicator:checked:!active {{
                 background: #3498db;
                 border: 2px solid #3498db;
                 image: url({check_icon_path});

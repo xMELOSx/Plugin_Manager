@@ -890,11 +890,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 
                 if not rel_path: continue
                 
+                # Exclude _Trash and hidden folders
+                if "_Trash" in rel_path or "_hidden" in rel_path:
+                    continue
+                
                 items_data.append({
                     'rel_path': rel_path,
                     'display_name': getattr(w, 'display_name', ''),
                     'tags': getattr(w, 'tags_raw', ''), # ItemCard should store raw tag string
-                    'image_path': getattr(w, 'image_path_raw', getattr(w, '_current_image_path', ''))
+                    'image_path': getattr(w, 'image_path_raw', getattr(w, '_current_image_path', '')),
+                    'is_favorite': getattr(w, 'is_favorite', False),
+                    'score': getattr(w, 'score', 0)
                 })
         
         if not items_data:

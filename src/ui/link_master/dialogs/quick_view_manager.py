@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QScrollArea, QWidget, QMessageBox, QMenu)
+                             QScrollArea, QWidget, QMessageBox, QMenu, QSpinBox)
 from PyQt6.QtCore import Qt, QSize, QTimer, QPoint, QRect, QRectF
 from PyQt6.QtGui import QIcon, QAction, QPainter, QPen, QBrush, QColor, QPolygonF, QPixmap, QPalette
 import os
@@ -58,6 +58,15 @@ class TagFlowPreview(QWidget):
         # Layout metrics (calculated during paint)
         self._tag_rects = [] # List of (rect, tag_name, is_sep)
         
+    def set_tags(self, tag_cache, current_tags, click_handler, on_render_done=None, icon_cache=None):
+        """Update tag data and trigger repaint."""
+        self._tag_cache = tag_cache
+        self._icon_cache = icon_cache
+        self._current_tags = current_tags
+        self._click_handler = click_handler
+        self._on_render_done = on_render_done
+        self.update()
+
     def set_tags(self, tag_cache, current_tags, click_handler, on_render_done=None, icon_cache=None):
         """Update tag data and trigger repaint."""
         self._tag_cache = tag_cache
@@ -205,6 +214,15 @@ class TagFlowPreview(QWidget):
                 self.update()
                 break
 
+class SortableTableWidgetItem(QTableWidgetItem):
+    """Custom item for sorting by specific data types (bool, int) instead of string."""
+    def __init__(self, value, display_text=None):
+        super().__init__(display_text if display_text is not None else str(value))
+        self._sort_value = value
+
+    def __lt__(self, other):
+        return self._sort_value < other._sort_value
+
 class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     """
     Bulk edit dialog for currently visible items in the category/package area.
@@ -242,8 +260,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._total_render_time = 0.0
         self._total_tag_creation_time = 0.0
         
+        # Track pending tag changes in memory {row: {tag_name: bool}}
+        self._pending_tag_changes = {}
+        
         # UI Setup (Apply styles before layout to prevent white flash)
-        # FramelessDialog already sets up a safe dark stylesheet, but we can override specific widgets
         # IMPORTANT: Maintain transparency for the root dialog
         self.setStyleSheet("""
             /* Root - transparent for frameless effect */
@@ -350,6 +370,98 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         else:
             self.set_default_icon()
         QTimer.singleShot(0, self._load_table_data)
+    
+    def _update_tag_btn_style(self, btn, is_active):
+        if is_active:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3498db; 
+                    border: none; 
+                    border-radius: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #5dade2;
+                }
+            """)
+        else:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #555; 
+                    border: none; 
+                    border-radius: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #777;
+                }
+            """)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def _on_tag_toggled(self, row, tag_lower, checked, btn):
+        # Update UI style
+        self._update_tag_btn_style(btn, checked)
+        
+        # Track change
+        if row not in self._pending_tag_changes:
+            self._pending_tag_changes[row] = {}
+        self._pending_tag_changes[row][tag_lower] = checked
+        
+        # Find column for this tag to update sort
+        # Search in _all_tag_columns (includes separators for correct column indices)
+        tag_col = -1
+        for i, col_info in enumerate(self._all_tag_columns):
+            if col_info['type'] != 'sep':
+                if col_info['tag_info'].get('name', '').lower() == tag_lower:
+                    tag_col = 6 + i
+                    break
+        
+        if tag_col != -1:
+            sort_item = self.table.item(row, tag_col)
+            if sort_item:
+                # Update _sort_value for correct sorting
+                sort_item._sort_value = 1 if checked else 0
+                # Live sort
+                if self.table.isSortingEnabled() and self.table.horizontalHeader().sortIndicatorSection() == tag_col:
+                    self.table.sortItems(tag_col, self.table.horizontalHeader().sortIndicatorOrder())
+
+    def _on_header_clicked(self, col):
+        """Handle header click to implement descending-first sort."""
+        hh = self.table.horizontalHeader()
+        
+        # Skip separator and spacer columns - reset indicator
+        is_separator = False
+        if col >= 6:
+            col_offset = col - 6
+            if col_offset < len(self._all_tag_columns):
+                if self._all_tag_columns[col_offset]['type'] == 'sep':
+                    is_separator = True
+            elif col_offset >= len(self._all_tag_columns):
+                # Spacer column
+                is_separator = True
+        
+        if is_separator:
+            # Restore previous sort indicator
+            if self._last_sort_col >= 0:
+                hh.setSortIndicator(self._last_sort_col, hh.sortIndicatorOrder())
+            else:
+                hh.setSortIndicator(-1, Qt.SortOrder.DescendingOrder)
+            return
+        
+        current_order = hh.sortIndicatorOrder()
+        
+        if col != self._last_sort_col:
+            # New column: start with descending
+            new_order = Qt.SortOrder.DescendingOrder
+        else:
+            # Same column: toggle order based on tracked state
+            new_order = Qt.SortOrder.AscendingOrder if self._last_sort_order == Qt.SortOrder.DescendingOrder else Qt.SortOrder.DescendingOrder
+        
+        # Perform manual sort
+        self.table.sortItems(col, new_order)
+        # Manually update the visual indicator since setSortingEnabled(False) prevents auto-updates
+        hh.setSortIndicator(col, new_order)
+        
+        self._last_sort_col = col
+        self._last_sort_order = new_order
 
     def _prepare_tag_cache(self):
         """Pre-calculate metadata for active tags once to avoid redundant O(N*M) lookups."""
@@ -362,38 +474,131 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 'lower_name': tag_name.lower()
             }
 
+
     def _init_ui(self):
         # Create a container widget for content
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(5, 5, 5, 5) # Slight margin inside the frameless container
+        layout.setContentsMargins(5, 0, 5, 5) # Reduced top margin
         
-        header_lbl = QLabel(_("Bulk edit items in the current view:"))
-        header_lbl.setStyleSheet("font-weight: bold; color: #3498db; margin-bottom: 5px;")
-        layout.addWidget(header_lbl)
-        
+        # 1. Hide Vertical Header
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels([_("Icon"), _("Folder Name"), _("Display Name"), _("Tags (Toggle)")])
+        self.table.verticalHeader().setVisible(False)
+        
+        # 2. Dynamic Headers
+        # Fixed: No, Icon, Fav, Score, Folder, Name
+        fixed_headers = [_("No."), _("Icon"), _("Fav"), _("Score"), _("Folder Name"), _("Display Name")]
+        
+        # Build tag columns including separators as visual dividers
+        # _display_tags = non-separator tags (for data binding)
+        # _all_tag_columns = all columns including separators (for rendering)
+        self._display_tags = []
+        self._all_tag_columns = []  # List of {'type': 'tag'|'sep', 'tag_info': ...}
+        self._tag_col_to_display_idx = {}  # Maps column index to _display_tags index
+        
+        display_idx = 0
+        for t in self.active_tags:
+            is_sep = t.get('is_sep', False)
+            if is_sep:
+                self._all_tag_columns.append({'type': 'sep', 'tag_info': t})
+            else:
+                self._all_tag_columns.append({'type': 'tag', 'tag_info': t, 'display_idx': display_idx})
+                self._display_tags.append(t)
+                display_idx += 1
+        
+        # Tag Headers
+        tag_headers = []
+        tag_header_icons = {}  # {col_idx: QIcon}
+        separator_cols = []  # Columns that are separators
+        
+        for i, col_info in enumerate(self._all_tag_columns):
+            col_idx = 6 + i
+            
+            if col_info['type'] == 'sep':
+                # Separator column - thin divider
+                tag_headers.append("|")
+                separator_cols.append(col_idx)
+            else:
+                t = col_info['tag_info']
+                self._tag_col_to_display_idx[col_idx] = col_info['display_idx']
+                
+                mode = t.get('display_mode', 'text')
+                emoji = t.get('emoji', '')
+                name = t.get('display', t.get('name', ''))
+                icon_path = t.get('icon', '')
+                
+                # For image mode, try to load icon
+                if mode == 'image' and icon_path and os.path.exists(icon_path):
+                    if icon_path not in self._icon_cache:
+                        self._icon_cache[icon_path] = QIcon(icon_path)
+                    tag_header_icons[col_idx] = self._icon_cache[icon_path]
+                    header_text = ""
+                elif mode == 'symbol' and emoji:
+                    header_text = emoji
+                elif mode == 'text_symbol' and emoji:
+                    header_text = emoji
+                else:
+                    header_text = name[:3] if len(name) > 3 else name
+                
+                tag_headers.append(header_text)
+            
+        all_headers = fixed_headers + tag_headers
+        self.table.setColumnCount(len(all_headers))
+        self.table.setHorizontalHeaderLabels(all_headers)
+        
+        # Set icons for tag columns that use image mode
+        for col_idx, icon in tag_header_icons.items():
+            item = self.table.horizontalHeaderItem(col_idx)
+            if item:
+                item.setIcon(icon)
+        
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setColumnWidth(1, 150)
-        self.table.setColumnWidth(2, 150)
+        self.table.horizontalHeader().setStretchLastSection(False) # Don't stretch last tag column
+        
+        # Column widths
+        self.table.setColumnWidth(0, 40)  # No.
+        self.table.setColumnWidth(1, 40)  # Icon
+        self.table.setColumnWidth(2, 40)  # Fav
+        self.table.setColumnWidth(3, 60)  # Score
+        self.table.setColumnWidth(4, 150) # Folder Name
+        # Display Name column should stretch to fill space
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        
+        # Set Tag/Separator Column widths
+        for i, col_info in enumerate(self._all_tag_columns):
+            col_idx = 6 + i
+            if col_info['type'] == 'sep':
+                self.table.setColumnWidth(col_idx, 4)  # Very thin separator
+                # Disable sorting for separator columns
+                sep_header = self.table.horizontalHeaderItem(col_idx)
+                if sep_header:
+                    sep_header.setFlags(sep_header.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            else:
+                self.table.setColumnWidth(col_idx, 32) # Compact tag toggles
+        
+        # Add spacer column at the end to prevent accidental scrolling
+        spacer_col = self.table.columnCount()
+        self.table.setColumnCount(spacer_col + 1)
+        spacer_item = QTableWidgetItem("")
+        spacer_item.setFlags(spacer_item.flags() & ~Qt.ItemFlag.ItemIsEnabled)  # Non-sortable
+        self.table.setHorizontalHeaderItem(spacer_col, spacer_item)
+        self.table.setColumnWidth(spacer_col, 16)  # Smaller spacer
+        
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection) # Disable drag selection
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus) # Prevent focus border
         
-        # Set palette for vertical header
-        vh = self.table.verticalHeader()
-        vh_palette = vh.palette()
-        vh_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
-        vh_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
-        vh_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
-        vh_palette.setColor(QPalette.ColorRole.Base, QColor(51, 51, 51))  # #333
-        vh_palette.setColor(QPalette.ColorRole.Button, QColor(51, 51, 51))
-        vh.setPalette(vh_palette)
+        # Disable Qt's built-in sorting - we handle it manually in _on_header_clicked
+        # This prevents separator columns from being sorted
+        self.table.setSortingEnabled(False)
         
-        # Also set for horizontal header
+        # Default sort order: Descending first
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.DescendingOrder)
+        self._last_sort_col = -1
+        self._last_sort_order = Qt.SortOrder.DescendingOrder
+        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
+        
+        # Set palette for horizontal header
         hh = self.table.horizontalHeader()
         hh_palette = hh.palette()
         hh_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
@@ -430,14 +635,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     def focus_next_row_from(self, widget):
         """Focus the name editor in the next row."""
         for row in range(self.table.rowCount()):
-            if self.table.cellWidget(row, 2) == widget:
+            if self.table.cellWidget(row, 5) == widget: # Name is now col 5
                 next_row = row + 1
                 if next_row < self.table.rowCount():
-                    next_widget = self.table.cellWidget(next_row, 2)
+                    next_widget = self.table.cellWidget(next_row, 5)
                     if isinstance(next_widget, QLineEdit):
                         next_widget.setFocus()
                         next_widget.selectAll()
-                        self.table.scrollTo(self.table.model().index(next_row, 2))
+                        self.table.scrollTo(self.table.model().index(next_row, 5))
                 break
 
     def keyPressEvent(self, event):
@@ -466,7 +671,9 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         """Initial table setup and starting chunked load (Phase 1.1.5)."""
         self._profile_start_time = time.perf_counter()
         logging.info(f"[QuickViewProfile] Starting load for {len(self.items_data)} items.")
+        print(f"[DEBUG] QuickViewManager: items_data count = {len(self.items_data)}, active_tags count = {len(self.active_tags)}")
         # Phase 1.1.8: Removed setUpdatesEnabled(False) to allow immediate display
+        self.table.setSortingEnabled(False) # Disable sorting during load
         self.table.setRowCount(len(self.items_data))
         self.current_load_row = 0
         self._load_next_chunk()
@@ -494,6 +701,13 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             if '_orig_tags' not in item:
                 item['_orig_tags'] = item.get('tags', '')
             
+            # 0. No. Cell - Black BG, White Text
+            no_item = SortableTableWidgetItem(row + 1)
+            no_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            no_item.setBackground(QColor("#000000"))
+            no_item.setForeground(QColor("#ffffff"))
+            self.table.setItem(row, 0, no_item)
+            
             # 1. Icon Cell
             t_icon_start = time.perf_counter()
             icon_widget = QWidget()
@@ -502,7 +716,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             
             icon_path = item.get('image_path')
             icon_btn = QPushButton()
-            icon_btn.setFixedSize(30, 30)
+            icon_btn.setFixedSize(36, 36)
             icon_btn.setProperty("rel_path", item.get('rel_path'))
             
             if icon_path:
@@ -512,37 +726,167 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                     if icon_path not in self._icon_cache:
                         self._icon_cache[icon_path] = QIcon(icon_path)
                     icon_btn.setIcon(self._icon_cache[icon_path])
-                    icon_btn.setIconSize(QSize(24, 24))
+                    icon_btn.setIconSize(QSize(32, 32))
             else:
                 icon_btn.setText("❓")
             
             icon_btn.clicked.connect(lambda ch, btn=icon_btn: self._on_icon_btn_clicked(btn))
             icon_layout.addWidget(icon_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-            self.table.setCellWidget(row, 0, icon_widget)
+            self.table.setCellWidget(row, 1, icon_widget)
             t_icon_total += time.perf_counter() - t_icon_start
             
-            # 2. Folder Name (Read-only context)
-            folder_name = os.path.basename(item.get('rel_path'))
-            folder_label = QLabel(folder_name)
-            folder_label.setContentsMargins(8, 0, 8, 0)
-            folder_label.setStyleSheet("color: #aaa; font-style: italic; background: transparent;")
-            self.table.setCellWidget(row, 1, folder_label)
+            # 2. Favorite (CheckBox) - Col 2
+            fav_widget = QWidget()
+            fav_layout = QHBoxLayout(fav_widget)
+            fav_layout.setContentsMargins(0,0,0,0)
+            fav_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # 3. Display Name (Editable)
+            fav_cb = QPushButton()
+            fav_cb.setCheckable(True)
+            is_fav = item.get('is_favorite', False)
+            fav_cb.setChecked(is_fav)
+            fav_cb.setFixedSize(24, 24)
+            # Use star emoji or icon
+            fav_cb.setText("★" if is_fav else "☆")
+            fav_cb.setStyleSheet(f"color: {'#f1c40f' if is_fav else '#888'}; border: none; font-size: 18px;")
+            fav_cb.toggled.connect(lambda checked, btn=fav_cb: [
+                btn.setText("★" if checked else "☆"),
+                btn.setStyleSheet(f"color: {'#f1c40f' if checked else '#888'}; border: none; font-size: 18px;")
+            ])
+            fav_cb.toggled.connect(lambda checked, r=row: self._on_fav_toggled(r, checked))
+            # Store original value for change detection
+            item['_orig_fav'] = is_fav
+            fav_cb.setProperty("is_fav_editor", True)
+            
+            fav_layout.addWidget(fav_cb)
+            
+            
+            # Sort item for Favorite column (2)
+            fav_sort_item = SortableTableWidgetItem(1 if is_fav else 0, "")
+            self.table.setItem(row, 2, fav_sort_item)
+            self.table.setCellWidget(row, 2, fav_widget)
+
+            # 3. Score (SpinBox) - Col 3
+            score_widget = QWidget()
+            score_layout = QHBoxLayout(score_widget)
+            score_layout.setContentsMargins(0,0,0,0)
+            score_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            score_val = int(item.get('score', 0))
+            score_spin = QSpinBox()
+            score_spin.setRange(0, 9999)
+            score_spin.setValue(score_val)
+            score_spin.setFixedWidth(60)
+            score_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Dark theme for SpinBox
+            score_spin.setStyleSheet("""
+                QSpinBox { background-color: #333; color: white; border: 1px solid #555; border-radius: 4px; }
+                QSpinBox::up-button, QSpinBox::down-button { background-color: #444; width: 16px; }
+                QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #555; }
+            """)
+            score_spin.valueChanged.connect(lambda val, r=row: self._on_score_changed(r, val))
+            # Store original
+            item['_orig_score'] = score_val
+            score_spin.setProperty("is_score_editor", True)
+            
+            score_layout.addWidget(score_spin)
+            
+            # Sort item for Score column (3)
+            score_sort_item = SortableTableWidgetItem(score_val, "")
+            self.table.setItem(row, 3, score_sort_item)
+            self.table.setCellWidget(row, 3, score_widget)
+
+            # 4. Folder Name (Read-only context) - Col 4
+            folder_name = os.path.basename(item.get('rel_path'))
+            # Use Item directly to avoid shadow/double-text issues
+            # We used SortableTableWidgetItem or just QTableWidgetItem
+            folder_item = QTableWidgetItem(folder_name)
+            folder_item.setForeground(QColor("#bbbbbb")) # Grayish text
+            # folder_item.setBackground(QColor("transparent"))
+            # Make it italic?
+            font = folder_item.font()
+            font.setItalic(True)
+            folder_item.setFont(font)
+            self.table.setItem(row, 4, folder_item)
+            
+            # 5. Display Name (Editable) - Col 5
             t_name_start = time.perf_counter()
             name_edit = QuickEdit(item.get('display_name') or "")
             name_edit.setPlaceholderText(folder_name)
-            # White text on slightly brighter background
+            # Styling input
             name_edit.setStyleSheet("color: #ffffff; background-color: #4a4a4a; border: 1px solid #555; padding: 4px; border-radius: 4px;")
-            self.table.setCellWidget(row, 2, name_edit)
+            self.table.setCellWidget(row, 5, name_edit)
+            # Sort item uses empty text to avoid shadow, but SortableTableWidgetItem uses internal value
+            sort_name = (item.get('display_name') or folder_name).lower()
+            name_sort_item = SortableTableWidgetItem(sort_name, "") # Empty display text!
+            self.table.setItem(row, 5, name_sort_item) 
             t_name_total += time.perf_counter() - t_name_start
             
-            # 4. Tags Toggles (Phase 1.1.7: Using lighter TagFlowPreview)
+            # 6+. Tags/Separator Columns
             t_tag_start = time.perf_counter()
+            # Current tags set
             current_tags = {t.strip().lower() for t in (item.get('tags') or "").split(",") if t.strip()}
-            tag_preview = TagFlowPreview()
-            tag_preview.set_tags(self._tag_cache, current_tags, self._on_tag_w_clicked, self._track_tag_creation, self._icon_cache)
-            self.table.setCellWidget(row, 3, tag_preview)
+            
+            for i, col_info in enumerate(self._all_tag_columns):
+                col_idx = 6 + i
+                
+                if col_info['type'] == 'sep':
+                    # Separator column - just a vertical line
+                    sep_label = QLabel("|")
+                    sep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    sep_label.setStyleSheet("color: #666; font-weight: bold;")
+                    self.table.setCellWidget(row, col_idx, sep_label)
+                    # No sort item for separators
+                else:
+                    tag_info = col_info['tag_info']
+                    tag_name = tag_info.get('name', '')
+                    lower_name = tag_name.lower()
+                    is_active = lower_name in current_tags
+                    
+                    # Get display mode and content
+                    mode = tag_info.get('display_mode', 'text')
+                    emoji = tag_info.get('emoji', '')
+                    display_name = tag_info.get('display', tag_name)
+                    icon_path = tag_info.get('icon', '')
+                    
+                    # Create toggle button with tag content
+                    tag_btn = QPushButton()
+                    tag_btn.setCheckable(True)
+                    tag_btn.setChecked(is_active)
+                    tag_btn.setFixedSize(26, 26)  # Compact button size
+                    
+                    # Set button content based on display_mode
+                    if mode == 'image' and icon_path and os.path.exists(icon_path):
+                        # Show icon
+                        if icon_path not in self._icon_cache:
+                            self._icon_cache[icon_path] = QIcon(icon_path)
+                        tag_btn.setIcon(self._icon_cache[icon_path])
+                        tag_btn.setIconSize(QSize(22, 22))  # Fill button
+                    elif mode == 'symbol' and emoji:
+                        tag_btn.setText(emoji)
+                    elif mode == 'text_symbol' and emoji:
+                        tag_btn.setText(emoji)
+                    else:  # text fallback
+                        tag_btn.setText(display_name[:2])  # First 2 chars
+                    
+                    # Styling with hover effect
+                    self._update_tag_btn_style(tag_btn, is_active)
+                    
+                    tag_btn.toggled.connect(lambda ch, btn=tag_btn, nm=lower_name, r=row: self._on_tag_toggled(r, nm, ch, btn))
+                    
+                    # Layout container for centering
+                    tag_widget = QWidget()
+                    tag_layout = QHBoxLayout(tag_widget)
+                    tag_layout.setContentsMargins(0,0,0,0)
+                    tag_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    tag_layout.addWidget(tag_btn)
+                    
+                    self.table.setCellWidget(row, col_idx, tag_widget)
+                    
+                    # Sort Item (1 or 0)
+                    tag_sort_item = SortableTableWidgetItem(1 if is_active else 0, "")
+                    self.table.setItem(row, col_idx, tag_sort_item)
+
             t_tag_total += time.perf_counter() - t_tag_start
             
             self.table.setRowHeight(row, 44)
@@ -558,6 +902,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         else:
             elapsed = time.perf_counter() - self._profile_start_time
             logging.info(f"[QuickViewProfile] Finished loading. Total time: {elapsed:.3f}s")
+            self.table.setSortingEnabled(True) # Re-enable sorting
             logging.info(f"[QuickViewProfile] >> Gap/Wait time: {self._total_gap_time:.3f}s")
             logging.info(f"[QuickViewProfile] >> Tag rendering (sync): {self._total_tag_creation_time:.3f}s")
     
@@ -619,6 +964,26 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if is_hidden_now and not self.show_hidden_items:
              self.table.setRowHidden(row, True)
 
+    def _on_fav_toggled(self, row, checked):
+        # Update sort item (Col 2) - Must update _sort_value for correct sorting!
+        sort_item = self.table.item(row, 2)
+        if sort_item:
+            # Update _sort_value directly (used by SortableTableWidgetItem.__lt__)
+            sort_item._sort_value = 1 if checked else 0
+            # Re-sort if sorting is enabled and sort column is this one
+            if self.table.isSortingEnabled() and self.table.horizontalHeader().sortIndicatorSection() == 2:
+                self.table.sortItems(2, self.table.horizontalHeader().sortIndicatorOrder())
+
+    def _on_score_changed(self, row, val):
+        # Value comes from SpinBox as int (Col 3)
+        sort_item = self.table.item(row, 3)
+        if sort_item:
+            # Update _sort_value directly
+            sort_item._sort_value = val
+            # Re-sort if needed
+            if self.table.isSortingEnabled() and self.table.horizontalHeader().sortIndicatorSection() == 3:
+                self.table.sortItems(3, self.table.horizontalHeader().sortIndicatorOrder())
+
     def _on_save_clicked(self):
         # Gather data from table
         update_list = []
@@ -626,43 +991,96 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             item_data = self.items_data[row]
             rel_path = item_data.get('rel_path')
             
-            icon_widget = self.table.cellWidget(row, 0)
-            icon_btn = icon_widget.findChild(QPushButton)
-            new_icon = icon_btn.property("new_icon")
+            changes = {}
             
-            name_edit = self.table.cellWidget(row, 2)
-            new_name = name_edit.text()
-            
-            # Collect tags from TagFlowPreview (Phase 1.1.11 & 1.1.13: Use items_data vs _orig_tags)
-            new_tags = item_data.get('tags', '')
-            orig_tags = item_data.get('_orig_tags', '')
-            
-            # Only record if changed
-            updates = {}
-            if new_icon is not None:
-                updates['image_path'] = new_icon
-            if new_name != item_data.get('display_name', ''):
-                updates['display_name'] = new_name
-            if new_tags != orig_tags:
-                updates['tags'] = new_tags
-            
-            if updates:
-                update_list.append((rel_path, updates))
-        
-        if not update_list:
-            self.accept()
-            return
+            # Check icon (Col 1)
+            icon_widget = self.table.cellWidget(row, 1)
+            if icon_widget:
+                icon_btn = icon_widget.findChild(QPushButton)
+                new_icon = icon_btn.property("new_icon")
+                if new_icon:
+                    changes['image_path'] = new_icon
 
-        # Perform DB updates
-        if self.db:
-            try:
-                for rel_path, updates in update_list:
-                    self.db.update_folder_display_config(rel_path, **updates)
-                QMessageBox.information(self, "Success", _("Updated {count} items.").format(count=len(update_list)))
-                self.results = update_list
-                self.accept()
-            except Exception as e:
-                QMessageBox.critical(self, "Error", _("Failed to save changes: {e}").format(e=str(e)))
+            # Check favorite (Column 2)
+            fav_widget = self.table.cellWidget(row, 2)
+            if fav_widget:
+                for child in fav_widget.children():
+                     if isinstance(child, QPushButton) and child.property("is_fav_editor"):
+                         is_fav = child.isChecked()
+                         if is_fav != item_data.get('_orig_fav', False):
+                             changes['is_favorite'] = is_fav
+                         break
+            
+            # Check score (Column 3)
+            score_widget = self.table.cellWidget(row, 3)
+            if score_widget:
+                for child in score_widget.children():
+                    if isinstance(child, QSpinBox) and child.property("is_score_editor"):
+                        sc = child.value()
+                        if sc != item_data.get('_orig_score', 0):
+                            changes['score'] = sc
+                        break
+
+            # Check display name (Column 5)
+            name_widget = self.table.cellWidget(row, 5)
+            if isinstance(name_widget, QLineEdit):
+                name_text = name_widget.text().strip()
+                if name_text != (item_data.get('display_name') or ""):
+                    changes['display_name'] = name_text
+            
+            # Check tags (Pending changes)
+            if row in self._pending_tag_changes:
+                row_changes = self._pending_tag_changes[row]
+                if row_changes:
+                    # Reconstruct tags string
+                    original_tags_set = {t.strip().lower() for t in (item_data.get('tags') or "").split(",") if t.strip()}
+                    
+                    # Apply changes
+                    final_tags_set = set(original_tags_set)
+                    for tag, state in row_changes.items():
+                        if state:
+                            final_tags_set.add(tag)
+                        else:
+                            final_tags_set.discard(tag)
+                    
+                    # Sort and join
+                    # Preserving case is hard since we only have lower names here, 
+                    # but typically tags are case-insensitive or we can recover case from frequent_tags
+                    # For now just join them.
+                    new_tags_str = ",".join(sorted(list(final_tags_set)))
+                    
+                    if new_tags_str != item_data.get('tags', ''):
+                        changes['tags'] = new_tags_str
+
+            if changes:
+                changes['rel_path'] = rel_path
+                update_list.append(changes)
+        
+        if update_list:
+            if self.db:
+                try:
+                    success = self.db.bulk_update_items(update_list) # Assume this exists or db.update_item loop
+                    if success:
+                        # Custom styled message box
+                        msg = QMessageBox(self)
+                        msg.setWindowTitle(_("Success"))
+                        msg.setText(_(f"Updated {len(update_list)} items successfully."))
+                        msg.setIcon(QMessageBox.Icon.Information)
+                        # Apply dark theme style to message box
+                        msg.setStyleSheet("""
+                            QMessageBox { background-color: #353535; color: #ffffff; }
+                            QLabel { color: #ffffff; }
+                            QPushButton { background-color: #3498db; color: white; padding: 6px 16px; border-radius: 4px; }
+                            QPushButton:hover { background-color: #2980b9; }
+                        """)
+                        msg.exec()
+                        self.accept()
+                    else:
+                        QMessageBox.critical(self, _("Error"), _("Failed to update items."))
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", _("Failed to save changes: {e}").format(e=str(e)))
+            else:
+                 QMessageBox.information(self, "Demo", f"Would update {len(update_list)} items:\n{update_list}")
+                 self.accept()
         else:
-            self.results = update_list
             self.accept()

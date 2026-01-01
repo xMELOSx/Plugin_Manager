@@ -241,9 +241,9 @@ class DependentPackagesDialog(QDialog):
     
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"「{self.lib_name}」を使用しているパッケージ:"))
+        layout.addWidget(QLabel(_("Packages using '{name}':").format(name=self.lib_name)))
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["パッケージ", "状態", "使用", "🔗", "表示", "編集", "解除"])
+        self.tree.setHeaderLabels([_("Package"), _("Status"), _("Usage"), "🔗", _("View"), _("Edit"), _("Remove")])
         self.tree.setColumnWidth(0, 180)
         self.tree.setColumnWidth(1, 40)
         self.tree.setColumnWidth(2, 80)
@@ -252,17 +252,37 @@ class DependentPackagesDialog(QDialog):
         self.tree.setColumnWidth(5, 40)
         self.tree.setColumnWidth(6, 40)
         layout.addWidget(self.tree)
+        
         btn_layout = QHBoxLayout()
+        
+        # Batch Buttons
+        batch_deploy_btn = QPushButton(_("Batch Deploy"))
+        batch_deploy_btn.setStyleSheet("background-color: #27ae60; color: white; border-radius: 4px;")
+        batch_deploy_btn.clicked.connect(self._batch_deploy_all)
+        btn_layout.addWidget(batch_deploy_btn)
+        
+        batch_unlink_btn = QPushButton(_("Batch Unlink"))
+        batch_unlink_btn.setStyleSheet("background-color: #e67e22; color: white; border-radius: 4px;")
+        batch_unlink_btn.clicked.connect(self._batch_unlink_all)
+        btn_layout.addWidget(batch_unlink_btn)
+        
         btn_layout.addStretch()
-        close_btn = QPushButton("閉じる")
+        
+        close_btn = QPushButton(_("Close"))
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
     
     def _load_deps(self):
+        # Save selection
+        selected_rel = None
+        curr = self.tree.currentItem()
+        if curr:
+            selected_rel = curr.data(0, Qt.ItemDataRole.UserRole)
+
         self.tree.clear()
         all_configs = self.db.get_all_folder_configs()
-        ver_options = ["最新版"]
+        ver_options = [_("Latest Version")]
         for v in self.versions:
             ver_options.append(v.get('lib_version', 'Unknown'))
         
@@ -288,7 +308,7 @@ class DependentPackagesDialog(QDialog):
                 combo.addItems(ver_options)
                 ver_mode = dep.get('version_mode', 'latest') if isinstance(dep, dict) else 'latest'
                 spec_ver = dep.get('version') if isinstance(dep, dict) else None
-                if ver_mode == 'latest': combo.setCurrentText("最新版")
+                if ver_mode == 'latest': combo.setCurrentText(_("Latest Version"))
                 elif spec_ver: combo.setCurrentText(spec_ver)
                 combo.currentTextChanged.connect(lambda t, rp=rel_path: self._on_version_changed(rp, t))
                 self.tree.setItemWidget(item, 2, combo)
@@ -321,13 +341,100 @@ class DependentPackagesDialog(QDialog):
                 self.tree.setItemWidget(item, 6, remove_btn)
                 
                 item.setData(0, Qt.ItemDataRole.UserRole, rel_path)
+                
+                # Restore selection
+                if selected_rel and rel_path == selected_rel:
+                    self.tree.setCurrentItem(item)
+
+        # Force focus back to list or maintain dialog focus
+        self.setFocus()
     
+    def _update_item_status(self, item):
+        rel_path = item.data(0, Qt.ItemDataRole.UserRole)
+        app_data = self.parent().app_combo.currentData()
+        target_root = app_data.get('target_root') if app_data else None
+        
+        is_linked = False
+        if target_root:
+            folder_name = os.path.basename(rel_path)
+            config = self.db.get_folder_config(rel_path) or {}
+            target_link = config.get('target_override') or os.path.join(target_root, folder_name)
+            if os.path.islink(target_link) or os.path.exists(target_link):
+                is_linked = True
+        
+        # Update text
+        status_text = "🟢 Linked" if is_linked else "⚪ Unlinked"
+        item.setText(1, status_text)
+        
+        # Update buttons (column 3 is the toggle button)
+        toggle_btn = self.tree.itemWidget(item, 3)
+        if toggle_btn:
+            # Check if this button currently has focus
+            was_focused = toggle_btn.hasFocus()
+            
+            if is_linked:
+                toggle_btn.setText("🔗")
+                toggle_btn.setStyleSheet("background-color: #27ae60; color: white;")
+                try: toggle_btn.clicked.disconnect()
+                except: pass
+                toggle_btn.clicked.connect(lambda _, rp=rel_path: self._unlink_pkg(rp))
+            else:
+                toggle_btn.setText("🚀")
+                toggle_btn.setStyleSheet("background-color: #2980b9; color: white;")
+                try: toggle_btn.clicked.disconnect()
+                except: pass
+                toggle_btn.clicked.connect(lambda _, rp=rel_path: self._deploy_pkg(rp))
+            
+            if was_focused:
+                toggle_btn.setFocus()
+
     def _deploy_pkg(self, rel_path: str):
         self.request_deploy.emit(rel_path)
-        self._load_deps()
+        # Find item and update
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == rel_path:
+                self._update_item_status(item)
+                break
+        
+    def _batch_deploy_all(self):
+        """Deploy all currently unlinked packages in the list."""
+        count = 0
+        items_to_update = []
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            rel_path = item.data(0, Qt.ItemDataRole.UserRole)
+            if "⚪" in item.text(1):
+                self.request_deploy.emit(rel_path)
+                items_to_update.append(item)
+                count += 1
+        
+        for item in items_to_update:
+            self._update_item_status(item)
+
     def _unlink_pkg(self, rel_path: str):
         self.request_unlink.emit(rel_path)
-        self._load_deps()
+        # Find item and update
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == rel_path:
+                self._update_item_status(item)
+                break
+
+    def _batch_unlink_all(self):
+        """Unlink all currently linked packages in the list."""
+        count = 0
+        items_to_update = []
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            rel_path = item.data(0, Qt.ItemDataRole.UserRole)
+            if "🟢" in item.text(1):
+                self.request_unlink.emit(rel_path)
+                items_to_update.append(item)
+                count += 1
+        
+        for item in items_to_update:
+            self._update_item_status(item)
     def _on_version_changed(self, rel_path: str, version_text: str):
         cfg = self.db.get_folder_config(rel_path) or {}
         lib_deps_json = cfg.get('lib_deps', '[]')
@@ -336,12 +443,12 @@ class DependentPackagesDialog(QDialog):
         new_deps = []
         for dep in lib_deps:
             if (isinstance(dep, dict) and dep.get('name') == self.lib_name) or (isinstance(dep, str) and dep == self.lib_name):
-                if version_text == "最新版": new_deps.append({'name': self.lib_name, 'version_mode': 'latest'})
+                if version_text == _("Latest Version"): new_deps.append({'name': self.lib_name, 'version_mode': 'latest'})
                 else: new_deps.append({'name': self.lib_name, 'version_mode': 'specific', 'version': version_text})
             else: new_deps.append(dep)
         self.db.update_folder_display_config(rel_path, lib_deps=json.dumps(new_deps))
     def _remove_dependency(self, rel_path: str):
-        confirm = QMessageBox.question(self, "依存関係を解除", f"このパッケージから「{self.lib_name}」への依存関係を解除しますか？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        confirm = QMessageBox.question(self, _("Remove Dependency"), _("Do you want to remove the dependency on '{name}' from this package?").format(name=self.lib_name), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes: return
         cfg = self.db.get_folder_config(rel_path) or {}
         lib_deps_json = cfg.get('lib_deps', '[]')

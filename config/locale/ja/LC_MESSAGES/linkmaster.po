@@ -1788,3 +1788,94 @@ msgstr "📦 選択項目を復元"
 
 msgid "🗑 Move Selected to Trash"
 msgstr "🗑 選択項目をゴミ箱へ移動"
+
+msgid "Batch Deploy"
+msgstr "一括デプロイ"
+
+msgid "Batch Unlink"
+msgstr "一括解除"
+
+msgid "Cascaded Unlink Confirmation"
+msgstr "連動解除の確認"
+
+msgid "This library is used by {count} linked packages. Do you want to unlink them as well?"
+msgstr "このライブラリは、現在リンク済みの {count} 個のパッケージで使用されています。それらも一緒に解除しますか？"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Package"
+msgstr "パッケージ"
+
+msgid "Status"
+msgstr "状態"
+
+msgid "Usage"
+msgstr "使用"
+
+msgid "View"
+msgstr "表示"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Remove"
+msgstr "解除"
+
+msgid "Latest Version"
+msgstr "最新版"
+
+msgid "Remove Dependency"
+msgstr "依存関係を解除"
+
+msgid "Do you want to remove the dependency on '{name}' from this package?"
+msgstr "このパッケージから「{name}」への依存関係を解除しますか？"
+
+msgid "Packages using '{name}':"
+msgstr "「{name}」を使用しているパッケージ:"
+
+msgid "Library Switch"
+msgstr "ライブラリのバージョン切り替え"
+
+msgid ""
+"Different version of '{name}' is already active.\n\n"
+"Current version: {old_ver}\n"
+"Switching to: {new_ver}\n\n"
+"Do you want to switch versions?"
+msgstr ""
+"すでに別のバージョンの「{name}」が有効です。\n\n"
+"現在のバージョン: {old_ver}\n"
+"切り替え先: {new_ver}\n\n"
+"バージョンを切り替えますか？"
+
+msgid "Conflict Swap"
+msgstr "競合の解消"
+
+msgid ""
+"Conflict Detected!\n\n"
+"Package '{old_name}' is already active with tag '{tag}'.\n"
+"Scope: {scope}\n\n"
+"Overwrite target with link?\n"
+"This will DISABLE '{old_name}' and enable '{new_name}'."
+msgstr ""
+"競合（コンフリクト）を検知しました！\n\n"
+"パッケージ「{old_name}」がタグ「{tag}」ですでに有効になっています。\n"
+"スコープ: {scope}\n\n"
+"ターゲットをリンクで上書きしますか？\n"
+msgid "Register selected package as a library"
+msgstr "選択したパッケージをライブラリとして登録"
+
+msgid "Enter new library name"
+msgstr "新しいライブラリ名を入力"
+
+msgid "Library Name:"
+msgstr "ライブラリ名:"
+
+msgid "Version:"
+msgstr "バージョン:"
+
+msgid "Register"
+msgstr "登録"
+
+msgid "Library Registration"
+msgstr "ライブラリ登録"

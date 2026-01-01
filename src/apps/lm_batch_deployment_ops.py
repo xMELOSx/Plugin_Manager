@@ -205,8 +205,8 @@ class LMDeploymentOpsMixin:
         
         full_src = os.path.join(self.storage_root, rel_path)
         
-        # Force sweep-unlink before deploying
-        self._unlink_single(rel_path, update_ui=False)
+        # Force sweep-unlink before deploying (skip cascade prompt for the item being deployed)
+        self._unlink_single(rel_path, update_ui=False, _cascade=False)
         
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path)
@@ -231,10 +231,12 @@ class LMDeploymentOpsMixin:
                         
                         old_ver = other_cfg.get('lib_version', 'Unknown')
                         new_ver = config.get('lib_version', 'Unknown')
-                        msg = (f"すでに別のバージョンの「{lib_name}」が有効です。\n\n"
-                               f"現在のバージョン: {old_ver}\n"
-                               f"切り替え先: {new_ver}\n\n"
-                               f"バージョンを切り替えますか？")
+                        msg = _("Different version of '{name}' is already active.\n\n"
+                                "Current version: {old_ver}\n"
+                                "Switching to: {new_ver}\n\n"
+                                "Do you want to switch versions?").format(
+                                    name=lib_name, old_ver=old_ver, new_ver=new_ver
+                                )
                         
                         reply = QMessageBox.question(self, _("Library Switch"), msg,
                                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -256,11 +258,14 @@ class LMDeploymentOpsMixin:
         # Conflict Tag Check
         conflict_data = self._check_tag_conflict(rel_path, config, app_data)
         if conflict_data:
-            msg = (f"Conflict Detected!\n\n"
-                   f"Package '{conflict_data['name']}' is already active with tag '{conflict_data['tag']}'.\n"
-                   f"Scope: {conflict_data['scope']}\n\n"
-                   f"Overwrite target with link?\n"
-                   f"This will DISABLE '{conflict_data['name']}' and enable '{folder_name}'.")
+            msg = _("Conflict Detected!\n\n"
+                   "Package '{old_name}' is already active with tag '{tag}'.\n"
+                   "Scope: {scope}\n\n"
+                   "Overwrite target with link?\n"
+                   "This will DISABLE '{old_name}' and enable '{new_name}'.").format(
+                       old_name=conflict_data['name'], tag=conflict_data['tag'], 
+                       scope=conflict_data['scope'], new_name=folder_name
+                   )
             
             reply = QMessageBox.warning(self, _("Conflict Swap"), msg, 
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -320,25 +325,26 @@ class LMDeploymentOpsMixin:
              
         full_src = os.path.join(self.storage_root, rel_path)
         
-        self.logger.debug(f"Exhaustive sweep unlinking for: {rel_path}")
-        self.deployer.remove_links_pointing_to(search_roots, full_src)
-        
-        self.db.update_folder_display_config(rel_path, last_known_status='unlinked')
-
         if _cascade and config.get('is_library', 0):
             lib_name = config.get('lib_name')
             if lib_name:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
+                    # Phase 1.1.25: Preventative confirmation (centralized)
                     reply = QMessageBox.question(
-                        self, "依存パッケージをアンリンク", 
-                        f"ライブラリ「{lib_name}」をアンリンクしました。\n\n"
-                        f"このライブラリに依存する {len(dependent_packages)} 個のパッケージもアンリンクしますか？",
+                        self, 
+                        _("Cascaded Unlink Confirmation"), 
+                        _("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)),
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
                     if reply == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
+
+        # Proceed with unlinking current item
+        self.logger.debug(f"Exhaustive sweep unlinking for: {rel_path}")
+        self.deployer.remove_links_pointing_to(search_roots, full_src)
+        self.db.update_folder_display_config(rel_path, last_known_status='unlinked')
 
         if update_ui:
             self._update_card_by_path(full_src)
@@ -370,8 +376,12 @@ class LMDeploymentOpsMixin:
             except:
                 lib_deps = []
             
-            if lib_name in lib_deps:
-                dependent_packages.append(rel_path)
+            # Handle both string and dict formats
+            for dep in lib_deps:
+                dep_name = dep.get('name', '') if isinstance(dep, dict) else dep
+                if dep_name == lib_name:
+                    dependent_packages.append(rel_path)
+                    break 
         
         return dependent_packages
 

@@ -253,6 +253,15 @@ class LinkMasterDB:
                 sort_order INTEGER DEFAULT 0,
                 is_expanded INTEGER DEFAULT 1,
                 FOREIGN KEY(parent_id) REFERENCES lm_lib_folders(id) ON DELETE CASCADE
+            )''',
+            # Phase 30: Backup registry for auto-restore on unlink
+            '''CREATE TABLE IF NOT EXISTS lm_backup_registry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_path TEXT NOT NULL,
+                backup_path TEXT NOT NULL,
+                folder_rel_path TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(original_path)
             )'''
         ]
         with self.get_connection() as conn:
@@ -298,8 +307,17 @@ class LinkMasterDB:
             except: pass
             try:
                 # Phase 28: Cache for link status to avoid expensive recursive scans
-                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN last_known_status TEXT DEFAULT 'none'")
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN link_status_cache TEXT")
             except: pass
+
+            # Quick View Manager Support (Fav/Score per item)
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_favorite INTEGER DEFAULT 0")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN score INTEGER DEFAULT 0")
+            except: pass
+            
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_visible INTEGER DEFAULT 1")
             except: pass
@@ -364,12 +382,6 @@ class LinkMasterDB:
             except: pass
             
             # Favorite & URL List Enhancement
-            try:
-                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_favorite INTEGER DEFAULT 0")
-            except: pass
-            try:
-                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN score INTEGER DEFAULT 0")
-            except: pass
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN url_list TEXT")
             except: pass
@@ -634,6 +646,78 @@ class LinkMasterDB:
             conn.commit()
 
 
+    def bulk_update_items(self, update_list: list) -> bool:
+        """
+        Efficiently update multiple items in a single transaction.
+        update_list: list of dicts, each must have 'rel_path'.
+        """
+        if not update_list:
+            return True
+            
+        try:
+            with self.get_connection() as conn:
+                # Disable autocommit to start a transaction explicitly via 'with' or just use manual commit
+                cursor = conn.cursor()
+                
+                # We reuse the logic from update_folder_display_config but in one transaction
+                valid_cols = {'app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
+                             'tags', 'is_terminal', 'target_override', 'deployment_rules', 'inherit_tags', 'is_visible',
+                             'deploy_type', 'conflict_policy', 'sort_order', 'last_known_status',
+                             'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
+                             'is_favorite', 'score', 'url_list',
+                             'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
+                             'lib_folder_id',
+                             'has_logical_conflict', 'is_library_alt_version',
+                             'size_bytes', 'scanned_at'}
+                
+                for item_data in update_list:
+                    rel_path = item_data.get('rel_path')
+                    if not rel_path: continue
+                    
+                    # Normalize
+                    rel_path = rel_path.replace('\\', '/')
+                    
+                    # Extract valid fields
+                    kwargs = {k: v for k, v in item_data.items() if k in valid_cols}
+                    if not kwargs: continue
+                    
+                    # Similar lookup as update_folder_display_config
+                    target_id = None
+                    if os.name == 'nt':
+                        cursor.execute("SELECT id FROM lm_folder_config WHERE LOWER(rel_path) = ?", (rel_path.lower(),))
+                    else:
+                        cursor.execute("SELECT id FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+                    
+                    row = cursor.fetchone()
+                    if row:
+                        target_id = row[0]
+                        
+                    if target_id:
+                        updates = []
+                        params = []
+                        for k, v in kwargs.items():
+                            updates.append(f"{k} = ?")
+                            params.append(v)
+                        
+                        params.append(target_id)
+                        cursor.execute(f"UPDATE lm_folder_config SET {', '.join(updates)} WHERE id = ?", params)
+                    else:
+                        insert_cols = ['rel_path']
+                        insert_params = [rel_path]
+                        for k, v in kwargs.items():
+                            if v is not None:
+                                insert_cols.append(k)
+                                insert_params.append(v)
+                        placeholders = ['?'] * len(insert_cols)
+                        cursor.execute(f"INSERT INTO lm_folder_config ({', '.join(insert_cols)}) VALUES ({', '.join(placeholders)})", insert_params)
+                
+                conn.commit()
+            return True
+        except Exception as e:
+            logging.error(f"bulk_update_items failed: {e}")
+            return False
+
+
     def update_visual_flags_bulk(self, updates: dict):
         """
         Efficiently update visual flags for multiple paths in a single transaction.
@@ -773,6 +857,45 @@ class LinkMasterDB:
             conn.execute("UPDATE lm_lib_folders SET parent_id = NULL WHERE parent_id = ?", (folder_id,))
             # Delete the folder itself
             conn.execute("DELETE FROM lm_lib_folders WHERE id = ?", (folder_id,))
+            conn.commit()
+
+    # =====================================================================
+    # Phase 30: Backup Registry Methods
+    # =====================================================================
+    def register_backup(self, original_path: str, backup_path: str, folder_rel_path: str = None):
+        """Register a backup file for auto-restore on unlink."""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO lm_backup_registry (original_path, backup_path, folder_rel_path)
+                VALUES (?, ?, ?)
+            """, (original_path, backup_path, folder_rel_path))
+            conn.commit()
+
+    def get_backup_path(self, original_path: str) -> str:
+        """Get the backup path for an original file path, or None if not found."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT backup_path FROM lm_backup_registry WHERE original_path = ?", (original_path,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def remove_backup_entry(self, original_path: str):
+        """Remove a backup entry after restore or cleanup."""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_backup_registry WHERE original_path = ?", (original_path,))
+            conn.commit()
+    
+    def get_backups_for_folder(self, folder_rel_path: str) -> list:
+        """Get all backup entries for a specific folder."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT original_path, backup_path FROM lm_backup_registry WHERE folder_rel_path = ?", (folder_rel_path,))
+            return cursor.fetchall()
+    
+    def clear_backups_for_folder(self, folder_rel_path: str):
+        """Remove all backup entries for a folder."""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_backup_registry WHERE folder_rel_path = ?", (folder_rel_path,))
             conn.commit()
 
 # Singletons / Helpers

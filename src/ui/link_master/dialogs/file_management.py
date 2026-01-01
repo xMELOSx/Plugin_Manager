@@ -36,7 +36,7 @@ class CheckableFileModel(QFileSystemModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            headers = [_("Name"), _("Backup"), _("Target"), _("Size"), _("Modified")]
+            headers = [_("名前"), _("バックアップ"), _("ターゲット"), _("サイズ"), _("更新日時")]
             if 0 <= section < len(headers):
                 return headers[section]
         return super().headerData(section, orientation, role)
@@ -222,14 +222,14 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         header_title.setStyleSheet("font-size: 14pt; color: #3498db;")
         layout.addWidget(header_title)
         
-        header_path = QLabel(f"Path: {self.folder_path}")
+        header_path = QLabel(_("パス: {path}").format(path=self.folder_path))
         header_path.setStyleSheet("color: #888; font-size: 9pt;")
         layout.addWidget(header_path)
         
         # Legend / Guide
         legend = QHBoxLayout()
-        legend.addWidget(self._create_legend_dot("#5d2a2a", _("Excluded")))
-        legend.addWidget(self._create_legend_dot("#2a3b5d", _("Redirected")))
+        legend.addWidget(self._create_legend_dot("#5d2a2a", _("除外")))
+        legend.addWidget(self._create_legend_dot("#2a3b5d", _("リダイレクト")))
         legend.addStretch()
         layout.addLayout(legend)
 
@@ -246,9 +246,14 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.tree.setModel(self.proxy)
         self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.folder_path)))
         
-        # Style TreeView
+        # Style TreeView with dark alternating rows
         self.tree.setStyleSheet("""
-            QTreeView { background-color: #2b2b2b; color: #eee; border: 1px solid #444; }
+            QTreeView { 
+                background-color: #2b2b2b; 
+                alternate-background-color: #333333;
+                color: #eee; 
+                border: 1px solid #444; 
+            }
             QTreeView::item:hover { background-color: #3d3d3d; }
             QTreeView::item:selected { background-color: #3498db; color: white; }
             QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; font-weight: bold; }
@@ -297,12 +302,13 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         # Section 1: Redirection
         redir_box = QVBoxLayout()
-        redir_label = QLabel("<b>Redirection / Target Path</b>")
+        redir_label = QLabel(_("<b>リダイレクト / ターゲットパス</b>"))
+        redir_label.setStyleSheet("color: #eee;")
         redir_box.addWidget(redir_label)
         
         redir_btns = QHBoxLayout()
-        self.btn_p = QPushButton(_("P (Primary)"))
-        self.btn_p.setToolTip(_("Set to Primary Target: {target}").format(target=self.primary_target))
+        self.btn_p = QPushButton(_("P (プライマリ)"))
+        self.btn_p.setToolTip(_("プライマリターゲットに設定: {target}").format(target=self.primary_target))
         self.btn_p.clicked.connect(lambda: self._set_quick_location(self.primary_target))
         self.btn_p.setStyleSheet("""
             QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
@@ -310,8 +316,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QPushButton:pressed { background-color: #2b2b2b; }
         """)
         
-        self.btn_s = QPushButton(_("S (Secondary)"))
-        self.btn_s.setToolTip(_("Set to Secondary Target: {target}").format(target=self.secondary_target))
+        self.btn_s = QPushButton(_("S (セカンダリ)"))
+        self.btn_s.setToolTip(_("セカンダリターゲットに設定: {target}").format(target=self.secondary_target))
         self.btn_s.clicked.connect(lambda: self._set_quick_location(self.secondary_target))
         self.btn_s.setStyleSheet("""
             QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
@@ -319,7 +325,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QPushButton:pressed { background-color: #2b2b2b; }
         """)
         
-        self.btn_browse = QPushButton("📁 Browse...")
+        self.btn_browse = QPushButton(_("📁 参照..."))
         self.btn_browse.clicked.connect(self._browse_location)
         self.btn_browse.setStyleSheet("""
             QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; }
@@ -337,12 +343,13 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         # Section 2: Backup Ops
         backup_box = QVBoxLayout()
-        backup_label = QLabel(_("<b>Backup Operations</b>"))
+        backup_label = QLabel(_("<b>バックアップ操作</b>"))
+        backup_label.setStyleSheet("color: #eee;")
         backup_box.addWidget(backup_label)
         
         backup_btns = QHBoxLayout()
-        self.btn_backup = QPushButton(_("Copy to _Backup"))
-        self.btn_backup.setToolTip(_("Copy file to _Backup folder and record timestamp."))
+        self.btn_backup = QPushButton(_("バックアップにコピー"))
+        self.btn_backup.setToolTip(_("ファイルを _Backup フォルダにコピーします。"))
         self.btn_backup.clicked.connect(self._backup_item)
         self.btn_backup.setFixedHeight(35)
         self.btn_backup.setStyleSheet("""
@@ -351,8 +358,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QPushButton:pressed { background-color: #1a5276; }
         """)
         
-        self.btn_restore = QPushButton(_("Restore from _Backup"))
-        self.btn_restore.setToolTip(_("Restore file from _Backup folder (Overwrite)."))
+        self.btn_restore = QPushButton(_("バックアップから復元"))
+        self.btn_restore.setToolTip(_("バックアップからファイルを復元（上書き）します。"))
         self.btn_restore.clicked.connect(self._restore_item)
         self.btn_restore.setFixedHeight(35)
         self.btn_restore.setEnabled(False) # Default disabled
@@ -374,12 +381,17 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         btns = QHBoxLayout()
         btns.addStretch()
         
-        btn_cancel = QPushButton(_("Cancel"))
+        btn_cancel = QPushButton(_("キャンセル"))
         btn_cancel.setFixedSize(100, 35)
+        btn_cancel.setStyleSheet("""
+            QPushButton { background-color: #555; color: #eee; border: 1px solid #666; border-radius: 4px; }
+            QPushButton:hover { background-color: #666; }
+            QPushButton:pressed { background-color: #444; }
+        """)
         btn_cancel.clicked.connect(self.reject)
         btns.addWidget(btn_cancel)
         
-        btn_save = QPushButton(_("Save Changes (Alt + Enter)"))
+        btn_save = QPushButton(_("変更を保存 (Alt + Enter)"))
         btn_save.setFixedSize(220, 35)
         btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; font-size: 11pt;")
         btn_save.clicked.connect(self.accept)
@@ -405,7 +417,9 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         dot.setFixedSize(12, 12)
         dot.setStyleSheet(f"background-color: {color}; border-radius: 6px;")
         l.addWidget(dot)
-        l.addWidget(QLabel(text))
+        text_lbl = QLabel(text)
+        text_lbl.setStyleSheet("color: #eee;")
+        l.addWidget(text_lbl)
         return container
 
     def get_selected_rel_paths(self):
@@ -453,7 +467,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         selected = self.get_selected_rel_paths()
         if not selected: return
         
-        new_dir = QFileDialog.getExistingDirectory(self, "Select Target Folder")
+        new_dir = QFileDialog.getExistingDirectory(self, _("ターゲットフォルダを選択"))
         if not new_dir: return
         
         for rel, index in selected:
@@ -464,7 +478,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         selected = self.get_selected_rel_paths()
         if not selected: return
         
-        confirm = QMessageBox.question(self, _("Confirm Backup"), 
+        confirm = QMessageBox.question(self, _("バックアップの確認"), 
                                      _("{count} 件のアイテムを _Backup フォルダにコピー（上書き保存）しますか？").format(count=len(selected)))
         if confirm != QMessageBox.StandardButton.Yes: return
 
@@ -495,7 +509,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         selected = self.get_selected_rel_paths()
         if not selected: return
         
-        confirm = QMessageBox.question(self, _("Confirm Restore"), 
+        confirm = QMessageBox.question(self, _("復元の確認"), 
                                      _("{count} 件のアイテムをバックアップから復元（上書き）しますか？").format(count=len(selected)))
         if confirm != QMessageBox.StandardButton.Yes: return
         
@@ -518,7 +532,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
 
         if success_count > 0:
             self.logger.info(f"Restored {success_count} item(s)")
-            QMessageBox.information(self, _("Success"), _("{count} 件のアイテムを復元しました。").format(count=success_count))
+            QMessageBox.information(self, _("完了"), _("{count} 件のアイテムを復元しました。").format(count=success_count))
 
     def get_rules_json(self):
         # Phase 28: Remove backups from saved info
