@@ -1879,3 +1879,36 @@ msgstr "登録"
 
 msgid "Library Registration"
 msgstr "ライブラリ登録"
+
+# Deploy Button Tooltips (item_card.py)
+msgid "Linked (Unlink)"
+msgstr "リンク済み（解除）"
+
+msgid "Conflict (Occupy)"
+msgstr "競合中（占有）"
+
+msgid "Not Linked (Deploy)"
+msgstr "非リンク（デプロイ）"
+
+# Preview Window (preview_window.py)
+msgid "No preview set"
+msgstr "プレビューが設定されていません"
+
+msgid "★ Favorite"
+msgstr "★お気に入り"
+
+msgid "☆ Favorite"
+msgstr "☆お気に入り"
+
+# Library Panel (library_panel.py)
+msgid "🔗 Unlink"
+msgstr "🔗 アンリンク"
+
+msgid "👁 Hidden"
+msgstr "👁 非表示"
+
+msgid "👁 Show"
+msgstr "👁 表示"
+
+msgid "👁 Hide"
+msgstr "👁 非表示"

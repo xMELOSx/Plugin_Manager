@@ -1,4 +1,5 @@
 from PyQt6.QtCore import Qt
+from src.core.lang_manager import _
 
 def update_overlays_geometry(card_w, card_h, display_mode, is_favorite, has_urls, 
                            show_link, show_deploy, link_status, star_label, url_label, 
@@ -16,10 +17,22 @@ def update_overlays_geometry(card_w, card_h, display_mode, is_favorite, has_urls
         else:
             star_label.hide()
             
-    # 2. URL Overlay
+    # 2. URL Overlay (Now a QPushButton for better hover/click support)
     if url_label:
         if has_urls and show_link:
             url_label.setGeometry(card_w - 30, 8, 24, 24)
+            # Apply hover effect style
+            url_label.setStyleSheet("""
+                QPushButton { 
+                    background: transparent; 
+                    border: none; 
+                    font-size: 16px; 
+                    border-radius: 12px;
+                }
+                QPushButton:hover { 
+                    background: rgba(255, 255, 255, 0.15); 
+                }
+            """)
             url_label.show()
             url_label.raise_()
         else:
@@ -33,7 +46,7 @@ def update_overlays_geometry(card_w, card_h, display_mode, is_favorite, has_urls
             else:
                 deploy_btn.setGeometry(card_w - 30, card_h - 30, 24, 24)
             
-            # Update appearance depends on status
+            # Update appearance depends on status with localized tooltips
             _apply_deploy_btn_style(deploy_btn, link_status, opacity)
             deploy_btn.show()
             deploy_btn.raise_()
@@ -46,16 +59,19 @@ def _apply_deploy_btn_style(btn, link_status, opacity):
         base_color = f"rgba(39, 174, 96, {opacity})"
         hover_color = "rgba(46, 204, 113, 0.95)"
         border_color = "#1e8449"
+        btn.setToolTip(_("Linked (Unlink)"))
     elif link_status == 'conflict':
         icon_char = "⚠"
         base_color = f"rgba(231, 76, 60, {opacity})"
         hover_color = "rgba(241, 100, 85, 0.95)"
         border_color = "#943126"
+        btn.setToolTip(_("Conflict (Occupy)"))
     else:
         icon_char = "🚀"
         base_color = f"rgba(52, 152, 219, {opacity})"
         hover_color = "rgba(93, 173, 226, 0.95)"
         border_color = "#2471a3"
+        btn.setToolTip(_("Not Linked (Deploy)"))
 
     style = f"""
         QPushButton {{ 

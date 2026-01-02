@@ -141,14 +141,14 @@ class ItemCard(QFrame):
         self.star_overlay.setStyleSheet("color: #f1c40f; font-size: 20px; background: transparent;")
         self.star_overlay.hide()
 
-        # URL Overlay - Using QLabel (emoji displays properly) with click handling via mousePressEvent
-        self.url_overlay = QLabel("🌐", self)
+        # URL Overlay - Using QPushButton for better interaction and hover effects
+        self.url_overlay = QPushButton("🌐", self)
         self.url_overlay.setFixedSize(24, 24)
-        self.url_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.url_overlay.setObjectName("overlay_url")
         self.url_overlay.setCursor(Qt.CursorShape.PointingHandCursor)
         self.url_overlay.setToolTip(_("Open related URL"))
-        # NOTE: Click handled in mousePressEvent by checking geometry
+        self.url_overlay.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; }")
+        self.url_overlay.clicked.connect(self._open_first_working_url)
         self.url_overlay.hide()
 
         # Phase 30: Deploy Toggle Overlay
@@ -685,11 +685,7 @@ class ItemCard(QFrame):
     def mousePressEvent(self, event):
         """Pass click event to parent for centralized multi-selection handling."""
         if event.button() == Qt.MouseButton.LeftButton:
-            # Check if click is on URL overlay (QLabel)
-            if hasattr(self, 'url_overlay') and self.url_overlay.isVisible():
-                if self.url_overlay.geometry().contains(event.pos()):
-                    self._open_first_working_url()
-                    return
+            # URL icon click is now handled via QPushButton.clicked signal
             self.single_clicked.emit(self.path)
         elif event.button() == Qt.MouseButton.RightButton:
             # Propagate to parent container for customContextMenuRequested
@@ -755,6 +751,7 @@ class ItemCard(QFrame):
         if dialog.exec():
             new_json = dialog.get_data()
             self.url_list = new_json
+            self._sync_url_icon()
 
             # Save to DB
             if rel_path and self.db:
