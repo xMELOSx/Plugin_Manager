@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0.."
 echo Setting up Python 3.11 environment...
 python -m venv venv
 if %errorlevel% neq 0 (

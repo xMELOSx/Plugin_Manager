@@ -1,5 +1,0 @@
-C:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\apps\lm_context_menu_factory.py
-C:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\apps\lm_portability.py
-C:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\apps\lm_presets.py
-C:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\core\link_master\deployer.py
-C:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\core\link_master\thumbnail_manager.py

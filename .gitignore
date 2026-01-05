@@ -35,17 +35,14 @@ config/window.json
 resource/app/
 resource/tag_icons/
 
-# Debug and development scripts
-debug_*.py
-!debug_window.py
-fix_*.py
-generate_ico.py
-test_*/
+# Maintenance and temporary scripts
+maintenance/
+
+# Tools (Selective ignore if needed, but keeping them tracked for now)
+# !tools/*.py
 
 # Legacy and experimental
-legacy_testing/
 docs/
-ex/
 
 # Agent/AI directories
 .agent/

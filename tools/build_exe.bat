@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo [0/3] Activating virtual environment...
 if not exist "venv\Scripts\activate.bat" goto :NO_VENV
@@ -15,7 +15,7 @@ exit /b 1
 
 :VENV_OK
 echo [1/3] Generating ICO file from JPG...
-python generate_ico.py
+python tools\generate_ico.py
 
 if not exist "src\resource\icon\icon.ico" goto :NO_ICO
 goto :ICO_OK
