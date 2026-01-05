@@ -51,3 +51,12 @@ ex/
 .agent/
 .git/
 ai_rules/
+
+# Distribution / Build
+build/
+dist/
+dist_target/
+*.spec
+
+# Temporary files
+affected_files.txt
