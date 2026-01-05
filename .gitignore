@@ -37,8 +37,10 @@ resource/tag_icons/
 
 # Debug and development scripts
 debug_*.py
+!debug_window.py
 fix_*.py
 generate_ico.py
+test_*/
 
 # Legacy and experimental
 legacy_testing/

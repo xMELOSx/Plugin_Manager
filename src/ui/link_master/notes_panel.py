@@ -23,9 +23,9 @@ class NotesPanel(QWidget):
         
         # Header
         header = QHBoxLayout()
-        self.header_lbl = QLabel(_("<b>Quick Notes</b>"))
+        self.header_lbl = QLabel(_("<b>Quick Notes</b>"), self)
         header.addWidget(self.header_lbl)
-        self.btn_add = QPushButton("✚")
+        self.btn_add = QPushButton("✚", self)
         self.btn_add.setFixedSize(28, 28)
         self.btn_add.setToolTip(_("Add New Note"))
         self.btn_add.setStyleSheet("""
@@ -41,7 +41,7 @@ class NotesPanel(QWidget):
         layout.addLayout(header)
         
         # List
-        self.list_widget = QListWidget()
+        self.list_widget = QListWidget(self)
         self.list_widget.setStyleSheet("""
             QListWidget { background-color: #2b2b2b; border: 1px solid #444; color: #ddd; }
             QListWidget::item { padding: 4px; }
@@ -63,14 +63,14 @@ class NotesPanel(QWidget):
         layout.addWidget(self.list_widget, 1)
         
         # Simple Editor (Internal)
-        self.editor = QTextEdit()
+        self.editor = QTextEdit(self)
         self.editor.setPlaceholderText(_("Select a note to edit..."))
         self.editor.setStyleSheet("background-color: #222; color: #eee; border: 1px solid #444;")
         self.editor.hide() # Hidden until note selected
         layout.addWidget(self.editor, 1)
         
         # Editor Buttons
-        self.editor_btns = QWidget()
+        self.editor_btns = QWidget(self)
         eb_layout = QHBoxLayout(self.editor_btns)
         eb_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -83,13 +83,13 @@ class NotesPanel(QWidget):
             QPushButton:pressed { background-color: #222; padding-top: 7px; padding-left: 11px; }
         """
         
-        self.btn_save = QPushButton(_("💾 Save"))
+        self.btn_save = QPushButton(_("💾 Save"), self.editor_btns)
         self.btn_save.setMouseTracking(True)
         self.btn_save.setStyleSheet(btn_style)
         self.btn_save.clicked.connect(self._save_current_note)
         eb_layout.addWidget(self.btn_save)
         
-        self.btn_external = QPushButton(_("🚀 Open Externally"))
+        self.btn_external = QPushButton(_("🚀 Open Externally"), self.editor_btns)
         self.btn_external.setMouseTracking(True)
         self.btn_external.setStyleSheet(btn_style)
         self.btn_external.clicked.connect(self._open_external)

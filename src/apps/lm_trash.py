@@ -6,17 +6,18 @@ import os
 import shutil
 import time
 from PyQt6.QtWidgets import QMessageBox
+from src.core.link_master.core_paths import get_trash_dir, get_trash_path_for_item
 
 
 class LMTrashMixin:
     """Mixin providing trash operation methods for LinkMasterWindow."""
     
     def _open_trash_view(self):
-        """Navigate to the _Trash folder in storage_root. Toggles back if already in Trash."""
+        """Navigate to the Trash folder. Toggles back if already in Trash."""
         app_data = self.app_combo.currentData()
         if not app_data: return
         
-        trash_path = os.path.join(app_data['storage_root'], "_Trash").replace('\\', '/')
+        trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
         current_view = getattr(self, 'current_view_path', "").replace('\\', '/')
         
         # Toggle back to last path if already in trash
@@ -52,9 +53,7 @@ class LMTrashMixin:
         # Batch operation fallback or refresh=False
         app_data = self.app_combo.currentData()
         if not app_data: return
-        trash_root = os.path.join(app_data['storage_root'], "_Trash")
-        if not os.path.exists(trash_root):
-            os.makedirs(trash_root)
+        trash_root = get_trash_dir(app_data['name'])
             
         name = os.path.basename(path)
         dest = os.path.join(trash_root, name)

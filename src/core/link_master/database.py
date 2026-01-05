@@ -9,6 +9,7 @@ class LinkMasterRegistry:
     def __init__(self):
         self.logger = logging.getLogger("LinkMasterRegistry")
         self.db_path = core_handler.db_path
+        self._apps_cache = None
         self._create_tables()
 
     def get_connection(self):
@@ -29,7 +30,8 @@ class LinkMasterRegistry:
                 cover_image TEXT,
                 last_target TEXT DEFAULT 'target_root',
                 default_category_style TEXT DEFAULT 'image',
-                default_package_style TEXT DEFAULT 'image'
+                default_package_style TEXT DEFAULT 'image',
+                default_skip_levels INTEGER DEFAULT 0
 
             )''',
             '''CREATE TABLE IF NOT EXISTS lm_settings (
@@ -56,12 +58,29 @@ class LinkMasterRegistry:
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN url_list TEXT DEFAULT '[]'")
             except: pass
-            # App-level favorites and scoring
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule TEXT DEFAULT 'folder'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN transfer_mode TEXT DEFAULT 'symlink'")
+            except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN is_favorite INTEGER DEFAULT 0")
             except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN score INTEGER DEFAULT 0")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN target_root_3 TEXT")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_b TEXT DEFAULT 'folder'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_c TEXT DEFAULT 'folder'")
+            except: pass
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_skip_levels INTEGER DEFAULT 0")
             except: pass
 
             conn.commit()
@@ -97,15 +116,19 @@ class LinkMasterRegistry:
         self.set_setting(key, str(value))
 
     def get_apps(self):
+        if self._apps_cache is not None:
+            return self._apps_cache
         with self.get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM lm_apps")
-            return [dict(row) for row in cursor.fetchall()]
+            self._apps_cache = [dict(row) for row in cursor.fetchall()]
+            return self._apps_cache
 
     def add_app(self, data: dict):
-        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, default_subpath, managed_folder_name, conflict_policy, deployment_type, cover_image, is_favorite, score)
-                 VALUES (:name, :storage_root, :target_root, :target_root_2, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :cover_image, :is_favorite, :score)'''
+        self._apps_cache = None
+        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, target_root_3, default_subpath, managed_folder_name, conflict_policy, deployment_type, deployment_rule, deployment_rule_b, deployment_rule_c, transfer_mode, cover_image, is_favorite, score, default_skip_levels)
+                 VALUES (:name, :storage_root, :target_root, :target_root_2, :target_root_3, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :deployment_rule, :deployment_rule_b, :deployment_rule_c, :transfer_mode, :cover_image, :is_favorite, :score, :default_skip_levels)'''
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(sql, data)
@@ -113,10 +136,12 @@ class LinkMasterRegistry:
             return cursor.lastrowid
 
     def update_app(self, app_id: int, data: dict):
-        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'managed_folder_name', 
-                      'default_subpath', 'conflict_policy', 'deployment_type', 'cover_image', 'last_target',
+        self._apps_cache = None
+        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'managed_folder_name', 
+                      'default_subpath', 'conflict_policy', 'deployment_type', 'deployment_rule', 'deployment_rule_b', 'deployment_rule_c', 'transfer_mode',
+                      'cover_image', 'last_target',
                       'default_category_style', 'default_package_style', 'executables', 'url_list',
-                      'is_favorite', 'score']
+                      'is_favorite', 'score', 'default_skip_levels']
 
         parts = []
         params = []
@@ -132,6 +157,7 @@ class LinkMasterRegistry:
             conn.commit()
 
     def delete_app(self, app_id: int):
+        self._apps_cache = None
         with self.get_connection() as conn:
             conn.execute("DELETE FROM lm_apps WHERE id = ?", (app_id,))
             conn.commit()
@@ -204,13 +230,16 @@ class LinkMasterDB:
                 tags TEXT,
                 target_override TEXT,     -- Phase 16
                 deployment_rules TEXT,     -- Phase 16 (JSON)
+                deploy_rule TEXT,          -- Phase 5 (A/B/C support)
                 deploy_type TEXT,          -- Phase 18.15 (Override)
                 conflict_policy TEXT,      -- Phase 18.15 (Override)
                 conflict_tag TEXT,         -- Phase 28: Tag to check for conflicts
                 conflict_scope TEXT,       -- Phase 28: Scope for conflict check (disabled/category/global)
                 description TEXT,          -- Phase 28: User description
                 inherit_tags INTEGER DEFAULT 1, -- Phase 18 (Allow blocking inheritance)
+                inherit_tags INTEGER DEFAULT 1, -- Phase 18 (Allow blocking inheritance)
                 trash_origin TEXT, -- Phase 18.11: Store original path for restore
+                transfer_mode TEXT, -- Phase 34: Copy vs Symlink override
                 UNIQUE(rel_path)
             )''',
             '''CREATE TABLE IF NOT EXISTS lm_settings (
@@ -294,6 +323,9 @@ class LinkMasterDB:
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN conflict_policy TEXT")
             except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deploy_rule TEXT")
+            except: pass
             
             # Phase 28 Migrations
             try:
@@ -307,6 +339,9 @@ class LinkMasterDB:
             except: pass
             try:
                 # Phase 28: Cache for link status to avoid expensive recursive scans
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN last_known_status TEXT")
+            except: pass
+            try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN link_status_cache TEXT")
             except: pass
 
@@ -316,6 +351,11 @@ class LinkMasterDB:
             except: pass
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN score INTEGER DEFAULT 0")
+            except: pass
+            
+            # Phase 34: Transfer Mode
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN transfer_mode TEXT")
             except: pass
             
             try:
@@ -403,6 +443,18 @@ class LinkMasterDB:
             except: pass
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_status ON lm_folder_config (last_known_status)")
+            except: pass
+            
+            # Phase 30: Ensure backup registry table exists for existing databases
+            try:
+                cursor.execute('''CREATE TABLE IF NOT EXISTS lm_backup_registry (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_path TEXT NOT NULL,
+                    backup_path TEXT NOT NULL,
+                    folder_rel_path TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(original_path)
+                )''')
             except: pass
             
             conn.commit()
@@ -595,8 +647,8 @@ class LinkMasterDB:
         # Normalize path to forward slashes for consistent DB storage
         rel_path = rel_path.replace('\\', '/') if rel_path else rel_path
         valid_cols = ['app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
-                      'tags', 'is_terminal', 'target_override', 'deployment_rules', 'inherit_tags', 'is_visible',
-                      'deploy_type', 'conflict_policy', 'sort_order', 'last_known_status',
+                       'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'inherit_tags', 'is_visible',
+                       'deploy_type', 'conflict_policy', 'transfer_mode', 'sort_order', 'last_known_status',
                       'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
                       'is_favorite', 'score', 'url_list',
                       'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
@@ -661,14 +713,12 @@ class LinkMasterDB:
                 
                 # We reuse the logic from update_folder_display_config but in one transaction
                 valid_cols = {'app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
-                             'tags', 'is_terminal', 'target_override', 'deployment_rules', 'inherit_tags', 'is_visible',
-                             'deploy_type', 'conflict_policy', 'sort_order', 'last_known_status',
+                             'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'inherit_tags', 'is_visible',
+                             'deploy_type', 'conflict_policy', 'transfer_mode', 'sort_order', 'last_known_status',
                              'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
                              'is_favorite', 'score', 'url_list',
                              'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
-                             'lib_folder_id',
-                             'has_logical_conflict', 'is_library_alt_version',
-                             'size_bytes', 'scanned_at'}
+                             'lib_folder_id', 'has_logical_conflict', 'is_library_alt_version', 'size_bytes', 'scanned_at'}
                 
                 for item_data in update_list:
                     rel_path = item_data.get('rel_path')

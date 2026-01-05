@@ -31,33 +31,11 @@ class LMCardSettingsMixin:
         
         init_val = int(getattr(self, attr, 100))
         
-        slider = QSlider(Qt.Orientation.Horizontal)
+        from src.ui.custom_slider import CustomSlider
+        slider = CustomSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_v, max_v)
         slider.setValue(init_val)
         slider.setFixedWidth(90)
-        
-        # Phase 1.1.4: Premium Slider Style
-        slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: 1px solid #333;
-                height: 4px;
-                background: #222;
-                margin: 2px 0;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #3498db;
-                border: 1px solid #2980b9;
-                width: 12px;
-                height: 12px;
-                margin: -5px 0;
-                border-radius: 6px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #5dade2;
-                border-color: #fff;
-            }
-        """)
         row.addWidget(slider)
         
         minus_btn = QPushButton("-")
@@ -110,33 +88,11 @@ class LMCardSettingsMixin:
         
         init_val = int(getattr(self, attr, 1.0) * 100)
         
-        slider = QSlider(Qt.Orientation.Horizontal)
+        from src.ui.custom_slider import CustomSlider
+        slider = CustomSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_v, max_v)
         slider.setValue(init_val)
         slider.setFixedWidth(90)
-        
-        # Phase 1.1.4: Premium Slider Style (Matching _create_mode_slider)
-        slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: 1px solid #333;
-                height: 4px;
-                background: #222;
-                margin: 2px 0;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #3498db;
-                border: 1px solid #2980b9;
-                width: 12px;
-                height: 12px;
-                margin: -5px 0;
-                border-radius: 6px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #5dade2;
-                border-color: #fff;
-            }
-        """)
         row.addWidget(slider)
         
         minus_btn = QPushButton("-")
@@ -180,20 +136,27 @@ class LMCardSettingsMixin:
         return row
 
     def _create_mode_check(self, label: str, attr: str, type_: str, mode: str, param: str):
-        """表示/非表示を切り替えるチェックボックス行を生成。"""
+        """表示/非表示を切り替えるトグルスイッチ行を生成。"""
+        from src.ui.slide_button import SlideButton
         row = QHBoxLayout()
-        row.setContentsMargins(10, 0, 0, 0)
+        row.setContentsMargins(10, 0, 5, 0)
+        row.setSpacing(10)
         
-        check = QCheckBox(label)
+        check = SlideButton()
         init_val = bool(getattr(self, attr, True))
         check.setChecked(init_val)
-        check.setStyleSheet("QCheckBox { color: #ddd; font-size: 11px; }")
+        
+        lbl = QLabel(_(label))
+        lbl.setStyleSheet("color: #ddd; font-size: 11px;")
         
         def update_val(v):
             self._set_mode_check_param(type_, mode, param, v)
             
-        check.toggled.connect(update_val)
+        check.clicked.connect(lambda: update_val(check.isChecked()))
+        
         row.addWidget(check)
+        row.addWidget(lbl)
+        row.addStretch()
         return row
 
     def _set_mode_check_param(self, type_: str, mode: str, param: str, value: bool):

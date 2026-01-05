@@ -215,14 +215,16 @@ class TagBar(QWidget):
         main_layout.setSpacing(5)
         
         # Scroll Area for Tags
-        self.scroll = QScrollArea()
+        self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setStyleSheet("background: transparent;")
+        # Prevent scroll area from being treated as a separate window
+        self.scroll.setWindowFlags(Qt.WindowType.Widget)
         
-        self.container = QWidget()
+        self.container = QWidget(self.scroll)
         self.container.setStyleSheet("background: transparent;")
         self.tags_layout = QHBoxLayout(self.container)
         self.tags_layout.setContentsMargins(0, 0, 0, 0)
@@ -234,7 +236,7 @@ class TagBar(QWidget):
         
         from src.core.lang_manager import _
         # Integrated Edit Button
-        self.edit_btn = QPushButton("E")
+        self.edit_btn = QPushButton("E", self)
         self.edit_btn.setObjectName("tagbar_edit_btn")
         self.edit_btn.setFixedSize(24, 24)
         self.edit_btn.setToolTip(_("Edit Frequent Tags"))
@@ -284,7 +286,7 @@ class TagBar(QWidget):
         self.scroll.setVisible(len(tags) > 0)
         
         for t in tags:
-            w = TagWidget(t)
+            w = TagWidget(t, parent=self.container)
             w.clicked.connect(self._on_tag_clicked)
             w.icon_dropped.connect(self._on_icon_dropped)
             self.tags_layout.addWidget(w)

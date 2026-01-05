@@ -35,14 +35,14 @@ help_notes:
     show_tail: true
   tag_bar:
     body_size:
-    - 115
-    - 139
+    - 289
+    - 126
     offset:
     - 222
     - 2
     tail_target:
-    - -92
-    - 63
+    - -102
+    - -99
     bg_style: 3358074920
     text_style: 4294967295
     content: "#87caca\n一般\n#d9d38c\n重要\n#d5a01c"
@@ -51,59 +51,61 @@ help_notes:
     show_tail: true
   search_bar:
     body_size:
-    - 160
-    - 90
+    - 194
+    - 70
     offset:
-    - 246
-    - 654
+    - 109
+    - 52
     tail_target:
-    - -120
-    - 1
+    - -107
+    - -45
     bg_style: 3369443356
     text_style: 4294967295
-    content: Help text here...
-    anchor_mode: 0
-    target_widget_name: main_search_bar
+    content: "特殊操作\n使用頻度が低い機能の詰め合わせ\n容量計算や属性インポートなど"
+    anchor_mode: 3
+    target_widget_name: sidebar_tools_btn
     show_tail: true
   explorer_btn:
     body_size:
-    - 189
-    - 45
+    - 228
+    - 113
     offset:
-    - -65
-    - -40
+    - -76
+    - 85
     tail_target:
-    - 65
-    - 37
+    - 76
+    - -76
     bg_style: 3364342474
     text_style: 4294967295
-    content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能\n"
+    content: "クイックタグエディット\nトップでは表示カテゴリを絞る機能\nセパレートで区切られたもの同士はOR\n区切られたものはANDで絞り込み\n\
+      左クリック：複数選択\n右クリック：セパレートまでで単体選択"
     anchor_mode: 3
     target_widget_name: tagbar_edit_btn
     show_tail: true
   sidebar_strip:
     body_size:
-    - 153
-    - 84
+    - 279
+    - 96
     offset:
-    - 404
-    - -105
+    - 23
+    - 75
     tail_target:
-    - -27
-    - -72
+    - -10
+    - 78
     bg_style: 3358074920
     text_style: 4294967295
-    content: Help text here...
-    anchor_mode: 2
-    target_widget_name: QTabWidget
+    content: "カードアイテムーカテゴリ\n左クリック：選択　右クリック：メニュー\nダブルクリック：カテゴリモードでフォルダ階層移動\nAlt+ダブルクリック：プロパティ編集\n\
+      ドラッグアンドドロップ：画像直接サムネイル化"
+    anchor_mode: 3
+    target_widget_name: tag_btn_Boy
     show_tail: true
   presets_btn:
     body_size:
     - 184
     - 47
     offset:
-    - -115
-    - 59
+    - -118
+    - 67
     tail_target:
     - -119
     - 16
@@ -131,35 +133,35 @@ help_notes:
     show_tail: true
   tools_btn:
     body_size:
-    - 160
-    - 90
+    - 80
+    - 39
     offset:
-    - 135
-    - -69
+    - 84
+    - 18
     tail_target:
-    - 110
-    - -3
-    bg_style: 3358074920
+    - -72
+    - -14
+    bg_style: 3364342474
     text_style: 4294967295
-    content: Help text here...
-    anchor_mode: 0
-    target_widget_name: header_edit_app_btn
+    content: クイックメモ
+    anchor_mode: 3
+    target_widget_name: sidebar_notes_btn
     show_tail: true
   search_logic:
     body_size:
     - 150
     - 80
     offset:
-    - 210
-    - 657
+    - 329
+    - -11
     tail_target:
-    - -103
-    - 52
+    - -102
+    - 45
     bg_style: 3370574229
     text_style: 4294967295
     content: saHelp text here...
-    anchor_mode: 0
-    target_widget_name: search_logic_combo
+    anchor_mode: 3
+    target_widget_name: QPushButton
     show_tail: true
   free_7eab6f19:
     body_size:

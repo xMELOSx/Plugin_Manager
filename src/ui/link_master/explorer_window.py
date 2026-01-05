@@ -33,7 +33,9 @@ class ExplorerPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Header (Root Info)
-        self.header_frame = QFrame()
+        self.header_frame = QFrame(self)
+        self.header_frame.setWindowFlags(Qt.WindowType.Widget)
+        self.header_frame.setFixedHeight(30)
         self.header_frame.setFrameShape(QFrame.Shape.StyledPanel)
         self.header_frame.setStyleSheet("QFrame { background-color: #333; border-radius: 4px; } QLabel { color: #eee; font-weight: bold; }")
         
@@ -41,7 +43,7 @@ class ExplorerPanel(QWidget):
         header_layout.setContentsMargins(4, 2, 4, 2)
         header_layout.setSpacing(4)
         
-        self.lbl_info = QLabel(_("Root: Not Selected"))
+        self.lbl_info = QLabel(_("Root: Not Selected"), self.header_frame)
         self.lbl_info.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_info.mousePressEvent = self._on_root_label_clicked
         self.lbl_info.setStyleSheet("padding: 2px;")
@@ -50,7 +52,7 @@ class ExplorerPanel(QWidget):
         header_layout.addStretch()
         
         # Smart context button / refresh
-        self.btn_refresh = QPushButton("🔄")
+        self.btn_refresh = QPushButton("🔄", self.header_frame)
         self.btn_refresh.setFixedSize(24, 24)
         self.btn_refresh.setFlat(True)
         self.btn_refresh.setToolTip(_("Refresh Tree"))
@@ -72,7 +74,7 @@ class ExplorerPanel(QWidget):
         self.proxy_model = SingleFolderProxyModel()
         self.proxy_model.setSourceModel(self.fs_model)
         
-        self.tree = QTreeView()
+        self.tree = QTreeView(self)
         self.tree.setStyleSheet("""
             QTreeView {
                 background-color: #2b2b2b;
@@ -108,6 +110,7 @@ class ExplorerPanel(QWidget):
         
         # Right-edge resize handle (horizontal resize only)
         self._resize_handle = QFrame(self)
+        self._resize_handle.setWindowFlags(Qt.WindowType.Widget)
         self._resize_handle.setFixedWidth(5)
         self._resize_handle.setCursor(Qt.CursorShape.SizeHorCursor)
         self._resize_handle.setStyleSheet("QFrame { background: #555; } QFrame:hover { background: #777; }")

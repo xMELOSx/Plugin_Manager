@@ -165,6 +165,10 @@ class LMCardPoolMixin:
         # Phase 28: Alt+Double-Click to open property editor for any item
         if hasattr(self, '_open_properties_for_path'):
             card.request_edit_properties.connect(self._open_properties_for_path)
+            
+        # Phase 32: Focus library in management tab
+        if hasattr(self, '_on_request_focus_library'):
+            card.request_focus_library.connect(self._on_request_focus_library)
         
         if is_package:
             card.single_clicked.connect(lambda p: self._handle_item_click(p, "package"))
@@ -262,9 +266,16 @@ class LMCardPoolMixin:
             card.deleteLater()
 
     def _get_active_card_by_path(self, path: str) -> ItemCard:
-        """Utility to find an already visible card. Normalizes slashes for comparison."""
-        target = path.replace('\\', '/')
+        """Utility to find an already visible card. Robust normalization."""
+        if not path: return None
+        try:
+            target = os.path.normpath(path).lower()
+        except: return None
+        
         for card in self._active_cat_cards + self._active_pkg_cards:
-            if not sip.isdeleted(card) and card.path.replace('\\', '/') == target:
-                return card
+            if not sip.isdeleted(card):
+                try:
+                    if os.path.normpath(card.path).lower() == target:
+                        return card
+                except: continue
         return None

@@ -289,8 +289,8 @@ msgstr "📦 All Packages"
 msgid "📁 Categories Only"
 msgstr "📁 Categories Only"
 
-msgid "📁+📦 Cats with Pkgs"
-msgstr "📁+📦 Cats with Pkgs"
+msgid "📁+📦 Categories with Packages"
+msgstr "📁+📦 Categories with Packages"
 
 msgid "Global"
 msgstr "Global"
@@ -425,11 +425,11 @@ msgid "Select Text Color"
 msgstr "Select Text Color"
 
 # Tooltips - Main Window
-msgid "Show linked categories/packages"
-msgstr "Show linked categories/packages"
+msgid "Show linked folders"
+msgstr "Show linked folders"
 
-msgid "Show unlinked categories/packages"
-msgstr "Show unlinked categories/packages"
+msgid "Show unlinked folders"
+msgstr "Show unlinked folders"
 
 msgid "Unlink All Active Links"
 msgstr "Unlink All Active Links"
@@ -486,11 +486,8 @@ msgstr "👁 <b>Display Settings</b>"
 msgid "  <font color='#888'>Link Button (🌐)</font>"
 msgstr "  <font color='#888'>Link Button (🌐)</font>"
 
-msgid "Show in Category"
-msgstr "Show in Category"
-
-msgid "Show in Package"
-msgstr "Show in Package"
+msgid "Show in {type}"
+msgstr "Show in {type}"
 
 msgid "  <font color='#888'>Deploy Button (🔵)</font>"
 msgstr "  <font color='#888'>Deploy Button (🔵)</font>"
@@ -665,8 +662,8 @@ msgid "⚠ Reset All Attributes"
 msgstr "⚠ Reset All Attributes"
 
 # Context Menu - Main Window
-msgid "Folder: {name}"
-msgstr "Folder: {name}"
+msgid "Category/Package: {name}"
+msgstr "Category/Package: {name}"
 
 msgid "📦 Restore to Original"
 msgstr "📦 Restore to Original"
@@ -695,11 +692,23 @@ msgstr "Disable '{name}' and enable this item."
 msgid "🚀 Deploy Link"
 msgstr "🚀 Deploy Link"
 
-msgid "👁 Show Item"
-msgstr "👁 Show Item"
+msgid "👁 Show Category/Package"
+msgstr "👁 Show Category/Package"
 
-msgid "👻 Hide Item"
-msgstr "👻 Hide Item"
+msgid "👻 Hide Category/Package"
+msgstr "👻 Hide Category/Package"
+
+msgid "Quick View Manager (Bulk Edit Visible Folders)"
+msgstr "Quick View Manager (Bulk Edit Visible Folders)"
+
+msgid "Show only folders with favorites"
+msgstr "Show only folders with favorites"
+
+msgid "Show only linked folders"
+msgstr "Show only linked folders"
+
+msgid "Show only unlinked folders"
+msgstr "Show only unlinked folders"
 
 msgid "📋 View Properties"
 msgstr "📋 View Properties"
@@ -713,8 +722,8 @@ msgstr "🛠 Manage Files (Exclude/Move)..."
 msgid "📁 Open in Explorer"
 msgstr "📁 Open in Explorer"
 
-msgid "🗑 Move to Trash"
-msgstr "🗑 Move to Trash"
+msgid "🗑 Move Category/Package to Trash"
+msgstr "🗑 Move Category/Package to Trash"
 
 # Presets Context Menu
 msgid "✏️ Rename"
@@ -923,3 +932,18 @@ msgstr "📦 Restore Selected"
 
 msgid "🗑 Move Selected to Trash"
 msgstr "🗑 Move Selected to Trash"
+
+msgid "Default Tree Skip:"
+msgstr "Default Tree Skip:"
+
+msgid " levels"
+msgstr " levels"
+
+msgid "Tree Skip Levels:"
+msgstr "Tree Skip Levels:"
+
+msgid "Target Override:"
+msgstr "Target Override:"
+
+msgid "Select Target Destination Override"
+msgstr "Select Target Destination Override"

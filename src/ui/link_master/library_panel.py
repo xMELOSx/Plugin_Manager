@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem,
                              QInputDialog, QFrame, QComboBox, QCheckBox, QHeaderView,
                              QDialog, QFormLayout, QLineEdit, QListWidget, QListWidgetItem,
                              QTextEdit, QSplitter, QSizePolicy, QRadioButton, QButtonGroup,
-                             QStyledItemDelegate)
+                             QStyledItemDelegate, QTreeWidgetItemIterator)
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor, QDesktopServices, QBrush, QPalette
 from src.core.lang_manager import _
@@ -66,7 +66,7 @@ class LibraryPanel(QWidget):
         layout.setSpacing(5)
         
         # Header
-        self.header_lbl = QLabel(_("📚 Library Management"))
+        self.header_lbl = QLabel(_("📚 Library Management"), self)
         self.header_lbl.setStyleSheet("font-weight: bold; color: #ccc; font-size: 14px;")
         layout.addWidget(self.header_lbl)
         
@@ -77,7 +77,7 @@ class LibraryPanel(QWidget):
                 super().dropEvent(event)
                 self.dropped.emit()
                 
-        self.lib_tree = LibraryTreeWidget()
+        self.lib_tree = LibraryTreeWidget(self)
         self.lib_tree.dropped.connect(self._sync_tree_to_db)
         self.lib_tree.setHeaderLabels([_("Library Name"), _("Status"), _("Latest"), _("Priority"), _("Deps")])
         self.lib_tree.setColumnWidth(0, 150)
@@ -101,6 +101,10 @@ class LibraryPanel(QWidget):
         self.lib_tree.itemSelectionChanged.connect(self._on_selection_changed)
         self.lib_tree.itemDoubleClicked.connect(self._on_item_double_clicked)  # Double-click to toggle folders
         self.lib_tree.header().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lib_tree.header().setSortIndicatorClearable(True)
+        self.lib_tree.setSortingEnabled(True)
+        self.lib_tree.header().setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+        self.lib_tree.header().sectionClicked.connect(self._on_header_clicked)
         
         # Enable Drag & Drop
         self.lib_tree.setDragEnabled(True)
@@ -120,7 +124,7 @@ class LibraryPanel(QWidget):
         row1 = QHBoxLayout()
         row1.setSpacing(5)
         
-        self.btn_deploy_unlink = QPushButton(_("🚀 Deploy"))
+        self.btn_deploy_unlink = QPushButton(_("🚀 Deploy"), self)
         self.btn_deploy_unlink.setStyleSheet("""
             QPushButton { background-color: #27ae60; color: white; }
             QPushButton:hover { background-color: #2ecc71; }
@@ -128,7 +132,7 @@ class LibraryPanel(QWidget):
         self.btn_deploy_unlink.clicked.connect(self._toggle_deploy)
         row1.addWidget(self.btn_deploy_unlink)
         
-        self.btn_url = QPushButton(_("🌐 URL"))
+        self.btn_url = QPushButton(_("🌐 URL"), self)
         self.btn_url.setToolTip(_("Open URL in Browser"))
         self.btn_url.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
@@ -137,7 +141,7 @@ class LibraryPanel(QWidget):
         self.btn_url.clicked.connect(self._open_url)
         row1.addWidget(self.btn_url)
         
-        self.btn_settings = QPushButton(_("⚙ Settings"))
+        self.btn_settings = QPushButton(_("⚙ Settings"), self)
         self.btn_settings.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
             QPushButton:hover { background-color: #5d5d5d; }
@@ -151,7 +155,7 @@ class LibraryPanel(QWidget):
         row2 = QHBoxLayout()
         row2.setSpacing(5)
         
-        self.btn_props = QPushButton(_("📋 Properties"))
+        self.btn_props = QPushButton(_("📋 Properties"), self)
         self.btn_props.setToolTip(_("Open properties of priority version"))
         self.btn_props.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
@@ -160,7 +164,7 @@ class LibraryPanel(QWidget):
         self.btn_props.clicked.connect(self._open_priority_props)
         row2.addWidget(self.btn_props)
         
-        self.btn_deps = QPushButton(_("📦 Check Deps"))
+        self.btn_deps = QPushButton(_("📦 Check Deps"), self)
         self.btn_deps.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
             QPushButton:hover { background-color: #5d5d5d; }
@@ -168,7 +172,7 @@ class LibraryPanel(QWidget):
         self.btn_deps.clicked.connect(self._open_dep_packages)
         row2.addWidget(self.btn_deps)
         
-        self.btn_unregister = QPushButton(_("🗑 Unregister"))
+        self.btn_unregister = QPushButton(_("🗑 Unregister"), self)
         self.btn_unregister.setToolTip(_("Unregister selected version from library"))
         self.btn_unregister.clicked.connect(self._unregister_selected)
         row2.addWidget(self.btn_unregister)
@@ -179,7 +183,7 @@ class LibraryPanel(QWidget):
         row3 = QHBoxLayout()
         row3.setSpacing(5)
         
-        self.btn_hide = QPushButton(_("👁 Hide"))
+        self.btn_hide = QPushButton(_("👁 Hide"), self)
         self.btn_hide.setToolTip(_("Hide from library list"))
         self.btn_hide.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
@@ -188,7 +192,7 @@ class LibraryPanel(QWidget):
         self.btn_hide.clicked.connect(self._toggle_visibility)
         row3.addWidget(self.btn_hide)
 
-        self.btn_new_folder = QPushButton(_("📁 New Folder"))
+        self.btn_new_folder = QPushButton(_("📁 New Folder"), self)
         self.btn_new_folder.setToolTip(_("Create a new library folder"))
         self.btn_new_folder.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
@@ -197,7 +201,7 @@ class LibraryPanel(QWidget):
         self.btn_new_folder.clicked.connect(lambda: self._create_new_folder())
         row3.addWidget(self.btn_new_folder)
         
-        self.btn_reg = QPushButton(_("🏷 Register Selected Package"))
+        self.btn_reg = QPushButton(_("🏷 Register Selected Package"), self)
         self.btn_reg.setToolTip(_("Register the selected folder as a library."))
         self.btn_reg.setStyleSheet("""
             QPushButton { background-color: #2980b9; color: white; padding: 5px; }
@@ -206,7 +210,7 @@ class LibraryPanel(QWidget):
         self.btn_reg.clicked.connect(self.request_register_library.emit)
         row3.addWidget(self.btn_reg)
         
-        self.btn_refresh = QPushButton("🔄")
+        self.btn_refresh = QPushButton("🔄", self)
         self.btn_refresh.setFixedWidth(30)
         self.btn_refresh.setStyleSheet("""
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
@@ -217,6 +221,14 @@ class LibraryPanel(QWidget):
         self.btn_refresh.hide()  # Hidden: unclear purpose
         
         layout.addLayout(row3)
+
+    def _on_header_clicked(self, logicalIndex):
+        """Ensure sorting defaults to Ascending when a new column is clicked."""
+        if self.lib_tree.header().sortIndicatorSection() != logicalIndex:
+            self.lib_tree.header().setSortIndicator(logicalIndex, Qt.SortOrder.AscendingOrder)
+        else:
+            # Toggle logic is handled by QTreeWidget, but we can enforce Ascending as priority if needed.
+            pass
 
     def save_state(self):
         """Save UI state like column widths."""
@@ -264,6 +276,31 @@ class LibraryPanel(QWidget):
         self.db = db
         self.refresh()
         self.restore_state()
+
+    def focus_library(self, lib_name):
+        """Finds and selects a library by name, ensuring it is visible."""
+        if not lib_name: return
+        
+        # Search for library item
+        iterator = QTreeWidgetItemIterator(self.lib_tree)
+        while iterator.value():
+            item = iterator.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data and data.get('type') == 'library' and data.get('name') == lib_name:
+                self.lib_tree.setCurrentItem(item)
+                item.setSelected(True)
+                
+                # Ensure all parents are expanded
+                p = item.parent()
+                while p:
+                    p.setExpanded(True)
+                    p = p.parent()
+                
+                self.lib_tree.scrollToItem(item)
+                self._update_buttons()
+                return True
+            iterator += 1
+        return False
 
     def refresh(self):
         if not self.db: return
@@ -516,13 +553,13 @@ class LibraryPanel(QWidget):
         self.btn_deploy_unlink.setEnabled(True)
         
         if data.get('priority_status') == 'linked':
-            self.btn_deploy_unlink.setText(_("🔗 解除"))
+            self.btn_deploy_unlink.setText(_("🔗 Unlink"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #e67e22; color: white; }
                 QPushButton:hover { background-color: #f39c12; }
             """)
         else:
-            self.btn_deploy_unlink.setText(_("🚀 デプロイ"))
+            self.btn_deploy_unlink.setText(_("🚀 Deploy"))
             self.btn_deploy_unlink.setStyleSheet("""
                 QPushButton { background-color: #27ae60; color: white; }
                 QPushButton:hover { background-color: #2ecc71; }
@@ -688,7 +725,7 @@ class LibraryPanel(QWidget):
             return
         confirm = QMessageBox.question(
             self, _("Unregister Library"), 
-            _("選択中のバージョンをライブラリから解除しますか？"),
+            _("Are you sure you want to remove the selected version from the library?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm == QMessageBox.StandardButton.Yes:
@@ -751,10 +788,10 @@ class LibraryPanel(QWidget):
             menu.addSeparator()
             
             if data.get('priority_status') == 'linked':
-                act_unlink = menu.addAction(_("🔗 解除"))
+                act_unlink = menu.addAction(_("🔗 Unlink"))
                 act_unlink.triggered.connect(self._toggle_deploy)
             else:
-                act_deploy = menu.addAction(_("🚀 デプロイ"))
+                act_deploy = menu.addAction(_("🚀 Deploy"))
                 act_deploy.triggered.connect(self._toggle_deploy)
             
             act_settings = menu.addAction(_("⚙ Settings"))

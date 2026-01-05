@@ -11,15 +11,21 @@ from PyQt6.QtGui import QPixmap, QCursor, QPainter, QPen, QColor, QDragEnterEven
 import os
 import shutil
 import logging
+from PyQt6 import sip
 from src.core.lang_manager import _
 
 from .item_card_utils import AsyncScaler
 from .item_card_style import get_card_colors, get_card_stylesheet, COLOR_HIDDEN, COLOR_NORMAL_TEXT
 from .item_card_overlays import update_overlays_geometry
+from .card_overlays import (
+    StarOverlay, UrlOverlay, LibOverlay, DeployOverlay, 
+    CardBorderPainter, ThumbnailWidget, ElidedLabel
+)
 
 class ItemCard(QFrame):
     # Static Debug Flag
     SHOW_HITBOXES = False
+    image_ready_signal = pyqtSignal(str) # Async image ready signal
 
     # Profiling counters
     _total_style_time = 0.0
@@ -42,6 +48,7 @@ class ItemCard(QFrame):
     request_restore = pyqtSignal(str)              # Phase 18.11: Emits path
     request_reorder = pyqtSignal(str, str)         # New: path, "top" or "bottom"
     request_edit_properties = pyqtSignal(str)      # Phase 28: Alt+Double-Click -> Edit Properties
+    request_focus_library = pyqtSignal(str)        # Phase 32: Focus library in library tab
     def __init__(self, name: str, path: str, image_path: str = None, loader = None,
                  deployer = None, target_dir: str = None, parent=None,
                  storage_root: str = None, db = None,
@@ -55,6 +62,7 @@ class ItemCard(QFrame):
                  show_link: bool = True, show_deploy: bool = True, deploy_button_opacity: float = 0.8):
         super().__init__(parent)
         self.path = path # Source Path (Absolute)
+        self.norm_path = (path or "").replace('\\', '/')
         self.folder_name = os.path.basename(path) # Physical folder name for links
         self.display_name = name # Display name from config or folder name
         self.loader = loader
@@ -87,6 +95,8 @@ class ItemCard(QFrame):
         self.is_partial = is_partial # Feature 6: Yellow mark if True
         self.link_status = 'none' # 'none', 'linked', 'conflict'
         self.has_linked_children = False  # True if any child is linked
+        self.has_unlinked_children = False # NEW: True if any child is unlinked
+        self.has_partial_children = False # True if any child is partial
         self.has_favorite = False  # True if any child is favorited (hierarchical)
         self.has_conflict_children = False  # True if any child has conflict
         self.has_logical_conflict = False
@@ -107,25 +117,22 @@ class ItemCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 2, 0, 2)  # Minimal margins, centering by Qt flags
 
-        # thumbnail (Placeholder)
-        self.thumb_label = QLabel()
+        # thumbnail - Using ThumbnailWidget component
+        self.thumb_label = ThumbnailWidget(self)
         self.thumb_label.setFixedSize(140, 120)
+        self.thumb_label.setTargetSize(QSize(140, 120))
         self.thumb_label.setStyleSheet("background-color: #222; border-radius: 4px; border: 1px solid #333;")
-        self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumb_label.setText(_("No Image"))
 
         self.setMouseTracking(True)
+        self.image_ready_signal.connect(self._register_dropped_image)
         # Async Load
         if image_path and loader:
-            self.thumb_label.setText(_("Loading..."))
-            loader.load_image(image_path, QSize(256, 256), self.set_pixmap)
+            self.thumb_label.loadFromPath(image_path, loader, QSize(256, 256))
 
-        # Name (gray if hidden)
-        self.name_label = QLabel(self.display_name)
+        # Name - Using ElidedLabel component
+        self.name_label = ElidedLabel(self.display_name, self)
         name_color = "#888" if self.is_hidden else "#ddd"  # Phase 18.14: Gray for hidden
         self.name_label.setStyleSheet(f"color: {name_color}; font-weight: bold;")
-        self.name_label.setWordWrap(True)
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Phase 24 Fix: Top-fixed layout (image at top, text below, no vertical centering)
         # This ensures image position is stable regardless of text length.
@@ -133,30 +140,20 @@ class ItemCard(QFrame):
         layout.addWidget(self.name_label)
         layout.addStretch()  # Push content to top
 
-        # Star Overlay - Using QLabel for favorite indicator
-        self.star_overlay = QLabel("★", self)
-        self.star_overlay.setFixedSize(28, 28)
-        self.star_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.star_overlay.setObjectName("overlay_star")
-        self.star_overlay.setStyleSheet("color: #f1c40f; font-size: 20px; background: transparent;")
-        self.star_overlay.hide()
+        # Star Overlay - Using component
+        self.star_overlay = StarOverlay(self)
 
-        # URL Overlay - Using QPushButton for better interaction and hover effects
-        self.url_overlay = QPushButton("🌐", self)
-        self.url_overlay.setFixedSize(24, 24)
-        self.url_overlay.setObjectName("overlay_url")
-        self.url_overlay.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.url_overlay.setToolTip(_("Open related URL"))
-        self.url_overlay.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; }")
+        # URL Overlay - Using component
+        self.url_overlay = UrlOverlay(self)
         self.url_overlay.clicked.connect(self._open_first_working_url)
-        self.url_overlay.hide()
 
-        # Phase 30: Deploy Toggle Overlay
-        self.deploy_btn = QPushButton(self)
-        self.deploy_btn.setFixedSize(24, 24)
-        self.deploy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Library Overlay - Using component
+        self.lib_overlay = LibOverlay(self)
+        self.lib_overlay.clicked.connect(lambda: self.request_focus_library.emit(getattr(self, 'lib_name', '')))
+
+        # Phase 30: Deploy Toggle Overlay - Using component
+        self.deploy_btn = DeployOverlay(self)
         self.deploy_btn.clicked.connect(lambda: self.request_deployment_toggle.emit(self.path))
-        self.deploy_btn.hide()
 
         # Phase 28: Enable drag-drop for thumbnail images
         self.setAcceptDrops(True)
@@ -175,41 +172,49 @@ class ItemCard(QFrame):
         self._update_style()
         self._update_icon_overlays()  # Initialize icon visibility
 
-    def update_data(self, **kwargs):
-        """Phase 28: Reuse widget by updating its data without reconstruction.
 
-        Args:
-            **kwargs: Item properties:
-                name (str): Display name
-                path (str): Absolute source path
-                image_path (str): Path to thumbnail
-                is_package (bool): True if package, False if category
-                is_registered (bool): True if in DB
-                is_misplaced (bool): True if in wrong folder
-                is_trash_view (bool): True if in trash
-                is_hidden (bool): True if hidden
-                target_override (str): Manual link target
-                deployment_rules (str): JSON rules
-                manual_preview_path (str): Path to video/etc
-                deploy_type (str): 'folder', 'file', etc
-                conflict_policy (str): 'backup', 'overwrite', etc
-                tags_raw (str): Raw CSV tags string (Phase 1.0.9)
-        """
-        from PyQt6 import sip
+    def _calculate_has_urls(self, url_list_raw):
+        """Helper to determine if an item has valid, active URLs."""
+        if not url_list_raw or url_list_raw in ('[]', '""', 'null', '{}'):
+            return False
+            
+        try:
+            import json
+            parsed = json.loads(url_list_raw)
+            if isinstance(parsed, list):
+                # Valid if at least one entry has a non-empty URL
+                return any((item.get('url', '').strip() if isinstance(item, dict) else str(item).strip()) 
+                           for item in parsed)
+            elif isinstance(parsed, dict):
+                # Handle {"urls": [...]} or similar
+                urls = parsed.get('urls', [])
+                if not urls and 'url' in parsed: # Single URL legacy dict
+                    return bool(parsed.get('url', '').strip())
+                return any(u.get('url', '').strip() for u in urls if isinstance(u, dict))
+            return bool(parsed)
+        except:
+            return False # Conservative fallback
+
+    def update_data(self, **kwargs):
+        """Phase 28: Reuse widget by updating its data without reconstruction."""
         if sip.isdeleted(self):
             return
 
         # 1. Update Core Data & Context
         old_path = self.path
-        self.path = kwargs.get('path', self.path)
+        if 'path' in kwargs:
+            self.path = kwargs['path']
+            self.folder_name = os.path.basename(self.path.rstrip('\\/'))
+        
         self.target_dir = kwargs.get('target_dir', self.target_dir)
         self.storage_root = kwargs.get('storage_root', self.storage_root)
-        self.folder_name = os.path.basename(self.path.rstrip('\\/'))
 
         # Support 'name' and 'display_name' with robust fallback
-        # Fix Phase 33: Only overwrite display_name if explicitly provided or path changed
         if 'display_name' in kwargs or 'name' in kwargs:
             self.display_name = kwargs.get('display_name') or kwargs.get('name') or self.folder_name
+            # Ensure display_name is updated in the card state immediately
+            if 'name' in kwargs and 'display_name' not in kwargs:
+                kwargs['display_name'] = kwargs['name']
         elif self.path != old_path:
             # If path changed and no name provided, reset to folder name
             self.display_name = self.folder_name
@@ -220,8 +225,6 @@ class ItemCard(QFrame):
         if 'db' in kwargs: self.db = kwargs['db']
         if 'thumbnail_manager' in kwargs: self.thumbnail_manager = kwargs['thumbnail_manager']
 
-        # 3. Update Flags - Use getattr for defaults to support partial updates safely
-        self.is_package = kwargs.get('is_package', self.is_package)
         if 'folder_type' in kwargs:
             self.is_package = (kwargs['folder_type'] == 'package')
 
@@ -258,6 +261,7 @@ class ItemCard(QFrame):
 
         # Child Status Flags (Folders)
         self.has_linked_children = kwargs.get('has_linked', getattr(self, 'has_linked_children', False))
+        self.has_unlinked_children = kwargs.get('has_unlinked', getattr(self, 'has_unlinked_children', False))
         self.has_favorite = kwargs.get('has_favorite', getattr(self, 'has_favorite', False))
         self.has_conflict_children = kwargs.get('has_conflict_children', getattr(self, 'has_conflict_children', False))
 
@@ -265,7 +269,17 @@ class ItemCard(QFrame):
         self.target_override = kwargs.get('target_override', self.target_override)
         self.deployment_rules = kwargs.get('deployment_rules', self.deployment_rules)
         self.manual_preview_path = kwargs.get('manual_preview_path', self.manual_preview_path)
-        self.deploy_type = kwargs.get('deploy_type', self.deploy_type)
+        # 4. Standardized Rule Resolution for UI state
+        deploy_rule = kwargs.get('deploy_rule')
+        if not deploy_rule or deploy_rule in ("default", "inherit"):
+            # Fallback to legacy deploy_type if set
+            legacy_type = kwargs.get('deploy_type')
+            if legacy_type and legacy_type != 'folder':
+                deploy_rule = legacy_type
+            else:
+                deploy_rule = getattr(self, 'app_deploy_default', 'folder')
+        
+        self.deploy_type = deploy_rule
         self.conflict_policy = kwargs.get('conflict_policy', self.conflict_policy)
 
         # Phase 28 Fix: Store conflict tag data specifically for UI Red Line logic
@@ -276,18 +290,20 @@ class ItemCard(QFrame):
         self.is_favorite = bool(kwargs.get('is_favorite', getattr(self, 'is_favorite', False)))
         self.score = kwargs.get('score', getattr(self, 'score', 0)) or 0
 
-        # Phase 1.1.7: More robust URL detection
-        url_list = kwargs.get('url_list', getattr(self, 'url_list', '[]'))
-        self.url_list = url_list
-        if not url_list or url_list == '[]' or url_list == '""':
-            self.has_urls = False
+        # Phase 1.1.7: More robust URL detection (Consolidated)
+        # BUG FIX: If 'url_list' is not provided in a pinpoint update, keep current has_urls.
+        # But if it IS provided, we MUST update has_urls and overlay.
+        if 'url_list' in kwargs:
+            self.url_list = kwargs.get('url_list', '[]') or '[]'
+            self.has_urls = self._calculate_has_urls(self.url_list)
+        elif 'url' in kwargs: # Legacy single URL field support
+            self.url_list = f'["{kwargs["url"]}"]' if kwargs['url'] else '[]'
+            self.has_urls = bool(kwargs['url'])
         else:
-            try:
-                import json
-                parsed = json.loads(url_list)
-                self.has_urls = bool(parsed)
-            except:
-                self.has_urls = bool(url_list and url_list != '[]')
+            # Pinpoint update, preserve current url_list/has_urls if not changed
+            # But ensure has_urls matches current self.url_list just in case
+            if not hasattr(self, 'has_urls'):
+                self.has_urls = self._calculate_has_urls(getattr(self, 'url_list', '[]'))
 
         # Phase 30: Synchronize Library info
         self.is_library = kwargs.get('is_library', getattr(self, 'is_library', 0))
@@ -297,6 +313,10 @@ class ItemCard(QFrame):
         # Phase 1.0.9: Store raw data for Quick View Manager
         if 'tags_raw' in kwargs:
             self.tags_raw = kwargs.get('tags_raw', '')
+        elif 'tags' in kwargs:
+            # Sync 'tags' (from dialogs) to 'tags_raw' (for QuickViewManager source)
+            self.tags_raw = kwargs.get('tags', '')
+
         if 'image_path' in kwargs:
             self.image_path_raw = kwargs.get('image_path', '')
 
@@ -353,19 +373,105 @@ class ItemCard(QFrame):
 
     def _check_link_status(self):
         if not self.deployer: return
-        # IMPORTANT: Use physical folder_name for link detection, NOT display_name
-        target_link = self.target_override or (os.path.join(self.target_dir, self.folder_name) if self.target_dir else None)
-        if not target_link: return
 
-        status = self.deployer.get_link_status(target_link, expected_source=self.path)
+        # Final rule resolution for detection
+        deploy_rule = self.deploy_type
+        if deploy_rule == 'flatten': deploy_rule = 'files'
+
+        target_link = None
+        if self.target_override:
+            target_link = self.target_override
+        elif deploy_rule == 'files' and self.target_dir:
+            target_link = self.target_dir
+        elif deploy_rule == 'tree' and self.target_dir:
+            # Reconstruct hierarchy
+            import json
+            skip_val = 0
+            if self.deployment_rules:
+                try:
+                    rules_obj = json.loads(self.deployment_rules)
+                    skip_val = int(rules_obj.get('skip_levels', 0))
+                except: pass
+            
+            try:
+                item_rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
+                if item_rel == ".": item_rel = ""
+                parts = item_rel.split('/')
+                if len(parts) > skip_val:
+                    mirrored = "/".join(parts[skip_val:])
+                    target_link = os.path.join(self.target_dir, mirrored)
+                else:
+                    target_link = self.target_dir
+            except:
+                target_link = os.path.join(self.target_dir, self.folder_name)
+        elif self.target_dir:
+            target_link = os.path.join(self.target_dir, self.folder_name)
+        
+        if not target_link: return
+        
+        # Determine transfer_mode for Physical Tree detection
+        transfer_mode = 'symlink'
+        if self.db:
+            try:
+                # 1. Check self config first (though usually inheritance handles it)
+                # But ItemCard props might be partial.
+                # 2. Check Parent config if needed
+                parent_config = {}
+                rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
+                parent_rel = os.path.dirname(rel)
+                if parent_rel and parent_rel != '.':
+                     parent_config = self.db.get_folder_config(parent_rel) or {}
+                
+                # Resolve transfer_mode: Child Override > Parent > App Default
+                tm = None
+                # Child override check:
+                my_cfg = self.db.get_folder_config(rel) or {}
+                tm = my_cfg.get('transfer_mode')
+                
+                if not tm or tm == 'KEEP':
+                     tm = parent_config.get('transfer_mode')
+                
+                # 3. Check App Default
+                if not tm:
+                    # We need access to app_data. Unfortunately ItemCard doesn't hold full app_data usually.
+                    # But we can try to get it from DB settings?
+                    # Or rely on what passed in __init__?
+                    # ItemCard stores self.app_deploy_default but not transfer mode default.
+                    # Fallback to 'symlink' default if unknown.
+                     tm = 'symlink' 
+
+                transfer_mode = tm
+            except: pass
+
+        status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
         self.link_status = status.get('status', 'none')
+        
+        # Debug: Log detection result (commented out for performance)
+        # import logging
+        # logging.getLogger("ItemCard").debug(f"[CheckLink] {self.folder_name}: target={target_link}, tm={transfer_mode}, status={self.link_status}")
+        
         self.has_physical_conflict = (self.link_status == 'conflict')
 
-        # Phase 3.6: Reset is_partial before checking.
-        # It's only True if rules exist AND its physically linked as partial.
+
+        # Emit change signal if we detected a link (to update parent Category UI)
+        # Note: We should ideally only emit if CHANGED.
+        # But for now, ensuring it fires on check is safe for refresh.
+        # Better: check if status changed.
+        old_status = getattr(self, '_prev_link_status', 'none')
+        if self.link_status != old_status:
+             self._prev_link_status = self.link_status
+             self.deploy_changed.emit()
+
+        # Phase 28: is_partial logic MUST match ScannerWorker
+        # Yellow border ONLY for 'custom' mode with specific settings
         self.is_partial = False
-        if status.get('type') == 'partial':
-            self.is_partial = True
+        if deploy_rule == 'custom':
+            if self.deployment_rules:
+                try:
+                    rules = json.loads(self.deployment_rules)
+                    if rules.get('exclude') or rules.get('overrides') or rules.get('rename'):
+                        self.is_partial = True
+                except: pass
 
         # Phase 28: Sync status to DB for fast total count lookups
         if self.db:
@@ -388,27 +494,68 @@ class ItemCard(QFrame):
             name_color = "#e74c3c"  # Red text
 
         # Prepend yellow ★ for favorites ONLY in text_list mode
-        is_text_mode = getattr(self, '_display_mode', 'image_text') == 'text_list'
+        display_mode = getattr(self, '_display_mode', 'standard')
+        is_text_mode = display_mode == 'text_list'
 
-        # Use inter-character wrapping (TextWrapAnywhere) for Japanese to look more natural in narrow boxes
-        # This is a hack via style sheet or underlying text option, but for now we ensure alignment.
+        is_fav = getattr(self, 'is_favorite', False)
+        
+        # Build state tuple to detect changes
+        current_state = (final_name, name_color, display_mode, is_fav)
+        if hasattr(self, '_last_name_label_state') and self._last_name_label_state == current_state:
+            return
+        self._last_name_label_state = current_state
+
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        if getattr(self, 'is_favorite', False) and is_text_mode:
+        if is_fav and is_text_mode:
             self.name_label.setText(f'<span style="color: #ffd700;">★</span> <span style="color: {name_color};">{final_name}</span>')
         else:
             self.name_label.setText(final_name)
             self.name_label.setStyleSheet(f"color: {name_color}; font-weight: bold;")
 
-    def set_children_status(self, has_linked: bool = False, has_conflict: bool = False):
-        """Set child status flags for parent folder color logic."""
+    def set_children_status(self, has_linked: bool = False, has_conflict: bool = False, has_unlinked_children: bool = False, has_partial: bool = False):
+        """Set child status flags for parent folder color logic.
+        Also updates link_status for category cards to enable Unlink button.
+        """
         self.has_linked_children = has_linked
         self.has_conflict_children = has_conflict
+        self.has_unlinked_children = has_unlinked_children
+        self.has_partial_children = has_partial
+        
+        # Phase 14 Fix: For categories, update link_status based on children
+        # This enables the Unlink button to appear when children are linked
+        # PRIORITY: conflict > partial > linked > none
+        if not getattr(self, 'is_package', True):  # Category card
+            if has_conflict:
+                self.link_status = 'conflict'
+            elif has_partial:
+                self.link_status = 'partial'
+            elif has_linked:
+                self.link_status = 'linked'
+            else:
+                self.link_status = 'none'
+        
         self._update_style()
+        self._update_icon_overlays()  # Refresh button visibility
 
     def _update_icon_overlays(self):
         """Update visibility of ★ and 🌐 icon overlays and their positions."""
         display_mode = getattr(self, '_display_mode', 'image_text')
+        is_fav = getattr(self, 'is_favorite', False)
+        has_urls = getattr(self, 'has_urls', False)
+        status = getattr(self, 'link_status', 'none')
+        is_lib = bool(getattr(self, 'is_library', 0))
+        
+        # Performance Guard: Skip if nothing changed
+        current_state = (display_mode, is_fav, has_urls, status, is_lib, self.width(), self.height())
+        if hasattr(self, '_last_icon_overlay_state') and self._last_icon_overlay_state == current_state:
+            # Debug-level logging to avoid overhead
+            # import logging
+            # logging.getLogger("ItemCard").debug(f"[OverlaySkip] {self.folder_name}: status={status}")
+            return
+        # import logging
+        # logging.getLogger("ItemCard").debug(f"[OverlayUpdate] {self.folder_name}: status={status}")
+        self._last_icon_overlay_state = current_state
 
         # Get actual card dimensions
         base_w = getattr(self, '_base_card_w', 160)
@@ -419,14 +566,16 @@ class ItemCard(QFrame):
 
         update_overlays_geometry(
             w, h, display_mode,
-            is_favorite=getattr(self, 'is_favorite', False),
-            has_urls=getattr(self, 'has_urls', False),
+            is_favorite=is_fav,
+            has_urls=has_urls,
             show_link=getattr(self, 'show_link_overlay', True),
             show_deploy=getattr(self, 'show_deploy_btn', True),
-            link_status=self.link_status,
+            link_status=status,
             star_label=getattr(self, 'star_overlay', None),
             url_label=getattr(self, 'url_overlay', None),
             deploy_btn=getattr(self, 'deploy_btn', None),
+            lib_btn=getattr(self, 'lib_overlay', None),
+            is_library=is_lib,
             opacity=getattr(self, '_deploy_btn_opacity', 0.8)
         )
 
@@ -442,7 +591,13 @@ class ItemCard(QFrame):
         else:
             self._check_link_status()
         self._update_style()
-        self._update_icon_overlays() # Immediate update for button icon
+        # Clear cache to force overlay update (fixes none→linked not reflecting)
+        if hasattr(self, '_last_icon_overlay_state'):
+            del self._last_icon_overlay_state
+        # Defer overlay update to end of event loop to run AFTER any concurrent
+        # _update_parent_category_status calls that might otherwise overwrite our state
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._update_icon_overlays)
 
     def update_hidden(self, is_hidden: bool):
         """Partial update: Update hidden state and text color only."""
@@ -486,184 +641,257 @@ class ItemCard(QFrame):
         self._update_style()
 
     def _update_style(self):
-        """Update card visual style based on its status."""
-        # Calculate colors using broken out logic
-        status_color, bg_color = get_card_colors(
+        """Update card visual style and store colors for paintEvent."""
+        is_sel = self.is_selected
+        is_foc = self.is_focused
+        mode = getattr(self, '_display_mode', 'standard')
+        
+        # Build state tuple for color-relevant parameters
+        current_state = (
             self.link_status, self.is_misplaced, self.is_partial,
             self.has_logical_conflict, self.has_conflict_children,
             getattr(self, 'is_library_alt_version', False), self.is_registered,
-            self.is_package, self.is_selected, self.is_focused,
-            has_name_conflict=getattr(self, 'has_name_conflict', False),
-            has_target_conflict=getattr(self, 'has_target_conflict', False)
+            self.is_package, is_sel, is_foc,
+            getattr(self, 'has_name_conflict', False),
+            getattr(self, 'has_target_conflict', False),
+            getattr(self, 'has_linked_children', False),
+            getattr(self, 'has_unlinked_children', False),
+            getattr(self, 'has_partial_children', False),
+            getattr(self, 'is_hidden', False), # Phase 33: Track visibility for immediate color change
+            mode
         )
+        
+        # Performance Guard: Skip if nothing changed
+        if hasattr(self, '_last_style_state') and self._last_style_state == current_state:
+            return
+        self._last_style_state = current_state
 
-        radius = "4px" if getattr(self, 'display_mode', 'standard') == 'mini_image' else "8px"
-        new_style = get_card_stylesheet(status_color, bg_color, radius=radius)
+        # Calculate colors using broken out logic
+        self._status_color, self._bg_color = get_card_colors(
+            link_status=self.link_status,
+            is_misplaced=getattr(self, 'is_misplaced', False),
+            is_partial=getattr(self, 'is_partial', False),
+            has_logical_conflict=getattr(self, 'has_logical_conflict', False),
+            has_conflict_children=getattr(self, 'has_conflict_children', False),
+            is_library_alt_version=getattr(self, 'is_library_alt_version', False),
+            is_registered=self.is_registered,
+            is_package=self.is_package,
+            is_selected=is_sel,
+            is_focused=is_foc,
+            has_name_conflict=getattr(self, 'has_name_conflict', False),
+            has_target_conflict=getattr(self, 'has_target_conflict', False),
+            has_linked_children=getattr(self, 'has_linked_children', False),
+            has_unlinked_children=getattr(self, 'has_unlinked_children', False),
+            has_partial_children=getattr(self, 'has_partial_children', False)
+        )
 
         # Update name label color for hidden state
         name_color = COLOR_HIDDEN if getattr(self, 'is_hidden', False) else COLOR_NORMAL_TEXT
         if hasattr(self, 'name_label'):
             self.name_label.setStyleSheet(f"color: {name_color}; font-weight: bold;")
 
-        # Apply stylesheet
+        # Minimized card stylesheet (only non-painter elements)
+        new_style = f"ItemCard {{ background: transparent; border: none; }}"
         if not hasattr(self, "_current_stylesheet_str") or self._current_stylesheet_str != new_style:
             self.setStyleSheet(new_style)
             self._current_stylesheet_str = new_style
 
-        self.update()  # Force repaint
-
-        # dt = time.perf_counter() - t0
-        # ItemCard._total_style_time += dt
-        # ItemCard._style_count += 1
+        self.update()  # Force repaint via paintEvent
 
     def paintEvent(self, event):
-        """Draw Dual-Layered Border: Status (Outer) + Selection/Hover (Inner)."""
-        super().paintEvent(event)
-
-        # ===== Selection/Hover Border =====
-        if not self.is_selected and not self.is_hovered:
-            # Debug hitbox still runs
-            if ItemCard.SHOW_HITBOXES:
-                debug_painter = QPainter(self)
-                debug_painter.setPen(QPen(QColor(255, 0, 0, 150), 2))
-                debug_painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
-            return
-
+        """Draw Background, Status Border, and Selection/Hover."""
+        # Note: Avoid calling super().paintEvent(event) which draws QSS border/bg
+        
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # 1. Background and Status Border
+        radius = 4 if getattr(self, 'display_mode', 'standard') == 'mini_image' else 8
+        status_color = getattr(self, '_status_color', '#444')
+        bg_color = getattr(self, '_bg_color', '#333')
+        
+        CardBorderPainter.draw_status_border(
+            painter, QRectF(self.rect()), status_color, bg_color, radius=radius
+        )
 
-        # Draw Inner Selection/Hover Frame
-        pen_width = 2 if self.is_selected else 1
-        inner_offset = 4
+        # 2. Debug hitbox
+        if ItemCard.SHOW_HITBOXES:
+            CardBorderPainter.draw_debug_hitbox(painter, QRectF(self.rect()))
 
-        if self.is_selected:
-            if self.is_focused:
-                pen = QPen(QColor("#5DADE2"), pen_width, Qt.PenStyle.SolidLine)
-            else:
-                pen = QPen(QColor("#3498DB"), pen_width, Qt.PenStyle.SolidLine)
-        elif self.is_hovered:
-            pen = QPen(QColor("#666666"), pen_width, Qt.PenStyle.SolidLine)
-        else:
+        # 3. Selection/Hover Border
+        if not self.is_selected and not self.is_hovered:
             return
 
-        painter.setPen(pen)
-
-        base_radius = 8
-        if getattr(self, '_display_mode', 'standard') == 'mini_image':
-             base_radius = 4
-
-        inner_radius = max(0, base_radius - inner_offset)
-        inner_rect = QRectF(self.rect()).adjusted(inner_offset, inner_offset, -inner_offset, -inner_offset)
-
-        painter.drawRoundedRect(inner_rect, inner_radius, inner_radius)
-
-        if self.is_focused:
-            painter.setPen(QPen(QColor("#AED6F1"), 1, Qt.PenStyle.DotLine))
-            inner_rect_2 = inner_rect.adjusted(1, 1, -1, -1)
-            painter.drawRoundedRect(inner_rect_2, max(0, inner_radius-1), max(0, inner_radius-1))
-
-        # Debug Hitbox
-        if ItemCard.SHOW_HITBOXES:
-            debug_painter = QPainter(self)
-            debug_painter.setPen(QPen(QColor(255, 0, 0, 150), 2))
-            debug_painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        CardBorderPainter.draw_selection_border(
+            painter, QRectF(self.rect()),
+            is_selected=self.is_selected,
+            is_focused=self.is_focused,
+            is_hovered=self.is_hovered,
+            display_mode=getattr(self, '_display_mode', 'standard')
+        )
 
     def set_pixmap(self, pixmap):
+        """Set pixmap via ThumbnailWidget component."""
         if not pixmap.isNull():
-            self._original_pixmap = pixmap # Preserve for real-time scaling
-
-            # Scale to fit the thumb_label's current size
-            label_size = self.thumb_label.size()
-            scaled = pixmap.scaled(
-                label_size,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.thumb_label.setPixmap(scaled)
-            self.thumb_label.setText("")
+            self._original_pixmap = pixmap  # Preserve for real-time scaling
+            self.thumb_label.setImage(pixmap)
         else:
-            self.thumb_label.setText(_("No Image"))
+            self.thumb_label.clear()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        """Phase 28: Accept image file drag events."""
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
+        """Phase 28: Accept image file drag events from local or web."""
+        mime = event.mimeData()
+        if mime.hasImage():
+            event.acceptProposedAction()
+            return
+            
+        if mime.hasUrls():
+            # Accept if it looks like an image or is a local file
+            for url in mime.urls():
                 if url.isLocalFile():
                     path = url.toLocalFile()
                     ext = os.path.splitext(path)[1].lower()
                     if ext in ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.bmp']:
                         event.acceptProposedAction()
                         return
+                else:
+                    # Web URL - Accept almost anything to try downloading
+                    event.acceptProposedAction()
+                    return
         event.ignore()
 
     def dropEvent(self, event: QDropEvent):
-        """Phase 28: Handle dropped image files as custom thumbnails."""
-        if not event.mimeData().hasUrls(): return
+        """Phase 28: Handle dropped image files (local, web, or raw data)."""
+        mime = event.mimeData()
+        
+        # 1. Direct Image Data (e.g. from browser copy/drag)
+        if mime.hasImage():
+            image = mime.imageData()
+            if image and not image.isNull():
+                import time
+                temp_dir = os.path.join(os.environ.get('TEMP', ''), 'LinkMaster')
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_path = os.path.join(temp_dir, f"dropped_image_{int(time.time())}.png")
+                image.save(temp_path)
+                self._register_dropped_image(temp_path)
+                event.accept()
+                return
 
-        urls = event.mimeData().urls()
-        if not urls: return  # Guard against None
+        # 2. URLs (Local or Web)
+        if mime.hasUrls():
+            urls = mime.urls()
+            if not urls: return
+            
+            for url in urls:
+                if url.isLocalFile():
+                    # Local File
+                    src_path = url.toLocalFile()
+                    ext = os.path.splitext(src_path)[1].lower()
+                    if ext in ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                        self._register_dropped_image(src_path)
+                        event.accept()
+                        return # Only handle first valid
+                else:
+                    # Web URL
+                    self._download_and_register(url.toString())
+                    event.accept()
+                    return # Only handle first valid
 
-        for url in urls:
-            if not url.isLocalFile(): continue
-
-            src_path = url.toLocalFile()
-            ext = os.path.splitext(src_path)[1].lower()
-            if ext not in ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.bmp']:
-                continue
-
-            # Process and register thumbnail
+    def _download_and_register(self, url_str):
+        """Download image from URL in background and register."""
+        import threading
+        import urllib.request
+        import urllib.error
+        
+        def run():
             try:
-                # Comprehensive null checks
-                if not getattr(self, 'thumbnail_manager', None):
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: thumbnail_manager not set")
-                    continue
-                if not getattr(self, 'storage_root', None):
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: storage_root not set")
-                    continue
-                if not getattr(self, 'db', None):
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: db not set")
-                    continue
-                if not getattr(self, 'path', None):
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: path not set")
-                    continue
-                if not getattr(self, 'app_name', None):
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: app_name not set")
-                    continue
-
-                # Get relative path for this card
-                rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
-                if not rel:
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: rel_path is empty")
-                    continue
-
-                # Destination path in resource directory
-                dest_path = self.thumbnail_manager.get_thumbnail_path(self.app_name, rel)
-                if not dest_path:
-                    logging.getLogger("ItemCard").warning("Thumbnail drop: dest_path not returned")
-                    continue
-                dest_dir = os.path.dirname(dest_path)
-                os.makedirs(dest_dir, exist_ok=True)
-
-                # Copy and resize via thumbnail manager (or direct copy for quality)
-                shutil.copy2(src_path, dest_path)
-
-                # Update database - IMPORTANT: Register both image_path AND manual_preview_path
-                # image_path is used for card thumbnail display and RegionEdit
-                # manual_preview_path is for multi-preview functionality
-                self.manual_preview_path = dest_path
-                self.db.update_folder_display_config(rel, manual_preview_path=dest_path, image_path=dest_path)
-
-                # Refresh card display
-                if self.loader:
-                    self.thumb_label.setText(_("Loading..."))
-                    self.loader.load_image(dest_path, QSize(256, 256), self.set_pixmap)
-
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                req = urllib.request.Request(url_str, headers=headers)
+                
+                # Use standard library for downloading
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    if r.status == 200:
+                        import time
+                        temp_dir = os.path.join(os.environ.get('TEMP', ''), 'LinkMaster')
+                        os.makedirs(temp_dir, exist_ok=True)
+                        
+                        # Guess extension
+                        ext = ".png"
+                        # In urllib, headers.get_content_type() returns 'image/jpeg' etc.
+                        ctype = r.headers.get_content_type().lower()
+                        if 'jpeg' in ctype: ext = '.jpg'
+                        elif 'gif' in ctype: ext = '.gif'
+                        elif 'webp' in ctype: ext = '.webp'
+                        
+                        temp_path = os.path.join(temp_dir, f"web_image_{int(time.time())}{ext}")
+                        with open(temp_path, 'wb') as f:
+                            f.write(r.read())
+                        
+                        # Emit signal to main thread
+                        self.image_ready_signal.emit(temp_path)
             except Exception as e:
-                import traceback
-                logging.getLogger("ItemCard").error(f"Failed to register dropped thumbnail: {e}")
-                traceback.print_exc()
+                logging.getLogger("ItemCard").error(f"Download failed: {url_str} - {e}")
 
-            break  # Only handle first valid image
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+
+    def _register_dropped_image(self, src_path):
+        """Internal method to register a local image path as the icon."""
+        try:
+            if not os.path.exists(src_path): return
+
+            # Comprehensive null checks
+            if not getattr(self, 'thumbnail_manager', None):
+                logging.getLogger("ItemCard").warning("Thumbnail drop: thumbnail_manager not set")
+                return
+            if not getattr(self, 'storage_root', None): return
+            if not getattr(self, 'db', None): return
+            if not getattr(self, 'path', None): return
+            if not getattr(self, 'app_name', None): return
+
+            # Get relative path for this card
+            rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
+            if not rel: return
+
+            # Destination path in resource directory
+            # Use timestamp to prevent overwrite and allow accumulation
+            default_thumb_path = self.thumbnail_manager.get_thumbnail_path(self.app_name, rel)
+            if not default_thumb_path: return
+            
+            dest_dir = os.path.dirname(default_thumb_path)
+            os.makedirs(dest_dir, exist_ok=True)
+
+            import time
+            import shutil
+            timestamp = int(time.time())
+            base, fext = os.path.splitext(os.path.basename(src_path))
+            if not fext: fext = ".png"
+            new_filename = f"{base}_{timestamp}{fext}"
+            dest_path = os.path.join(dest_dir, new_filename)
+
+            # Copy and resize via thumbnail manager (or direct copy for quality)
+            shutil.copy2(src_path, dest_path)
+
+            # Update database - IMPORTANT: Register both image_path AND manual_preview_path
+            # Accumulate manual_preview_path
+            current_previews = [p.strip() for p in (self.manual_preview_path or "").split(';') if p.strip()]
+            if dest_path not in current_previews:
+                current_previews.append(dest_path)
+            
+            new_preview_str = ";".join(current_previews)
+            self.manual_preview_path = new_preview_str
+            
+            # Image path updates to the latest dropped one (Icon behavior)
+            self.db.update_folder_display_config(rel, manual_preview_path=new_preview_str, image_path=dest_path)
+
+            # Refresh card display
+            if self.loader:
+                self.thumb_label.setText(str(_("Loading...")))
+                self.loader.load_image(dest_path, QSize(256, 256), self.set_pixmap)
+
+        except Exception as e:
+            import traceback
+            logging.getLogger("ItemCard").error(f"Failed to register dropped thumbnail: {e}")
+            traceback.print_exc()
 
     def enterEvent(self, event):
         """Manual hover tracking for border drawing."""
@@ -685,7 +913,6 @@ class ItemCard(QFrame):
     def mousePressEvent(self, event):
         """Pass click event to parent for centralized multi-selection handling."""
         if event.button() == Qt.MouseButton.LeftButton:
-            # URL icon click is now handled via QPushButton.clicked signal
             self.single_clicked.emit(self.path)
         elif event.button() == Qt.MouseButton.RightButton:
             # Propagate to parent container for customContextMenuRequested
@@ -768,11 +995,19 @@ class ItemCard(QFrame):
         """Update has_urls and refresh icons based on current url_list."""
         url_raw = getattr(self, 'url_list', '[]')
         import json
-        try:
-            parsed = json.loads(url_raw)
-            self.has_urls = bool(parsed)
-        except:
-            self.has_urls = bool(url_raw and url_raw != '[]')
+        if not url_raw or url_raw == '[]' or url_raw == '""':
+            self.has_urls = False
+        else:
+            try:
+                import json
+                parsed = json.loads(url_raw)
+                if isinstance(parsed, list):
+                    # Filter out empty strings or entries without a 'url' key
+                    self.has_urls = any((item.get('url').strip() if isinstance(item, dict) else item.strip()) for item in parsed if (isinstance(item, dict) and item.get('url')) or (isinstance(item, str) and item.strip()))
+                else:
+                    self.has_urls = bool(parsed)
+            except:
+                self.has_urls = bool(url_raw and url_raw != '[]')
         self._update_icon_overlays()
 
     def mouseDoubleClickEvent(self, event):
@@ -808,8 +1043,15 @@ class ItemCard(QFrame):
     def _deploy_link(self):
         if not self.deployer: return
 
-        target_link = self.target_override or os.path.join(self.target_dir, self.folder_name)
-        if not target_link: return
+        # Flatten mode deploys directly into target_dir
+        if self.target_override:
+            target_link = self.target_override
+        elif self.deploy_type == 'flatten' and self.target_dir:
+            target_link = self.target_dir
+        elif self.target_dir:
+            target_link = os.path.join(self.target_dir, self.folder_name)
+        else:
+            return
 
         # Use deploy_with_rules for Phase 16 & 18.15
         if hasattr(self.deployer, 'clear_actions'): self.deployer.clear_actions()
@@ -843,8 +1085,11 @@ class ItemCard(QFrame):
     def _remove_link(self):
         if not self.deployer: return
 
+        # Flatten mode: target is target_dir directly
         if self.target_override:
             target_link = self.target_override
+        elif self.deploy_type == 'flatten' and self.target_dir:
+            target_link = self.target_dir
         elif self.target_dir:
             target_link = os.path.join(self.target_dir, self.folder_name)
         else:
@@ -987,34 +1232,12 @@ class ItemCard(QFrame):
 
         # Apply image container size
         self.thumb_label.setFixedSize(display_img_w, display_img_h)
+        self.thumb_label.setTargetSize(QSize(display_img_w, display_img_h))
 
-        # Re-scale original pixmap to display size (high quality)
+        # Re-scale original pixmap to display size (via ThumbnailWidget)
         if hasattr(self, '_original_pixmap') and self._original_pixmap:
-            label_size = self.thumb_label.size()
-
-            # Optimization: Skip if already scaled to this size
-            if hasattr(self, "_last_scaled_size") and self._last_scaled_size == label_size:
-                pass
-            elif self._original_pixmap and not self._original_pixmap.isNull():
-                # Phase 1.1.7: Async Scaling Strategy
-                # Use FastTransformation for immediate feedback
-                fast_scaled = self._original_pixmap.scaled(
-                    label_size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation
-                )
-                self.thumb_label.setPixmap(fast_scaled)
-
-                # Start high-quality background scaling
-                ItemCard._last_request_id += 1
-                my_req_id = ItemCard._last_request_id
-                self._current_scale_id = my_req_id
-
-                scaler = AsyncScaler(self._original_pixmap, label_size, my_req_id)
-                scaler.signals.finished.connect(self._on_async_scale_done)
-                ItemCard._pool.start(scaler)
-
-                self._last_scaled_size = label_size
+            if self._original_pixmap and not self._original_pixmap.isNull():
+                self.thumb_label.setImage(self._original_pixmap)
 
         self._update_style()  # Apply border/background based on link status
         self._update_icon_overlays() # Ensure icons are positioned for new size

@@ -8,6 +8,13 @@ import ctypes
 from src.core import core_handler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+class DeploymentCollisionError(Exception):
+    """Raised when multiple source files map to the same target path during deployment."""
+    def __init__(self, collisions, message="Deployment cancelled due to target collisions"):
+        self.collisions = collisions # List of (source, target) tuples
+        self.message = message
+        super().__init__(self.message)
+
 def _parallel_link_worker(source_path: str, target_link_path: str, conflict_policy: str):
     """
     Top-level worker for parallel execution. Handles a single link creation.
@@ -49,6 +56,7 @@ def _parallel_link_worker(source_path: str, target_link_path: str, conflict_poli
                 backup_path = f"{target_link_path}.bak_{int(time.time())}_{suffix}"
                 os.rename(target_link_path, backup_path)
                 action_taken = "backup"
+                return {"status": "success", "path": target_link_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_link_path, "msg": f"Conflict handle failed: {e}"}
 
@@ -99,6 +107,7 @@ def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: s
                 backup_path = f"{target_path}.bak_{int(time.time())}_{suffix}"
                 os.rename(target_path, backup_path)
                 action_taken = "backup"
+                return {"status": "success", "path": target_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_path, "msg": f"Conflict handle failed: {e}"}
 
@@ -119,6 +128,7 @@ class Deployer:
         # Cap max_workers to 60 to avoid Windows ProcessPoolExecutor limit (61)
         count = os.cpu_count() or 4
         self.max_workers = min(count, 60)
+        self.allow_symlinks = True  # Phase 1: Set by LinkMasterWindow based on capability test
     
     @property
     def _db(self):
@@ -202,15 +212,48 @@ class Deployer:
 
         try:
             if os.path.isdir(source_path):
+                import shutil
                 shutil.copytree(source_path, target_path)
                 self.logger.info(f"Folder copied: {source_path} -> {target_path}")
             else:
+                import shutil
                 shutil.copy2(source_path, target_path)
                 self.logger.info(f"File copied: {source_path} -> {target_path}")
+            
+            # Save deploy metadata for tracking (Phase X: Copy mode detection)
+            self._save_copy_metadata(target_path, source_path)
             return True
         except Exception as e:
             self.logger.error(f"Copy failed: {e}")
             return False
+    
+    def _save_copy_metadata(self, target_path: str, source_path: str):
+        """Save metadata for copy deployment to enable detection and cleanup."""
+        import json
+        import time
+        
+        # Determine metadata file location  
+        if os.path.isdir(target_path):
+            meta_file = os.path.join(target_path, ".lm_deploy_info.json")
+        else:
+            meta_file = target_path + ".lm_deploy_info"
+        
+        metadata = {
+            "type": "copy",
+            "source": source_path,
+            "deployed_at": time.time()
+        }
+        
+        try:
+            with open(meta_file, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2)
+            # Make the metadata file hidden on Windows
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetFileAttributesW(meta_file, 0x02)  # FILE_ATTRIBUTE_HIDDEN
+            except: pass
+        except Exception as e:
+            self.logger.warning(f"Failed to save deploy metadata: {e}")
 
     def _handle_conflict(self, path: str, policy: str) -> str:
         """Handles existing path according to policy. Returns action taken: 'backup', 'overwrite', 'skip', 'error', 'none'."""
@@ -256,8 +299,8 @@ class Deployer:
         If restore_backups=True, restores any .bak files that were created during deploy.
         """
         if not os.path.lexists(target_link_path):
-             self.logger.warning(f"Link/Target not found to remove: {target_link_path}")
-             return False
+             self.logger.debug(f"Link/Target not found to remove: {target_link_path}")
+             return True
         
         if os.path.islink(target_link_path):
             try:
@@ -278,6 +321,11 @@ class Deployer:
         # Handle copied files (not symlinks)
         if os.path.isfile(target_link_path):
             try:
+                # Remove copy metadata if exists (Phase X)
+                meta_file = target_link_path + ".lm_deploy_info"
+                if os.path.exists(meta_file):
+                    os.remove(meta_file)
+                
                 os.unlink(target_link_path)
                 self.logger.info(f"Copied file removed: {target_link_path}")
                 
@@ -292,6 +340,13 @@ class Deployer:
                 return False
 
         if os.path.isdir(target_link_path):
+            # Remove copy metadata if exists (Phase X) - for copy-deployed directories
+            meta_file = os.path.join(target_link_path, ".lm_deploy_info.json")
+            if os.path.exists(meta_file):
+                try:
+                    os.remove(meta_file)
+                except: pass
+            
             if source_path_hint:
                 self.logger.info(f"Cleaning up directory-based (Partial) deployment: {target_link_path}")
                 self.cleanup_links_in_target(target_link_path, source_path_hint, recursive=True, restore_backups=restore_backups)
@@ -312,19 +367,23 @@ class Deployer:
 
     def _restore_backup_if_exists(self, original_path: str) -> bool:
         """Restore a backup file if it exists in the backup registry (persisted in database)."""
-        backup_path = self._db.get_backup_path(original_path)
-        if backup_path:
-            if os.path.exists(backup_path):
-                try:
-                    os.rename(backup_path, original_path)
-                    self.logger.info(f"Backup restored: {backup_path} -> {original_path}")
+        try:
+            backup_path = self._db.get_backup_path(original_path)
+            if backup_path:
+                if os.path.exists(backup_path):
+                    try:
+                        os.rename(backup_path, original_path)
+                        self.logger.info(f"Backup restored: {backup_path} -> {original_path}")
+                        self._db.remove_backup_entry(original_path)
+                        return True
+                    except Exception as e:
+                        self.logger.error(f"Failed to restore backup: {e}")
+                else:
+                    # Backup file no longer exists
                     self._db.remove_backup_entry(original_path)
-                    return True
-                except Exception as e:
-                    self.logger.error(f"Failed to restore backup: {e}")
-            else:
-                # Backup file no longer exists
-                self._db.remove_backup_entry(original_path)
+        except Exception as e:
+            # Handle missing table or other DB errors gracefully
+            self.logger.debug(f"Backup lookup skipped (table may not exist): {e}")
         return False
 
     def _cleanup_empty_parents(self, path: str):
@@ -338,14 +397,33 @@ class Deployer:
                 else: break
             except: break
 
-    def get_link_status(self, target_link_path: str, expected_source: str = None) -> dict:
+    def get_link_status(self, target_link_path: str, expected_source: str = None, expected_transfer_mode: str = 'symlink') -> dict:
         """
-        Returns status: missing, linked, conflict
-        Handles both physical symlinks and Partial Deployment directories.
+        Checks if the target_link_path is a valid link to expected_source.
+        Returns {'status': 'linked'|'conflict'|'none', 'type': 'symlink'|'junction'|'file'|'dir'}
+        
+        Args:
+            target_link_path: The path where the link should be.
+            expected_source: The source path it should point to.
+            expected_transfer_mode: 'symlink' or 'copy'. If 'copy', physical files are valid links.
         """
-        if not os.path.lexists(target_link_path):
-            return {"status": "missing"}
-            
+        if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
+            return {"status": "none", "type": "none"}
+        
+        # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
+        # If we expect a copy, and the target exists physically (file or dir), we treat it as linked.
+        if expected_transfer_mode == 'copy':
+             is_link = os.path.islink(target_link_path)
+             exists = os.path.exists(target_link_path)
+             
+             # If it exists and is NOT a symlink, it's a valid copy deployment
+             if exists and not is_link:
+                 return {"status": "linked", "type": "copy"}
+             
+             # If it IS a symlink but we expected copy, it's technically a conflict (or user change)
+             # But let's fall through to standard check.
+
+        # Standard Symlink Check
         if os.path.islink(target_link_path):
             real_target = os.readlink(target_link_path)
             if expected_source:
@@ -370,24 +448,118 @@ class Deployer:
                                 real = os.readlink(path)
                                 if not os.path.isabs(real):
                                     real = os.path.join(os.path.dirname(path), real)
-                                if self._normalize_path(real).startswith(exp_norm):
+                                
+                                real_norm = self._normalize_path(real)
+                                if real_norm.startswith(exp_norm):
                                     return {"status": "linked", "type": "partial"}
                 except: pass
             
-            return {"status": "conflict", "type": "dir"}
+            # Check for copy deployment metadata (Phase X)
+            copy_meta = self._get_copy_metadata(target_link_path)
+            if copy_meta and expected_source:
+                if self._normalize_path(copy_meta.get('source', '')) == self._normalize_path(expected_source):
+                    return {"status": "linked", "type": "copy"}
+            
+            # If expected_source is specified but no link to it was found, treat as 'none' (not deployed) rather than conflict
+            # This is important for Flatten mode where target_dir itself is the check target
+            return {"status": "none", "type": "dir_no_match"}
+        
+        # Check for copy deployment metadata for files (Phase X)
+        copy_meta = self._get_copy_metadata(target_link_path)
+        if copy_meta and expected_source:
+            if self._normalize_path(copy_meta.get('source', '')) == self._normalize_path(expected_source):
+                return {"status": "linked", "type": "copy"}
              
         return {"status": "conflict", "type": "file"}
+    
+    def _get_copy_metadata(self, target_path: str) -> dict:
+        """Get copy deployment metadata if exists."""
+        import json
+        
+        # Check for metadata file
+        if os.path.isdir(target_path):
+            meta_file = os.path.join(target_path, ".lm_deploy_info.json")
+        else:
+            meta_file = target_path + ".lm_deploy_info"
+        
+        if os.path.exists(meta_file):
+            try:
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except: pass
+        return None
+    
+    def undeploy_copy(self, target_path: str, force: bool = False) -> bool:
+        """Remove a copy deployment and its metadata.
+        
+        Args:
+            target_path: The path to the copied file/folder.
+            force: If True, delete even without metadata (for Physical Tree copies).
+        """
+        import shutil
+        
+        # Check if target exists
+        if not os.path.exists(target_path):
+             self.logger.debug(f"Target does not exist, nothing to undeploy: {target_path}")
+             return False
+        
+        # If it's a symlink, this is wrong - should use _cleanup_link
+        if os.path.islink(target_path):
+             self.logger.warning(f"Target is a symlink, use _cleanup_link instead: {target_path}")
+             return self._cleanup_link(target_path)
+        
+        # Check metadata (optional for force mode)
+        meta = self._get_copy_metadata(target_path)
+        if not meta and not force:
+            self.logger.warning(f"No copy metadata found for: {target_path}")
+            return False
+        
+        try:
+            # Remove metadata file first (if exists)
+            if os.path.isdir(target_path):
+                meta_file = os.path.join(target_path, ".lm_deploy_info.json")
+            else:
+                meta_file = target_path + ".lm_deploy_info"
+            
+            if os.path.exists(meta_file):
+                os.remove(meta_file)
+            
+            # Remove the target
+            if os.path.isdir(target_path):
+                shutil.rmtree(target_path)
+            elif os.path.exists(target_path):
+                os.remove(target_path)
+            
+            self.logger.info(f"Copy deployment removed: {target_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to remove copy deployment: {e}")
+            return False
+
+    def undeploy(self, target_path: str, transfer_mode: str = 'symlink', source_path_hint: str = None) -> bool:
+        """Unified undeploy method handles symlink or copy based on mode."""
+        if transfer_mode == 'copy':
+            # Force=True to handle Physical Tree copies without metadata
+            return self.undeploy_copy(target_path, force=True)
+        else:
+            return self.remove_link(target_path, source_path_hint=source_path_hint)
 
     def deploy_with_rules(self, source_path: str, target_link_path: str, rules_json: str = None, 
-                          deploy_type: str = 'folder', conflict_policy: str = 'backup') -> bool:
+                          deploy_rule: str = 'folder', transfer_mode: str = 'symlink', conflict_policy: str = 'backup') -> bool:
         """
-        Deploys using rules (Phase 16) and overrides (Phase 18.15).
-        deploy_type: 'folder' (symlink the whole folder), 'flatten' (symlink files inside), or 'copy' (actual file copy).
-        rules_json: {"exclude": ["*.txt"], "overrides": {...}}
+        Deploys using the NEW rules set (Phase 5: Target-specific defaults & Custom mode).
+        
+        deploy_rule:
+          - 'folder': Force whole folder link.
+          - 'files':  Force flatten files.
+          - 'tree':   Force relative structure.
+          - 'custom': Enable individual settings in rules_json (overrides).
+          - 'inherit' or None: Use app's default for the current target.
         """
         import json
         import fnmatch
         
+        # 1. Prepare Rules
         rules = {}
         if rules_json:
             try:
@@ -395,98 +567,163 @@ class Deployer:
             except:
                 self.logger.error(f"Invalid rules JSON: {rules_json}")
         
-        # Determine if we have complex rules that REQUIRE partial deployment (individual file links)
-        # Check for non-empty exclusion list or non-empty overrides map
-        excludes = rules.get('exclude', [])
-        overrides = rules.get('overrides', rules.get('rename', {}))
-        has_complex_rules = (isinstance(excludes, list) and len(excludes) > 0) or \
-                             (isinstance(overrides, dict) and len(overrides) > 0)
-        
-        self.logger.info(f"Deploy check: type={deploy_type}, has_complex_rules={has_complex_rules} (excludes={len(excludes)}, overrides={len(overrides)})")
-        
-        # If 'folder' deploy and NO complex rules, use single subfolder symlink for efficiency
-        if deploy_type == 'folder' and not has_complex_rules:
-            self.logger.info(f"Switching to Normal Folder Deployment (No rules) for: {source_path}")
-            return self.deploy_link(source_path, target_link_path, conflict_policy)
-        
-        # For 'copy' mode without complex rules, copy the entire folder
-        if deploy_type == 'copy' and not has_complex_rules:
-            self.logger.info(f"Switching to Normal Folder Copy for: {source_path}")
-            return self.deploy_copy(source_path, target_link_path, conflict_policy)
-        
-        self.logger.info(f"Proceeding with Partial (File-level) Deployment ({deploy_type}) for: {source_path}")
+        # 1.1. Resolve Rule (Phase 5 Logic)
+        resolved_rule = deploy_rule
+        if not resolved_rule or resolved_rule == 'inherit':
+            # This is expected to be handled by the caller (batch_ops) 
+            # by looking up the app-specific default for target A/B/C.
+            # If we reach here with 'inherit', default to 'folder'.
+            resolved_rule = 'folder'
+
+        # 2. Determine Real Transfer Mode
+        real_mode = transfer_mode
+        if real_mode == 'symlink' and not self.allow_symlinks:
+            self.logger.info("Symlinks not available on this system. Falling back to COPY mode.")
+            real_mode = 'copy'
             
-        if not os.path.exists(source_path): return False
+        # 3. Quick Path for Folder-level operations
+        excludes = rules.get('exclude', [])
+        # Overrides are only active if resolved_rule is 'custom'
+        overrides = rules.get('overrides', rules.get('rename', {})) if resolved_rule == 'custom' else {}
+        skip_levels = int(rules.get('skip_levels', 0))
         
-        # Cleanup PREVIOUS links/copies in the CURRENT target_link_path
-        if os.path.lexists(target_link_path) and os.path.isdir(target_link_path) and not os.path.islink(target_link_path):
-            if deploy_type != 'copy':
-                self.logger.info(f"Cleaning up previous partial deployment links in: {target_link_path}")
-                self.cleanup_links_in_target(target_link_path, source_path, recursive=True)
-        elif os.path.lexists(target_link_path):
+        has_complex_filters = (isinstance(excludes, list) and len(excludes) > 0) or \
+                              (isinstance(overrides, dict) and len(overrides) > 0) or \
+                              (skip_levels > 0)
+        
+        # If 'folder' rule and NO filters/skips/overrides, we can just link/copy the root once
+        if resolved_rule == 'folder' and not has_complex_filters:
+            if real_mode == 'copy':
+                return self.deploy_copy(source_path, target_link_path, conflict_policy)
+            else:
+                return self.deploy_link(source_path, target_link_path, conflict_policy)
+
+        # 4. Partial / File-level Deployment for 'files', 'tree', or 'folder' with filters
+        self.logger.info(f"Proceeding with Partial Deployment: rule={deploy_rule}, mode={real_mode}, skip={skip_levels}")
+            
+        if not os.path.exists(source_path): 
+            self.logger.error(f"Source path missing for deploy: {source_path}")
+            return False
+        
+        # If target exists but is not a directory (and it should be for partial deploy), handle conflict
+        if os.path.lexists(target_link_path) and not os.path.isdir(target_link_path):
             if not self._handle_conflict(target_link_path, conflict_policy):
                 return False
+        
+        # Ensure target dir exists
+        os.makedirs(target_link_path, exist_ok=True)
 
-        success = True
         files_to_deploy = []
         try:
             for root, dirs, files in os.walk(source_path):
-                rel_root = os.path.relpath(root, source_path)
+                # Calculate base relative path from source root
+                rel_root = os.path.relpath(root, source_path).replace('\\', '/')
                 if rel_root == ".": rel_root = ""
                 
-                # Filter dirs for walk only
-                dirs[:] = [d for d in dirs if not self._is_excluded(os.path.join(rel_root, d), rules.get('exclude', []))]
+                # Filter dirs for walk optimization
+                dirs[:] = [d for d in dirs if not self._is_excluded((f"{rel_root}/{d}" if rel_root else d), excludes)]
                 
-                # Process files
+                # Process each file found
                 for f in files:
-                    f_rel = os.path.join(rel_root, f).replace('\\', '/')
-                    if self._is_excluded(f_rel, rules.get('exclude', [])):
+                    f_rel = (f"{rel_root}/{f}" if rel_root else f).replace('\\', '/')
+                    if self._is_excluded(f_rel, excludes):
                         continue
                     
-                    for old, new in rules.get('overrides', rules.get('rename', {})).items():
-                        # Match exact file or folder prefix
+                    # 4.1. Apply Overrides (Renames / Redirects)
+                    target_rel_path = f_rel
+                    overridden = False
+                    for old, new in overrides.items():
                         old_norm = old.replace('\\', '/')
                         if f_rel == old_norm or f_rel.startswith(old_norm + "/"):
-                            # Replace the renamed/overridden part
-                            f_target_rel = f_rel.replace(old_norm, new, 1)
-                            # Update target path
-                            if deploy_type in ('folder', 'copy'):
-                                if os.path.isabs(f_target_rel):
-                                    f_target = f_target_rel
-                                else:
-                                    f_target = os.path.join(target_link_path, f_target_rel)
-                            else:
-                                # Flatten mode
-                                f_target = os.path.join(target_link_path, os.path.basename(f_target_rel))
+                            target_rel_path = f_rel.replace(old_norm, new, 1)
+                            overridden = True
                             break
-                    else:
-                        # No overrides matched
-                        if deploy_type in ('folder', 'copy'):
-                            f_target = os.path.join(target_link_path, f_rel)
-                        else:
-                            f_target = os.path.join(target_link_path, f)
                     
-                    f_source = os.path.join(root, f)
-                    files_to_deploy.append((f_source, f_target))
+                    # 4.2. Apply Deploy Rule Logic
+                    if os.path.isabs(target_rel_path):
+                        # Absolute target override
+                        f_target_abs = target_rel_path
+                    else:
+                        if resolved_rule == 'files':
+                            # Flat placement: everything goes directly into target_link_path
+                            f_target_abs = os.path.join(target_link_path, os.path.basename(target_rel_path))
+                        elif resolved_rule in ('tree', 'custom'):
+                            # Maintain Tree structure with SKIP_LEVELS support
+                            if skip_levels > 0:
+                                parts = target_rel_path.split("/")
+                                if len(parts) > skip_levels:
+                                    # Join parts after skipped levels
+                                    skipped_rel = "/".join(parts[skip_levels:])
+                                    f_target_abs = os.path.join(target_link_path, skipped_rel)
+                                else:
+                                    # If the whole path is within skipped levels, skip this file entirely
+                                    continue
+                            else:
+                                f_target_abs = os.path.join(target_link_path, target_rel_path)
+                        else: # 'folder' or 'inherit' (fallback)
+                            f_target_abs = os.path.join(target_link_path, target_rel_path)
+                    
+                    f_source_abs = os.path.join(root, f)
+                    files_to_deploy.append((f_source_abs, f_target_abs))
             
             if not files_to_deploy:
+                self.logger.warning(f"No files found for deployment after filters: {source_path}")
                 return True
                 
-            # Execute batch deployment in parallel
-            if deploy_type == 'copy':
+            # 5. Execute batch deployment
+            # Deduplicate targets to prevent batch collision (WinError 183)
+            # Collision Check: Abort if duplicates found (Phase 12)
+            unique_targets = {}
+            collisions = []
+            
+            for pair in files_to_deploy:
+                src, tgt = pair
+                tgt_norm = tgt.lower() if os.name == 'nt' else tgt
+                
+                if tgt_norm in unique_targets:
+                    # Collision detected!
+                    # Add BOTH the previous one (identifying it?) and the current one?
+                    # Error format: (source1, source2, target)
+                    collisions.append((src, tgt)) 
+                    # Note: We track just the failing ones for the list, 
+                    # OR we could track pairs showing source A vs source B
+                else:
+                    unique_targets[tgt_norm] = src
+
+            if collisions:
+                self.logger.warning(f"Aborting deployment due to {len(collisions)} collisions.")
+                # Construct detailed collision list [ (src1, src2, target)... ]
+                detailed_collisions = []
+                for src_new, tgt_new in collisions:
+                    tgt_norm = tgt_new.lower() if os.name == 'nt' else tgt_new
+                    src_existing = unique_targets[tgt_norm]
+                    detailed_collisions.append({
+                        'target': tgt_new,
+                        'source_existing': src_existing,
+                        'source_conflicting': src_new
+                    })
+                raise DeploymentCollisionError(detailed_collisions)
+
+            if not files_to_deploy:
+                return True # Nothing to do after filtering
+
+            if real_mode == 'copy':
                 self.logger.info(f"Parallel bulk copy: {len(files_to_deploy)} files")
                 results = self.deploy_copies_batch(files_to_deploy, conflict_policy)
             else:
-                self.logger.info(f"Parallel bulk deployment: {len(files_to_deploy)} files")
+                self.logger.info(f"Parallel bulk symlink: {len(files_to_deploy)} files")
                 results = self.deploy_links_batch(files_to_deploy, conflict_policy)
             
-            # Re-check for any errors
+            # Check for generic failure
+            success = True
             for res in results:
                 if res['status'] == 'error' and conflict_policy != 'skip':
                     success = False
-                         
+                          
+        except DeploymentCollisionError:
+            raise
         except Exception as e:
-            self.logger.error(f"Filtered deploy failed: {e}")
+            self.logger.error(f"deploy_with_rules internal failure: {e}")
             return False
             
         return success
@@ -514,6 +751,12 @@ class Deployer:
                     # Sync back to internal actions tracker for reporting
                     if res['status'] != 'error' and res.get('action') != 'none':
                         self.last_actions.append({'type': res.get('action'), 'path': res['path']})
+                    
+                    # Phase 14: Register backup if created
+                    if res.get('backup_path'):
+                        # Using original path (res['path']) as key
+                        self._db.register_backup(res['path'], res['backup_path'])
+                        
                     if res['status'] == 'error':
                         self.logger.error(f"Batch link failed: {res['path']} -> {res['msg']}")
                 except Exception as exc:
@@ -547,6 +790,11 @@ class Deployer:
                     # Sync back to internal actions tracker for reporting
                     if res['status'] != 'error' and res.get('action') != 'none':
                         self.last_actions.append({'type': 'copy', 'path': res['path']})
+                        
+                    # Phase 14: Register backup if created
+                    if res.get('backup_path'):
+                        self._db.register_backup(res['path'], res['backup_path'])
+                        
                     if res['status'] == 'error':
                         self.logger.error(f"Batch copy failed: {res['path']} -> {res['msg']}")
                 except Exception as exc:

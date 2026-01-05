@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtCore import QTimer
 from src.ui.link_master.item_card import ItemCard
 from src.core.lang_manager import _
+from src.core.link_master.core_paths import get_trash_dir
 
 class LMFileOpsMixin:
     """Mixin for file-related batch operations (visibility, favorites, trash, etc.)."""
@@ -21,7 +22,8 @@ class LMFileOpsMixin:
                 if isinstance(w, ItemCard) and w.path in paths:
                     w.update_link_status()
                     
-        self._update_parent_category_status()
+        # Note: Removed _update_parent_category_status() for performance
+        # self._update_parent_category_status()
         self._refresh_tag_visuals()
     
     def _update_cards_hidden_state(self, paths, is_hidden: bool):
@@ -152,7 +154,33 @@ class LMFileOpsMixin:
         )
         if dialog.exec():
             data = dialog.get_data()
+            
+            # Phase 14: Auto-Redeploy on Settings Change
+            # If item was linked and deployment settings changed, re-deploy with new settings
+            was_linked = current_config.get('last_known_status') == 'linked'
+            old_rule = current_config.get('deploy_rule') or current_config.get('deploy_type')
+            old_mode = current_config.get('transfer_mode', 'symlink')
+            new_rule = data.get('deploy_rule')
+            new_mode = data.get('transfer_mode', 'symlink')
+            
+            settings_changed = (old_rule != new_rule) or (old_mode != new_mode)
+            
+            if was_linked and settings_changed:
+                self.logger.info(f"[AutoRedeploy] Settings changed for linked item: {rel}")
+                self.logger.info(f"  Old: rule={old_rule}, mode={old_mode}")
+                self.logger.info(f"  New: rule={new_rule}, mode={new_mode}")
+                
+                # Unlink using OLD settings (before DB update)
+                # This is handled by _unlink_single which reads from current DB
+                self._unlink_single(rel, update_ui=False)
+            
+            # Save new settings to DB
             self.db.update_folder_display_config(rel, **data)
+            
+            # Re-deploy with new settings if was linked and settings changed
+            if was_linked and settings_changed:
+                self.logger.info(f"[AutoRedeploy] Re-deploying with new settings: {rel}")
+                self._deploy_single(rel, update_ui=True)
             
             abs_norm = abs_path.replace('\\', '/')
             card = self._get_active_card_by_path(abs_norm)
@@ -358,9 +386,8 @@ class LMFileOpsMixin:
         app_data = self.app_combo.currentData()
         if not app_data: return False
         
-        trash_root = os.path.join(app_data['storage_root'], "_Trash")
-        if not os.path.exists(trash_root):
-            os.makedirs(trash_root)
+        # Use new resource/app/{app}/Trash path
+        trash_root = get_trash_dir(app_data['name'])
             
         name = os.path.basename(abs_path)
         dest = os.path.join(trash_root, name)
@@ -425,16 +452,35 @@ class LMFileOpsMixin:
             self._release_card(card)
 
     def _update_card_by_path(self, abs_path):
-        """Update a single card's visual state by its absolute path."""
-        target_path = os.path.normpath(abs_path).lower() if os.name == 'nt' else abs_path
+        """Update a single card's visual state by its absolute path. Robust normalization."""
+        def norm(p):
+            try:
+                # Harmonize slashes and handle case-insensitivity on Windows
+                return os.path.normpath(p).replace('\\', '/').lower() if os.name == 'nt' else os.path.normpath(p)
+            except:
+                return p
+
+        target_path = norm(abs_path)
+        card_found = False
+        # Debug logging (set to debug level for cleaner output)
+        # self.logger.debug(f"[CardUpdate] Looking for: {target_path}")
         for layout in [self.cat_layout, self.pkg_layout]:
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
                     w = item.widget()
                     if isinstance(w, ItemCard):
-                        w_path = os.path.normpath(w.path).lower() if os.name == 'nt' else w.path
+                        w_path = norm(w.path or "")
                         if w_path == target_path:
+                            # self.logger.debug(f"[CardUpdate] Found card: {w.folder_name}")
                             w.update_link_status()
-                            return
-        self._update_parent_category_status()
+                            card_found = True
+                            break
+            if card_found: break
+        
+        if not card_found:
+            self.logger.debug(f"[CardUpdate] Card NOT found for: {target_path}")
+            
+        # Note: Removed _update_parent_category_status() call here for performance.
+        # Individual card update via QTimer.singleShot now handles overlay updates properly.
+

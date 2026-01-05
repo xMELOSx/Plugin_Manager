@@ -19,9 +19,9 @@ class CompactDial(QWidget):
         self._digits = digits
         self._show_arrows = show_arrows
         
-        # UI Metrics
-        self._digit_w = 10  # Maximum tightness as requested
-        self._digit_h = 24  # Increased height for better neighbor visibility
+        # UI Metrics (Match PreviewWindow dial size)
+        self._digit_w = 15
+        self._digit_h = 22
         
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.IBeamCursor)
@@ -33,9 +33,10 @@ class CompactDial(QWidget):
         
         # Up Button
         self.up_btn = QPushButton("▲", self)
-        self.up_btn.setFixedSize(16, self._digit_h + 4)
+        self.up_btn.setFixedSize(18, self._digit_h + 4)
         self.up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.up_btn.setStyleSheet("QPushButton { background: #444; color: #ccc; border: 1px solid #555; font-size: 8px; padding: 0; } QPushButton:hover { background: #555; }")
+        self.up_btn.setStyleSheet("QPushButton { background: #444; color: #ccc; border: 1px solid #555; font-size: 10px; padding: 0; min-width: 18px; max-width: 18px; } QPushButton:hover { background: #555; }")
+        self.up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.up_btn.clicked.connect(self.stepUp)
         self.layout.addWidget(self.up_btn)
         
@@ -48,9 +49,10 @@ class CompactDial(QWidget):
         
         # Down Button
         self.down_btn = QPushButton("▼", self)
-        self.down_btn.setFixedSize(16, self._digit_h + 4)
+        self.down_btn.setFixedSize(18, self._digit_h + 4)
         self.down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.down_btn.setStyleSheet("QPushButton { background: #444; color: #ccc; border: 1px solid #555; font-size: 8px; padding: 0; } QPushButton:hover { background: #555; }")
+        self.down_btn.setStyleSheet("QPushButton { background: #444; color: #ccc; border: 1px solid #555; font-size: 10px; padding: 0; min-width: 18px; max-width: 18px; } QPushButton:hover { background: #555; }")
+        self.down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.down_btn.clicked.connect(self.stepDown)
         self.layout.addWidget(self.down_btn)
         
@@ -76,7 +78,9 @@ class CompactDial(QWidget):
         w = self.dial_widget.width()
         if show:
             w += self.up_btn.width() + self.down_btn.width() + 4
-        self.setFixedSize(w, self._digit_h + 4)
+        h = self._digit_h + 4
+        self.setFixedSize(w, h)
+        self.setMinimumSize(w, h)  # Prevent layout compression
 
     def value(self):
         return self._value
@@ -148,21 +152,9 @@ class CompactDial(QWidget):
             x = (self._digits - 1 - i) * self._digit_w + 2
             digit = int(val_str[-(i+1)])
             
-            # Draw Neighbors (Top/Bottom)
-            painter.setPen(QColor(120, 120, 120, 120)) # Slightly brighter faded
-            
-            # Top neighbor
-            t_digit = (digit + 1) % 10
-            painter.drawText(QRect(int(x), int(-self._digit_h * 0.6), int(self._digit_w), int(self._digit_h)), 
-                             Qt.AlignmentFlag.AlignCenter, str(t_digit))
-            # Bottom neighbor
-            b_digit = (digit - 1) % 10
-            painter.drawText(QRect(int(x), int(self._digit_h * 0.6), int(self._digit_w), int(self._digit_h)), 
-                             Qt.AlignmentFlag.AlignCenter, str(b_digit))
-            
-            # Draw Center
+            # Draw Center (Neighbors removed for clarity)
             painter.setPen(QColor("#fff"))
-            painter.drawText(QRect(int(x), 2, int(self._digit_w), int(self._digit_h)), 
+            painter.drawText(QRect(int(x), 0, int(self._digit_w), int(self._digit_h)), 
                              Qt.AlignmentFlag.AlignCenter, str(digit))
             
         # Subtle border

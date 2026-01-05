@@ -127,6 +127,11 @@ class LibrarySettingsDialog(QDialog):
             
             item.setData(0, Qt.ItemDataRole.UserRole, rel_path)
         
+        self.ver_tree.header().setSortIndicatorClearable(True)
+        self.ver_tree.setSortingEnabled(True)
+        self.ver_tree.header().setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+        self.ver_tree.header().sectionClicked.connect(self._on_ver_header_clicked)
+        
         layout.addWidget(self.ver_tree)
         
         btn_layout = QHBoxLayout()
@@ -143,6 +148,11 @@ class LibrarySettingsDialog(QDialog):
         
         layout.addLayout(btn_layout)
     
+    def _on_ver_header_clicked(self, logicalIndex):
+        """Ensure sorting defaults to Ascending when a new column is clicked."""
+        if self.ver_tree.header().sortIndicatorSection() != logicalIndex:
+            self.ver_tree.header().setSortIndicator(logicalIndex, Qt.SortOrder.AscendingOrder)
+
     def _unregister_version(self, path: str, item: QTreeWidgetItem):
         confirm = QMessageBox.question(
             self, _("Unregister Library"), 
@@ -251,6 +261,11 @@ class DependentPackagesDialog(QDialog):
         self.tree.setColumnWidth(4, 40)
         self.tree.setColumnWidth(5, 40)
         self.tree.setColumnWidth(6, 40)
+        self.tree.header().setSortIndicatorClearable(True)
+        self.tree.setSortingEnabled(True)
+        self.tree.header().setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+        self.tree.header().sectionClicked.connect(self._on_header_clicked)
+
         layout.addWidget(self.tree)
         
         btn_layout = QHBoxLayout()
@@ -273,6 +288,11 @@ class DependentPackagesDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
     
+    def _on_header_clicked(self, logicalIndex):
+        """Ensure sorting defaults to Ascending when a new column is clicked."""
+        if self.tree.header().sortIndicatorSection() != logicalIndex:
+            self.tree.header().setSortIndicator(logicalIndex, Qt.SortOrder.AscendingOrder)
+
     def _load_deps(self):
         # Save selection
         selected_rel = None

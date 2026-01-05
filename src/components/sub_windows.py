@@ -9,50 +9,83 @@ from src.ui.frameless_window import FramelessWindow
 class OptionsWindow(FramelessWindow):
     closed = pyqtSignal()  # Signal emitted when window is closed via X button
     
-    def __init__(self, parent_debug_window=None, db=None):
-        super().__init__()
+    def __init__(self, parent=None, db=None):
+        # Pass None as parent to prevent "Double Transparency" artifacts
+        # But we'll set transient parent for stacking (stays above parent, below other apps)
+        super().__init__(None)
+        self.setObjectName("OptionsWindow")
+
+        # Sync opacity from parent link_master window if available
+        if parent and hasattr(parent, '_bg_opacity'):
+            self.set_background_opacity(parent._bg_opacity)
+
         self.setWindowTitle("Options")
+        # Tool flag + transient parent for proper stacking without composition artifacts
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
         self.resize(300, 240)
 
-        self.parent_debug_window = parent_debug_window
+        self.parent_debug_window = parent
         self.db = db  # Database for settings persistence
         self.set_resizable(False) 
         self._init_ui()
         self._load_settings()
 
     def _init_ui(self):
-        content = QWidget()
+        content = QWidget() # Create without parent, set_content_widget will handle ownership
         layout = QVBoxLayout(content)
         
         from src.core.lang_manager import _
-        header_lbl = QLabel(_("<b>Settings</b>"))
-        layout.addWidget(header_lbl)
+        self.header_lbl = QLabel(_("<b>Window Settings</b>"), content)
+        layout.addWidget(self.header_lbl)
         
         # Always on Top
-        self.always_top_cb = QCheckBox(_("Always on Top"))
-        self.always_top_cb.toggled.connect(self._on_always_top_toggled)
-        layout.addWidget(self.always_top_cb)
+        from src.ui.slide_button import SlideButton
+        atop_layout = QHBoxLayout()
+        atop_layout.setSpacing(10)
+        self.always_top_cb = SlideButton(content)
+        self.always_top_cb.clicked.connect(lambda: self._on_always_top_toggled(self.always_top_cb.isChecked()))
+        atop_layout.addWidget(self.always_top_cb)
+        self.atop_lbl = QLabel(_("Always on Top"), content)
+        atop_layout.addWidget(self.atop_lbl)
+        atop_layout.addStretch()
+        layout.addLayout(atop_layout)
 
         # Remember Geometry
-        self.remember_geo_cb = QCheckBox(_("Remember Position/Size"))
-        self.remember_geo_cb.toggled.connect(self._on_remember_geo_toggled)
-        layout.addWidget(self.remember_geo_cb)
+        rem_layout = QHBoxLayout()
+        rem_layout.setSpacing(10)
+        self.remember_geo_cb = SlideButton(content)
+        self.remember_geo_cb.clicked.connect(lambda: self._on_remember_geo_toggled(self.remember_geo_cb.isChecked()))
+        rem_layout.addWidget(self.remember_geo_cb)
+        self.rem_lbl = QLabel(_("Remember Position/Size"), content)
+        rem_layout.addWidget(self.rem_lbl)
+        rem_layout.addStretch()
+        layout.addLayout(rem_layout)
         
+        # Opacity Header
+        self.opacity_header_lbl = QLabel(_("<b>Opacity</b>"), content)
+        layout.addWidget(self.opacity_header_lbl)
+
         # Background Opacity Control
         opacity_layout = QVBoxLayout()
         opacity_layout.setSpacing(5)
         
+        from src.ui.custom_slider import CustomSlider
+        
+        OPACITY_LABEL_WIDTH = 100
+        SIZE_LABEL_WIDTH = 50
+
         # Row 1: Background
         bg_opacity_layout = QHBoxLayout()
-        bg_opacity_lbl = QLabel(_("Background Opacity:"))
-        bg_opacity_layout.addWidget(bg_opacity_lbl)
+        self.bg_opacity_lbl = QLabel(_("Background Opacity:"), content)
+        self.bg_opacity_lbl.setFixedWidth(OPACITY_LABEL_WIDTH)
+        self.bg_opacity_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        bg_opacity_layout.addWidget(self.bg_opacity_lbl)
         
-        self.bg_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bg_opacity_slider = CustomSlider(Qt.Orientation.Horizontal, content)
         self.bg_opacity_slider.setRange(20, 100)
         self.bg_opacity_slider.setValue(90)
         
-        self.bg_opacity_spin = QSpinBox()
+        self.bg_opacity_spin = QSpinBox(content)
         self.bg_opacity_spin.setRange(20, 100)
         self.bg_opacity_spin.setValue(90)
         self.bg_opacity_spin.setSuffix("%")
@@ -63,14 +96,16 @@ class OptionsWindow(FramelessWindow):
         
         # Row 2: Text/Content
         text_opacity_layout = QHBoxLayout()
-        text_opacity_lbl = QLabel(_("Text Opacity:"))
-        text_opacity_layout.addWidget(text_opacity_lbl)
+        self.text_opacity_lbl = QLabel(_("Text Opacity:"), content)
+        self.text_opacity_lbl.setFixedWidth(OPACITY_LABEL_WIDTH)
+        self.text_opacity_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        text_opacity_layout.addWidget(self.text_opacity_lbl)
         
-        self.text_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.text_opacity_slider = CustomSlider(Qt.Orientation.Horizontal, content)
         self.text_opacity_slider.setRange(20, 100)
         self.text_opacity_slider.setValue(100)
         
-        self.text_opacity_spin = QSpinBox()
+        self.text_opacity_spin = QSpinBox(content)
         self.text_opacity_spin.setRange(20, 100)
         self.text_opacity_spin.setValue(100)
         self.text_opacity_spin.setSuffix("%")
@@ -78,21 +113,23 @@ class OptionsWindow(FramelessWindow):
         
         text_opacity_layout.addWidget(self.text_opacity_slider)
         text_opacity_layout.addWidget(self.text_opacity_spin)
-
+ 
         opacity_layout.addLayout(bg_opacity_layout)
         opacity_layout.addLayout(text_opacity_layout)
         layout.addLayout(opacity_layout)
-
+ 
         # Window Size
         size_layout = QVBoxLayout()
-        size_header_lbl = QLabel(_("<b>Window Size</b>"))
-        size_layout.addWidget(size_header_lbl)
+        self.size_header_lbl = QLabel(_("<b>Window Size</b>"))
+        size_layout.addWidget(self.size_header_lbl)
         
         # Width
         width_row = QHBoxLayout()
-        width_lbl = QLabel(_("Width:"))
-        width_row.addWidget(width_lbl)
-        self.width_slider = QSlider(Qt.Orientation.Horizontal)
+        self.width_lbl = QLabel(_("Width:"))
+        self.width_lbl.setFixedWidth(SIZE_LABEL_WIDTH)
+        self.width_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        width_row.addWidget(self.width_lbl)
+        self.width_slider = CustomSlider(Qt.Orientation.Horizontal)
         self.width_slider.setRange(400, 2560)
         self.width_spin = QSpinBox()
         self.width_spin.setRange(400, 2560)
@@ -103,9 +140,11 @@ class OptionsWindow(FramelessWindow):
         
         # Height
         height_row = QHBoxLayout()
-        height_lbl = QLabel(_("Height:"))
-        height_row.addWidget(height_lbl)
-        self.height_slider = QSlider(Qt.Orientation.Horizontal)
+        self.height_lbl = QLabel(_("Height:"))
+        self.height_lbl.setFixedWidth(SIZE_LABEL_WIDTH)
+        self.height_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        height_row.addWidget(self.height_lbl)
+        self.height_slider = CustomSlider(Qt.Orientation.Horizontal)
         self.height_slider.setRange(400, 1440)
         self.height_spin = QSpinBox()
         self.height_spin.setRange(400, 1440)
@@ -113,6 +152,8 @@ class OptionsWindow(FramelessWindow):
         height_row.addWidget(self.height_slider)
         height_row.addWidget(self.height_spin)
         size_layout.addLayout(height_row)
+
+
         
         layout.addLayout(size_layout)
 
@@ -129,11 +170,15 @@ class OptionsWindow(FramelessWindow):
         self.height_slider.valueChanged.connect(lambda v: self._sync_slider_spin(v, self.height_slider, self.height_spin, self._apply_window_height))
         self.height_spin.valueChanged.connect(lambda v: self._sync_slider_spin(v, self.height_slider, self.height_spin, self._apply_window_height))
 
+        # --- Others Section ---
+        self.misc_header_lbl = QLabel(_("<b>Others</b>"))
+        layout.addWidget(self.misc_header_lbl)
+
         # --- Language Selection ---
         from PyQt6.QtWidgets import QComboBox
         lang_layout = QHBoxLayout()
-        lang_lbl = QLabel(_("Language:"))
-        lang_layout.addWidget(lang_lbl)
+        self.lang_lbl = QLabel(_("Language:"))
+        lang_layout.addWidget(self.lang_lbl)
         
         self.lang_combo = QComboBox()
         self.lang_combo.addItem(_("System Default"), "system")
@@ -142,7 +187,6 @@ class OptionsWindow(FramelessWindow):
         self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
         lang_layout.addWidget(self.lang_combo)
         layout.addLayout(lang_layout)
-        self.lang_lbl = lang_lbl  # Store for retranslate
 
         layout.addStretch()
         
@@ -154,21 +198,22 @@ class OptionsWindow(FramelessWindow):
         btn_layout.addWidget(about_btn)
         self.about_btn = about_btn
         
+        # Save Buttons (Ok/Cancel or just Close)
+        # Options are applied instantly or on change, so just a close button is enough?
+        # But we have close in title bar. Maybe a "Reset" button?
+        
         close_btn = QPushButton(_("Close"))
         close_btn.clicked.connect(self.close)  # Use close() to emit closed signal
         btn_layout.addWidget(close_btn)
         
         layout.addLayout(btn_layout)
         
+        layout.addStretch()
+        
         self.set_content_widget(content)
 
         # Store labels to retranslate
-        self.header_lbl = header_lbl
-        self.bg_opacity_lbl = bg_opacity_lbl
-        self.text_opacity_lbl = text_opacity_lbl
-        self.size_header_lbl = size_header_lbl
-        self.width_lbl = width_lbl
-        self.height_lbl = height_lbl
+        # (References already updated above to use self.xxx)
         self.close_btn = close_btn
 
         from src.core.lang_manager import get_lang_manager
@@ -178,16 +223,18 @@ class OptionsWindow(FramelessWindow):
         """Update all UI strings logic."""
         from src.core.lang_manager import _
         self.setWindowTitle(_("Options"))
-        self.header_lbl.setText(_("<b>Settings</b>"))
-        self.always_top_cb.setText(_("Always on Top"))
-        self.remember_geo_cb.setText(_("Remember Position/Size"))
+        self.header_lbl.setText(_("<b>Window Settings</b>"))
+        self.atop_lbl.setText(_("Always on Top"))
+        self.rem_lbl.setText(_("Remember Position/Size"))
+        self.opacity_header_lbl.setText(_("<b>Opacity</b>"))
         self.bg_opacity_lbl.setText(_("Background Opacity:"))
         self.text_opacity_lbl.setText(_("Text Opacity:"))
         self.size_header_lbl.setText(_("<b>Window Size</b>"))
         self.width_lbl.setText(_("Width:"))
         self.height_lbl.setText(_("Height:"))
-        self.close_btn.setText(_("Close"))
+        self.misc_header_lbl.setText(_("<b>Others</b>"))
         self.lang_lbl.setText(_("Language:"))
+        self.close_btn.setText(_("Close"))
         self.about_btn.setText(_("About"))
         # Update language combo first item (System Default)
         self.lang_combo.setItemText(0, _("System Default"))
@@ -232,11 +279,11 @@ class OptionsWindow(FramelessWindow):
                 self.bg_opacity_slider.blockSignals(False)
                 self.text_opacity_slider.blockSignals(False)
                 
-                # Apply loaded values
-                if self.parent_debug_window:
-                    self.parent_debug_window.set_background_opacity(settings.get('bg_opacity', 90) / 100.0)
-                    self.parent_debug_window.set_content_opacity(settings.get('text_opacity', 100) / 100.0)
-                    if settings.get('always_top', False):
+                # Note: Opacity is already applied at LinkMasterWindow startup via _load_opacity_settings()
+                # Apply always_on_top to BOTH parent AND this options window
+                if settings.get('always_top', False):
+                    self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+                    if self.parent_debug_window:
                         self.parent_debug_window.set_pin_state(True)
             
             # Load language setting
@@ -436,7 +483,7 @@ class HelpWindow(FramelessWindow):
         self._init_ui()
 
     def _init_ui(self):
-        content = QWidget()
+        content = QWidget(self)
         layout = QVBoxLayout(content)
         
         from src.core.lang_manager import _
@@ -507,7 +554,7 @@ class AboutWindow(FramelessWindow):
         from src.core.lang_manager import _
         import os
         
-        content = QWidget()
+        content = QWidget(self)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(10)

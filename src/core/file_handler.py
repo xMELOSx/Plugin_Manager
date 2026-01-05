@@ -21,7 +21,13 @@ class FileHandler:
             return
         self._initialized = True
         
-        self.project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import sys
+        if getattr(sys, 'frozen', False):
+            # EXE packaged mode: Persistence next to the EXE
+            self.project_root = os.path.dirname(sys.executable)
+        else:
+            # Development mode: src/core/file_handler.py -> 3 levels up to project root
+            self.project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.log_dir = os.path.join(self.project_root, "logs")
         
         # Global database in config directory

@@ -21,16 +21,19 @@ class LMFileManagementMixin:
         
         # Phase 5: Get P/S paths for quick redirection
         app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else {}
-        # Resolve mod-specific folders for both Primary and Secondary targets
+        # Resolve mod-specific folders for Primary, Secondary, and Tertiary targets
         mod_name = os.path.basename(rel_path)
         primary_root = app_data.get('target_root', '')
         secondary_root = app_data.get('target_root_2', '')
+        tertiary_root = app_data.get('target_root_3', '')
         
-        mod_primary_base = config.get('target_override') or os.path.join(primary_root, mod_name)
+        mod_primary_base = config.get('target_override') or os.path.join(primary_root, mod_name) if primary_root else ""
         mod_secondary_base = os.path.join(secondary_root, mod_name) if secondary_root else ""
+        mod_tertiary_base = os.path.join(tertiary_root, mod_name) if tertiary_root else ""
         
         diag = FileManagementDialog(self, abs_path, config.get('deployment_rules'), 
-                                   primary_target=mod_primary_base, secondary_target=mod_secondary_base)
+                                   primary_target=mod_primary_base, secondary_target=mod_secondary_base, tertiary_target=mod_tertiary_base,
+                                   app_name=app_data.get('name', ''), storage_root=self.storage_root)
         if diag.exec():
             new_rules = diag.get_rules_json()
             try:

@@ -59,6 +59,10 @@ class StickyHelpManager(QObject):
         # Phase 1.1.8: ヘルプ編集モード用クリックブロッカーオーバーレイ
         self._edit_overlay = None
         self._picking_sticky = None  # ターゲット選択中の付箋
+        
+        # Phase 1.1.95: アプリフォーカス変更時の自動表示/非表示
+        QApplication.instance().applicationStateChanged.connect(self._on_app_state_changed)
+        self._stickies_were_visible = False  # アプリがフォーカスを失う前の表示状態
 
     def register_sticky(self, element_id, target_widget):
         """特定のUI要素に紐づくヘルプ付箋を登録する。"""
@@ -148,6 +152,24 @@ class StickyHelpManager(QObject):
         
         # Phase 1.1.7: 要素追従モード用タイマーを開始
         self._poll_timer.start()
+
+    def _on_app_state_changed(self, state):
+        """Phase 1.1.95: アプリのフォーカス状態に応じて付箋を表示/非表示。"""
+        from PyQt6.QtCore import Qt
+        
+        if state == Qt.ApplicationState.ApplicationActive:
+            # アプリがフォーカスを取得: 以前表示されていた場合は再表示
+            if self._stickies_were_visible:
+                for sticky in self.stickies.values():
+                    sticky.show()
+        else:
+            # アプリがフォーカスを失った: 付箋を一時的に非表示
+            if self.is_help_visible:
+                self._stickies_were_visible = True
+                for sticky in self.stickies.values():
+                    sticky.hide()
+            else:
+                self._stickies_were_visible = False
 
     def hide_all(self):
         # Phase 1.1.7: ポーリングタイマーを停止

@@ -66,12 +66,12 @@ class PresetsPanel(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Header
-        self.header_lbl = QLabel(_("<b>Presets</b>"))
+        self.header_lbl = QLabel(_("<b>Presets</b>"), self)
         self.header_lbl.setStyleSheet("font-weight: bold; color: #ccc;")
         layout.addWidget(self.header_lbl)
         
         # Tree Widget (Custom class for proper drag-drop handling)
-        self.tree_widget = PresetTreeWidget()
+        self.tree_widget = PresetTreeWidget(self)
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setIndentation(12)  # Reduce indentation for compact display
         self.tree_widget.setStyleSheet("""
@@ -116,12 +116,12 @@ class PresetsPanel(QWidget):
         # btn_layout.addWidget(self.btn_save)
         
         # Folder button for organizing presets
-        self.btn_folder = QPushButton(_("📁 Folder"))
+        self.btn_folder = QPushButton(_("📁 Folder"), self)
         self.btn_folder.setStyleSheet(ButtonStyles.DEFAULT)
         self.btn_folder.clicked.connect(self._on_create_folder_clicked)
         btn_layout.addWidget(self.btn_folder)
         
-        self.btn_del = QPushButton(_("🗑 Delete"))
+        self.btn_del = QPushButton(_("🗑 Delete"), self)
         self.btn_del.clicked.connect(self._on_delete_clicked)
         self.btn_del.setStyleSheet(ButtonStyles.DANGER)
         btn_layout.addWidget(self.btn_del)
@@ -131,12 +131,12 @@ class PresetsPanel(QWidget):
         # Buttons Row 2: Deploy / Unlink
         btn_layout2 = QHBoxLayout()
         
-        self.btn_load = QPushButton(_("🚀 Deploy"))
+        self.btn_load = QPushButton(_("🚀 Deploy"), self)
         self.btn_load.clicked.connect(self._on_load_clicked)
         self.btn_load.setStyleSheet(ButtonStyles.SUCCESS)
         btn_layout2.addWidget(self.btn_load)
         
-        self.btn_unload = QPushButton(_("🔓 Unlink"))
+        self.btn_unload = QPushButton(_("🔓 Unlink"), self)
         self.btn_unload.clicked.connect(lambda: self.unload_request_signal.emit())
         self.btn_unload.setStyleSheet(ButtonStyles.PRIMARY)
         self.btn_unload.setToolTip(_("Remove all active links for this app"))
@@ -145,7 +145,7 @@ class PresetsPanel(QWidget):
         layout.addLayout(btn_layout2)
 
         # Clear Filter Button (shown when filter is active)
-        self.clear_filter_btn = QPushButton(_("🔓 Clear Filter"))
+        self.clear_filter_btn = QPushButton(_("🔓 Clear Filter"), self)
         self.clear_filter_btn.clicked.connect(lambda: self.clear_filter.emit())
         self.clear_filter_btn.setStyleSheet(ButtonStyles.WARNING)
         self.clear_filter_btn.hide()

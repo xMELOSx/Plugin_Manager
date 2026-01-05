@@ -71,11 +71,20 @@ class TagConflictWorker(QObject):
             # Step 2: Identify Conflicts and Library Alts for ALL items
             conflict_count = 0
             alt_count = 0
+            bulk_updates = {} # For DB update inside worker
+            abs_config_map = {} # For UI thread matching
+
             for p, cfg in all_configs.items():
+                # Normalized path for matching
+                norm_p = p.replace('\\', '/')
                 rel_p = p
-                if os.path.isabs(p):
-                    try: rel_p = os.path.relpath(p, self.storage_root)
+                abs_p = p
+                if not os.path.isabs(p):
+                    abs_p = os.path.join(self.storage_root, p).replace('\\', '/')
+                else:
+                    try: rel_p = os.path.relpath(p, self.storage_root).replace('\\', '/')
                     except: pass
+                
                 my_cat = os.path.dirname(rel_p).replace('\\', '/')
                 
                 has_logical_conflict = False
@@ -99,10 +108,7 @@ class TagConflictWorker(QObject):
                     matches = active_tags_map.get(tag, [])
                     
                     for m in matches:
-                        # Skip if it is me
-                        if m.get('path') == p:
-                            continue
-                            
+                        if m.get('path') == p: continue
                         if scope == 'global' or m['scope'] == 'global':
                             has_logical_conflict = True
                             break
@@ -110,7 +116,7 @@ class TagConflictWorker(QObject):
                             has_logical_conflict = True
                             break
                 
-                # C. Global Physical Occupancy Check (Simulation)
+                # C. Global Physical Occupancy Check
                 if not has_logical_conflict and self.target_root:
                     folder_name = os.path.basename(p)
                     target_path = cfg.get('target_override') or os.path.join(self.target_root, folder_name)
@@ -122,22 +128,34 @@ class TagConflictWorker(QObject):
                 if not has_logical_conflict and status == 'conflict':
                     has_logical_conflict = True
 
-                # Step 2.6: Persistent marking for this run
+                # Step 2.6: Persistent marking
                 cfg['has_logical_conflict'] = has_logical_conflict
                 cfg['is_library_alt_version'] = is_library_alt_version
                 if has_logical_conflict:
                     conflict_count += 1
                     tag_conflicted_categories.add(my_cat)
 
+                # Prepare bulk update for DB
+                bulk_updates[rel_p] = {
+                    'has_logical_conflict': 1 if has_logical_conflict else 0,
+                    'is_library_alt_version': 1 if is_library_alt_version else 0
+                }
+                # Prepare result for UI thread matching by absolute path
+                abs_config_map[abs_p] = cfg
+
+            # 2.7: Perform DB Update in Background Thread
+            local_db.update_visual_flags_bulk(bulk_updates)
+
             print(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
             
-            # 3. Return results
+            # 3. Return results (now includes abs_config_map)
             result = {
                 'active_tags_map': active_tags_map,
                 'active_library_names': list(active_library_names),
                 'active_targets_map': active_targets_map,
                 'tag_conflicted_categories': list(tag_conflicted_categories),
-                'all_configs': all_configs
+                'all_configs': all_configs,
+                'abs_config_map': abs_config_map
             }
             self.finished.emit(result)
             

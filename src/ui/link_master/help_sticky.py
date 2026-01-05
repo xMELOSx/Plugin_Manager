@@ -21,6 +21,7 @@ class StickyHelpWidget(QWidget):
         self.parent_window = parent # 座標計算のための参照
 
         # 基本フラグ
+        # WindowStaysOnTopHint ensures stickies are always visible
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         

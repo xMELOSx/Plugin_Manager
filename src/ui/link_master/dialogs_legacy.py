@@ -6,8 +6,9 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                              QPushButton, QHBoxLayout, QFileDialog, QComboBox, QFormLayout, 
                              QGroupBox, QCheckBox, QWidget, QListWidget, QListWidgetItem,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-                             QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle)
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF
+                             QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
+                             QRadioButton, QButtonGroup)
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
@@ -38,6 +39,44 @@ class TagIconLineEdit(QLineEdit):
         path = event.mimeData().urls()[0].toLocalFile()
         self.file_dropped.emit(path)
 
+
+class ImageDropLabel(QLabel):
+    """QLabel that accepts image drag and drop for preview."""
+    image_dropped = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: #222; border: 1px solid #444;")
+        self.setText(_("Drop Image Here"))
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls and urls[0].toLocalFile().lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
+                event.acceptProposedAction()
+                self.setStyleSheet("background-color: #333; border: 2px solid #3498db;")
+        elif event.mimeData().hasImage():
+            event.acceptProposedAction()
+            self.setStyleSheet("background-color: #333; border: 2px solid #3498db;")
+    
+    def dragLeaveEvent(self, event):
+        self.setStyleSheet("background-color: #222; border: 1px solid #444;")
+    
+    def dropEvent(self, event):
+        self.setStyleSheet("background-color: #222; border: 1px solid #444;")
+        if event.mimeData().hasUrls():
+            path = event.mimeData().urls()[0].toLocalFile()
+            self.image_dropped.emit(path)
+        elif event.mimeData().hasImage():
+            # Handle direct image data from clipboard
+            pixmap = QPixmap(event.mimeData().imageData())
+            if not pixmap.isNull():
+                self.setPixmap(pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.image_dropped.emit("")  # Empty path signals clipboard image
+
+
 class AppRegistrationDialog(QDialog):
     def __init__(self, parent=None, app_data=None):
         super().__init__(parent)
@@ -54,6 +93,13 @@ class AppRegistrationDialog(QDialog):
             QLineEdit, QComboBox { 
                 background-color: #3b3b3b; color: #ffffff; 
                 border: 1px solid #555; padding: 4px; border-radius: 4px;
+            }
+            QComboBox:hover { border-color: #3498db; background-color: #444; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { 
+                background-color: #3b3b3b; color: #ffffff; 
+                selection-background-color: #2980b9; selection-color: #ffffff; 
+                border: 1px solid #555; 
             }
             QPushButton {
                 background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
@@ -83,38 +129,52 @@ class AppRegistrationDialog(QDialog):
         storage_layout.addWidget(self.storage_btn)
         form.addRow(_("Storage Path:"), storage_layout)
         
-        # Target Root A
-        self.target_edit = QLineEdit()
-        self.target_btn = QPushButton(_(" Browse "))
-        self.target_btn.clicked.connect(self._browse_target)
-        target_layout = QHBoxLayout()
-        target_layout.addWidget(self.target_edit)
-        target_layout.addWidget(self.target_btn)
-        form.addRow(_("Target A (Primary):"), target_layout)
+        # Helper to create target row with rule combo
+        def create_target_row(label, edit_attr, btn_attr, rule_combo_attr, browse_slot, default_rule='folder'):
+            layout = QHBoxLayout()
+            edit = QLineEdit()
+            setattr(self, edit_attr, edit)
+            btn = QPushButton(_(" Browse "))
+            setattr(self, btn_attr, btn)
+            btn.clicked.connect(browse_slot)
+            
+            rule_combo = QComboBox()
+            rule_combo.addItem(_("whole folder"), "folder")
+            rule_combo.addItem(_("all files"), "files")
+            rule_combo.addItem(_("tree"), "tree")
+            setattr(self, rule_combo_attr, rule_combo)
+            rule_combo.setFixedWidth(120)
+            
+            layout.addWidget(edit)
+            layout.addWidget(btn)
+            layout.addWidget(QLabel(_("Rule:")))
+            layout.addWidget(rule_combo)
+            form.addRow(label, layout)
+
+        # Target A (Primary)
+        create_target_row(_("Target A (Primary):"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
         
-        # Target Root B (New)
-        self.target_edit_2 = QLineEdit()
-        self.target_btn_2 = QPushButton(_(" Browse "))
-        self.target_btn_2.clicked.connect(self._browse_target_2)
-        target_layout_2 = QHBoxLayout()
-        target_layout_2.addWidget(self.target_edit_2)
-        target_layout_2.addWidget(self.target_btn_2)
-        form.addRow(_("Target B (Optional):"), target_layout_2)
-        
-        # Default Folder Property Settings Group
-        defaults_group = QGroupBox(_("Default Folder Property Settings"))
+        # Target B (Optional)
+        create_target_row(_("Target B (Optional):"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
+
+        # Target C (Optional)
+        create_target_row(_("Target C (Optional):"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
+
+        # Default Folder Property Settings Group (Misc)
+        defaults_group = QGroupBox(_("Other Default Settings"))
         defaults_group.setStyleSheet("QGroupBox { border: 1px solid #444; margin-top: 10px; padding-top: 10px; color: #aaa; }")
         defaults_form = QFormLayout()
         
-        # Deploy Type
-        self.deploy_combo = QComboBox()
-        self.deploy_combo.addItems(["folder", "flatten"])
-        defaults_form.addRow(_("Deploy Type:"), self.deploy_combo)
-        
+        # Transfer Mode
+        self.transfer_mode_combo = QComboBox()
+        self.transfer_mode_combo.addItem(_("Symbolic Link (recommended)"), "symlink")
+        self.transfer_mode_combo.addItem(_("Physical Copy (slower)"), "copy")
+        defaults_form.addRow(_("Default Transfer Mode:"), self.transfer_mode_combo)
+
         # Conflict Policy
         self.conflict_combo = QComboBox()
         self.conflict_combo.addItems(["backup", "skip", "overwrite"])
-        defaults_form.addRow(_("Conflict Policy:"), self.conflict_combo)
+        defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = QComboBox()
@@ -124,6 +184,12 @@ class AppRegistrationDialog(QDialog):
         self.pkg_style_combo = QComboBox()
         self.pkg_style_combo.addItems(["image", "text", "image_text"])
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
+
+        # Default Tree Skip
+        self.default_skip_levels_spin = QSpinBox()
+        self.default_skip_levels_spin.setRange(0, 5)
+        self.default_skip_levels_spin.setSuffix(_(" levels"))
+        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
         
         defaults_group.setLayout(defaults_form)
         form.addRow(defaults_group)
@@ -159,16 +225,16 @@ class AppRegistrationDialog(QDialog):
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; color: #ccc; border: none; outline: none;
-                text-align: center; padding: 0;
+                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px;
+                text-align: center; padding: 4px 8px; min-width: 80px;
             }
             QPushButton:hover { background-color: #444; }
-            QPushButton:checked { color: #f1c40f; font-weight: bold; }
+            QPushButton:checked { color: #f1c40f; font-weight: bold; border-color: #f1c40f; }
         """)
         self.favorite_btn.toggled.connect(lambda checked: self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite")))
         fav_score_layout.addWidget(self.favorite_btn)
         
-        fav_score_layout.addSpacing(20)
+        fav_score_layout.addSpacing(15)
         score_label = QLabel(_("Score:"))
         fav_score_layout.addWidget(score_label)
         
@@ -177,11 +243,10 @@ class AppRegistrationDialog(QDialog):
         fav_score_layout.addStretch()
         form.addRow("", fav_score_layout)
         
-        # App Preview Label (Phase 13 Refinement)
-        self.preview_label = QLabel(_("No Image"))
+        # App Preview Label with Image Drop support
+        self.preview_label = ImageDropLabel(self)
         self.preview_label.setFixedSize(160, 120)
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setStyleSheet("background-color: #222; border: 1px solid #444;")
+        self.preview_label.image_dropped.connect(self._on_preview_image_dropped)
         form.addRow(_("Preview:"), self.preview_label)
 
         # Executables Management (Phase 30)
@@ -217,6 +282,15 @@ class AppRegistrationDialog(QDialog):
         
         # Actions
         btn_layout = QHBoxLayout()
+        
+        # Unregister Button (Phase 32)
+        if self.app_data:
+            self.unregister_btn = QPushButton(_("Unregister App"))
+            self.unregister_btn.clicked.connect(self._on_unregister_clicked)
+            self.unregister_btn.setStyleSheet("background-color: #c0392b; color: white;")
+            btn_layout.addWidget(self.unregister_btn)
+            btn_layout.addSpacing(20)
+
         self.ok_btn = QPushButton(_("Save") if self.app_data else _("Register"))
         self.ok_btn.clicked.connect(self._on_save_clicked)
         self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
@@ -230,16 +304,46 @@ class AppRegistrationDialog(QDialog):
         
         layout.addLayout(btn_layout)
 
+    def _on_unregister_clicked(self):
+        """Confirm and set flag for deletion."""
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, _("Confirm Unregister"),
+                                   _("Are you sure you want to completely remove this application registration?\n"
+                                     "This will NOT delete physical folders, but will delete all custom names, tags, and settings."),
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self.is_unregister_request = True
+            self.accept()
+
     def _fill_data(self):
         if not self.app_data: return
         self.name_edit.setText(self.app_data.get('name', ''))
         self.storage_edit.setText(self.app_data.get('storage_root', ''))
         self.target_edit.setText(self.app_data.get('target_root', ''))
         self.target_edit_2.setText(self.app_data.get('target_root_2', ''))
+        self.target_edit_3.setText(self.app_data.get('target_root_3', ''))
         self.conflict_combo.setCurrentText(self.app_data.get('conflict_policy', 'backup'))
-        self.deploy_combo.setCurrentText(self.app_data.get('deployment_type', 'folder'))
+        
+        # New Rule-based fields (with fallback to legacy types)
+        def set_combo_rule(combo, key, fallback_key=None):
+            rule = self.app_data.get(key)
+            if not rule and fallback_key:
+                old_val = self.app_data.get(fallback_key, 'folder')
+                rule = 'files' if old_val == 'flatten' else 'folder'
+            if not rule: rule = 'folder'
+            idx = combo.findData(rule)
+            if idx >= 0: combo.setCurrentIndex(idx)
+
+        set_combo_rule(self.deploy_rule_combo, 'deployment_rule', 'deployment_type')
+        set_combo_rule(self.deploy_rule_combo_b, 'deployment_rule_b')
+        set_combo_rule(self.deploy_rule_combo_c, 'deployment_rule_c')
+        
+        t_mode = self.app_data.get('transfer_mode', 'symlink')
+        idx = self.transfer_mode_combo.findData(t_mode)
+        if idx >= 0: self.transfer_mode_combo.setCurrentIndex(idx)
         self.cat_style_combo.setCurrentText(self.app_data.get('default_category_style', 'image'))
         self.pkg_style_combo.setCurrentText(self.app_data.get('default_package_style', 'image'))
+        self.default_skip_levels_spin.setValue(int(self.app_data.get('default_skip_levels', 0) or 0))
 
         # Cover image
         if self.app_data.get('cover_image'):
@@ -296,6 +400,10 @@ class AppRegistrationDialog(QDialog):
     def _browse_target_2(self):
         path = QFileDialog.getExistingDirectory(self, _("Select Target Install Root B"))
         if path: self.target_edit_2.setText(path)
+
+    def _browse_target_3(self):
+        path = QFileDialog.getExistingDirectory(self, _("Select Target Install Root C"))
+        if path: self.target_edit_3.setText(path)
     
     def _browse_cover(self):
         path, _filter = QFileDialog.getOpenFileName(self, _("Select Cover Image"), "", 
@@ -305,6 +413,7 @@ class AppRegistrationDialog(QDialog):
             self._update_preview(path)
             
     def _update_preview(self, path):
+        import os  # Local import to ensure availability
         if not path or not os.path.exists(path):
             self.preview_label.clear()
             self.preview_label.setText(_("No Image"))
@@ -317,21 +426,42 @@ class AppRegistrationDialog(QDialog):
         else:
             self.preview_label.setText("Invalid Image")
 
+    def _on_preview_image_dropped(self, path):
+        """Handle image dropped onto preview area."""
+        import os  # Local import to ensure availability
+        if path and os.path.exists(path):
+            self.cover_edit.setText(path)
+            self._update_preview(path)
+        elif not path:
+            # Empty path means clipboard image was used - already displayed by ImageDropLabel
+            self.cover_edit.setText(_("[Dropped from Clipboard]"))
+
     def _crop_cover(self):
         """Open crop dialog for cover image region selection."""
+        import os  # Local import to ensure availability
         source_path = self.cover_edit.text().strip()
         if not source_path or not os.path.exists(source_path):
             QMessageBox.warning(self, _("Error"), _("Please select a valid cover image first."))
             return
         
         try:
-            # Use ImageCropDialog for region selection
-            dialog = ImageCropDialog(self, source_path)
+            # Load source image and use IconCropDialog (which works with QPixmap)
+            from PyQt6.QtGui import QPixmap
+            source_pixmap = QPixmap(source_path)
+            if source_pixmap.isNull():
+                QMessageBox.warning(self, _("Error"), _("Could not load the image file."))
+                return
+                
+            dialog = IconCropDialog(self, source_pixmap)
             if dialog.exec():
-                cropped_path = dialog.get_cropped_image_path()
-                if cropped_path and os.path.exists(cropped_path):
-                    self.cover_edit.setText(cropped_path)
-                    self._update_preview(cropped_path)
+                cropped_pixmap = dialog.get_cropped_pixmap()
+                if cropped_pixmap and not cropped_pixmap.isNull():
+                    # Save cropped image to temp file
+                    import tempfile
+                    temp_path = tempfile.mktemp(suffix=".png")
+                    cropped_pixmap.save(temp_path)
+                    self.cover_edit.setText(temp_path)
+                    self._update_preview(temp_path)
         except Exception as e:
             QMessageBox.warning(self, _("Error"), _("Failed to crop image: {error}").format(error=e))
 
@@ -396,7 +526,11 @@ class AppRegistrationDialog(QDialog):
     def get_data(self):
         import json
         import uuid
+        import os  # Local import to ensure availability
         
+        if getattr(self, 'is_unregister_request', False):
+            return {'is_unregister': True}
+
         # Save clipboard image if pending
         cover_path = self.cover_edit.text()
         if self.pending_cover_pixmap and cover_path in [" [ Clipboard Image ] ", "[Cropped from Clipboard]"]:
@@ -415,15 +549,21 @@ class AppRegistrationDialog(QDialog):
             "storage_root": self.storage_edit.text(),
             "target_root": self.target_edit.text(),
             "target_root_2": self.target_edit_2.text(),
+            "target_root_3": self.target_edit_3.text(),
             "default_subpath": "",
             "managed_folder_name": "_LinkMaster_Assets",
             "conflict_policy": self.conflict_combo.currentText(),
-            "deployment_type": self.deploy_combo.currentText(),
+            "deployment_rule": self.deploy_rule_combo.currentData(),
+            "deployment_rule_b": self.deploy_rule_combo_b.currentData(),
+            "deployment_rule_c": self.deploy_rule_combo_c.currentData(),
+            "transfer_mode": self.transfer_mode_combo.currentData(),
+            "deployment_type": self.deploy_rule_combo.currentData(), # Backward compat
             "cover_image": cover_path if cover_path and cover_path not in [" [ Clipboard Image ] ", "[Cropped from Clipboard]"] else None,
             "is_favorite": 1 if self.favorite_btn.isChecked() else 0,
             "score": self.score_dial.value(),
             "default_category_style": self.cat_style_combo.currentText(),
             "default_package_style": self.pkg_style_combo.currentText(),
+            "default_skip_levels": self.default_skip_levels_spin.value(),
             "executables": json.dumps(self.executables) if self.executables else "[]",
             "url_list": getattr(self, "url_list_json", "[]")
         }
@@ -1021,8 +1161,8 @@ class PreviewItemWidget(QWidget):
         layout.addWidget(del_btn)
     
     def _sync_to_icon(self):
-        if self.parent_dialog and hasattr(self.parent_dialog, '_sync_icon_from_preview'):
-            self.parent_dialog._sync_icon_from_preview(self.path)
+        if self.parent_dialog and hasattr(self.parent_dialog, '_sync_to_icon'):
+            self.parent_dialog._sync_to_icon(self.path)
     
     def _crop_image(self):
         if self.parent_dialog and hasattr(self.parent_dialog, '_crop_image'):
@@ -1078,6 +1218,7 @@ class PreviewTableDialog(QDialog):
             QListWidget::item:selected { background-color: #3d5a80; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
             QPushButton:hover { background-color: #5d5d5d; }
+            QToolTip { background-color: #2d2d2d; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         # List Widget with Drag-Drop
@@ -1931,19 +2072,36 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                  thumbnail_manager = None, app_deploy_default: str = "folder", 
                  app_conflict_default: str = "backup",
                  app_cat_style_default: str = "image",
-                 app_pkg_style_default: str = "image"):
+                 app_pkg_style_default: str = "image",
+                 app_skip_levels_default: int = 0):
 
         super().__init__(parent)
         self.folder_path = folder_path
         self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing
         self.app_name = app_name
+        self.registry = getattr(parent, 'registry', None)
         self.storage_root = storage_root
         self.thumbnail_manager = thumbnail_manager
         self.app_deploy_default = app_deploy_default
         self.app_conflict_default = app_conflict_default
         self.app_cat_style_default = app_cat_style_default
         self.app_pkg_style_default = app_pkg_style_default
+        self.app_skip_levels_default = app_skip_levels_default
+        
+        # Fetch App Target Roots
+        self.target_roots = []
+        self.current_app_data = {}
+        if self.registry and self.app_name:
+            for app in self.registry.get_apps():
+                if app['name'] == self.app_name:
+                    self.current_app_data = app
+                    self.target_roots = [
+                        app.get('target_root'),
+                        app.get('target_root_2'),
+                        app.get('target_root_3')
+                    ]
+                    break
         
         # Phase X: Library Dependencies state
         self.lib_deps = self.current_config.get('lib_deps', '[]') or '[]'
@@ -1956,7 +2114,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.is_package_area = False
         if not self.batch_mode and self.storage_root:
             try:
-                import os
                 rel = os.path.relpath(self.folder_path, self.storage_root).replace('\\', '/')
                 # Level 1 (sep=0), Level 2 (sep=1) -> Category area. Level 3+ (sep>=2) -> Package area.
                 sep_count = rel.count('/')
@@ -1981,7 +2138,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLabel { color: #cccccc; }
-            QLineEdit, QComboBox { 
+            QLineEdit, QComboBox, QSpinBox { 
                 background-color: #3b3b3b; color: #ffffff; 
                 border: 1px solid #555; padding: 4px; border-radius: 4px;
             }
@@ -1999,6 +2156,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 padding-top: 10px;
             }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; }
+            QToolTip { background-color: #2d2d2d; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         # Auto-fill image_path from auto-detected thumbnail if empty (Phase 18.13)
@@ -2011,15 +2169,17 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self._init_ui()
         
         # Phase 32: Restore Size
-        if self.db:
-            key = "geom_folder_props_batch" if batch_mode else "geom_folder_props"
-            geom = self.db.get_setting(key, None)
-            if geom: self.restoreGeometry(bytes.fromhex(geom))
+        self.load_options("folder_properties")
 
     def closeEvent(self, event):
         """Save window geometry on close."""
         self.save_options("folder_properties")
         super().closeEvent(event)
+        
+    def done(self, r):
+        """Overridden to ensure options are saved via accept/reject too."""
+        self.save_options("folder_properties")
+        super().done(r)
     
     def _detect_auto_thumbnail(self):
         """Detect first available image in folder for auto-thumbnail."""
@@ -2051,7 +2211,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             return None
         
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        # Phase 33: Split Layout (Left=Basic, Right=Advanced)
+        self.root_layout = QVBoxLayout(self)
+        
+        content_split = QHBoxLayout()
+        self.root_layout.addLayout(content_split)
+        
+        # Left Column (Reuse 'layout' variable name to minimize diffs for existing groups)
+        layout = QVBoxLayout() 
+        content_split.addLayout(layout, 55) # 55% width
+        
+        # Right Column
+        right_layout = QVBoxLayout()
+        content_split.addLayout(right_layout, 45) # 45% width
         
         # ===== Batch Mode Notice (New) =====
         if self.batch_mode:
@@ -2062,6 +2234,15 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # ===== Display Settings Group =====
         display_group = QGroupBox(_("Display Settings"))
+        display_group.setStyleSheet("""
+            QGroupBox { color: #ddd; border: 1px solid #555; border-radius: 4px; margin-top: 10px; padding-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; }
+            QPushButton { 
+                background-color: #444; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; 
+                min-width: 60px;
+            }
+            QPushButton:hover { background-color: #555; border-color: #777; }
+        """)
         display_form = QFormLayout(display_group)
         
         if not self.batch_mode:
@@ -2073,6 +2254,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             btn_open_folder = QPushButton()
             btn_open_folder.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
             btn_open_folder.setFixedSize(24, 24)
+            btn_open_folder.setStyleSheet("border: 1px solid #555; border-radius: 3px; background-color: #444; min-width: 0px;") # Fix size override
             btn_open_folder.setToolTip(_("Open actual folder"))
             btn_open_folder.clicked.connect(self._open_actual_folder)
             folder_row.addWidget(btn_open_folder)
@@ -2107,9 +2289,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.name_edit.setText(self.current_config.get('display_name') or '')
         display_form.addRow(_("Display Name:"), self.name_edit)
         
-        # Favorite System: ★ Toggle + Score
+        # Favorite System: ★ Toggle + Score (Phase 33: Left Aligned)
         fav_layout = QHBoxLayout()
-        fav_layout.addStretch()
         
         is_fav = self.current_config.get('is_favorite', False)
         self.favorite_btn = QPushButton(_("★Favorite") if is_fav else _("☆Favorite"), self)
@@ -2119,21 +2300,21 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; color: #ccc; border: none; outline: none;
-                text-align: center; padding: 0;
+                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; min-width: 80px;
+                text-align: center;
             }
             QPushButton:hover { background-color: #444; }
-            QPushButton:checked { color: #f1c40f; font-weight: bold; }
+            QPushButton:checked { color: #f1c40f; font-weight: bold; border-color: #f1c40f; }
         """)
         self.favorite_btn.toggled.connect(self._on_favorite_toggled_dialog)
         fav_layout.addWidget(self.favorite_btn)
         
-        fav_layout.addSpacing(20)
+        fav_layout.addSpacing(10)
         score_label = QLabel(_("Score:"))
         fav_layout.addWidget(score_label)
         self.score_dial = CompactDial(self, digits=3, show_arrows=True)
         fav_layout.addWidget(self.score_dial)
-        fav_layout.addStretch()
+        fav_layout.addStretch() # Align Left
         
         display_form.addRow("", fav_layout)
         
@@ -2162,7 +2343,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         self.clear_btn = QPushButton(_("Clear"))
         self.clear_btn.clicked.connect(self._clear_image)
-        self.clear_btn.setStyleSheet("background-color: #8b0000;")
+        self.clear_btn.setStyleSheet("background-color: #8b0000; color: white; border: 1px solid #a00000; border-radius: 4px; padding: 4px 8px;")
         
         image_layout = QHBoxLayout()
         image_layout.addWidget(self.image_edit)
@@ -2412,27 +2593,149 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         adv_group.setStyleSheet("QGroupBox { font-weight: bold; color: #3498db; border: 1px solid #555; margin-top: 10px; padding-top: 10px; }")
         adv_form = QFormLayout(adv_group)
 
-        # Target Override removed in Phase 3.7 to prevent conflict with per-file redirection
+        # Phase 33 & Refinement: Target Override using Dropdown
+        # Phase 33 & Refinement: Target Override using Dropdown
+        # REPLACED QGroupBox with simple horizontal layout (No blue border)
+        target_container = QWidget()
+        target_layout = QHBoxLayout(target_container)
+        target_layout.setContentsMargins(0, 0, 0, 0)
+        target_layout.setSpacing(10)
         
-        # Phase 18.15: Deploy/Conflict Overrides
-        self.deploy_override_combo = QComboBox()
-        self.deploy_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.target_combo = QComboBox()
+        self.target_combo.setMinimumWidth(200)
+        self.target_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        
+        # 1. Inherit (App Default)
+        last_target_key = self.current_app_data.get('last_target', 'target_root')
+        root_map = {'target_root': 0, 'target_root_2': 1, 'target_root_3': 2}
+        default_idx = root_map.get(last_target_key, 0)
+        default_path = self.target_roots[default_idx] if len(self.target_roots) > default_idx else ""
+        
+        # Primary/Secondary/Tertiary Labels for Inheritance
+        def_label = _("Primary") if default_idx == 0 else _("Secondary") if default_idx == 1 else _("Tertiary")
+        self.target_combo.addItem(_("App Default (Inherit: {root})").format(root=def_label), 0)
+        self.target_combo.setItemData(0, default_path, Qt.ItemDataRole.ToolTipRole)
+        
+        # 2. Roots (Primary, Secondary, Tertiary)
+        labels = [_("Primary"), _("Secondary"), _("Tertiary")]
+        for i, root_path in enumerate(self.target_roots):
+            if root_path:
+                self.target_combo.addItem(labels[i], i + 1)
+                self.target_combo.setItemData(self.target_combo.count() - 1, root_path, Qt.ItemDataRole.ToolTipRole)
+                
+        # 3. Custom
+        self.target_combo.addItem(_("Custom..."), 4)
+        target_layout.addWidget(self.target_combo)
+        
+        # Manual Path Editor (Only visible if Custom is selected)
+        self.manual_path_container = QWidget()
+        manual_layout = QHBoxLayout(self.manual_path_container)
+        manual_layout.setContentsMargins(0, 0, 0, 0)
+        self.target_override_edit = QLineEdit()
+        self.target_override_edit.setPlaceholderText(_("Override path..."))
+        self.target_override_edit.setText(self.current_config.get('target_override') or '')
+        self.target_override_btn = QPushButton(_("Browse"))
+        self.target_override_btn.setFixedWidth(60)
+        self.target_override_btn.clicked.connect(self._browse_target_override)
+        manual_layout.addWidget(self.target_override_edit)
+        manual_layout.addWidget(self.target_override_btn)
+        target_layout.addWidget(self.manual_path_container)
+        
+        # Initial Selection Logic
+        curr_override = self.current_config.get('target_override')
+        if not curr_override:
+            self.target_combo.setCurrentIndex(0)
+        else:
+            found = False
+            for i, root_path in enumerate(self.target_roots):
+                if root_path and os.path.normpath(curr_override) == os.path.normpath(root_path):
+                    # Find index in combo with data == i+1
+                    idx = self.target_combo.findData(i + 1)
+                    if idx >= 0:
+                        self.target_combo.setCurrentIndex(idx)
+                        found = True
+                        break
+            if not found:
+                idx = self.target_combo.findData(4)
+                if idx >= 0:
+                    self.target_combo.setCurrentIndex(idx)
+        
+        self.target_combo.currentIndexChanged.connect(self._on_target_choice_changed)
+        self._on_target_choice_changed()
+        
+        adv_form.addRow(_("Target Destination:"), target_container)
+
+        # Phase 2: Deploy/Conflict Overrides (Rule & Mode)
+        self.deploy_rule_override_combo = QComboBox()
+        self.deploy_rule_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         if self.batch_mode:
-            self.deploy_override_combo.addItem(_("--- No Change ---"), "KEEP")
-            
-        self.deploy_override_combo.addItem(_("App Default ({default})").format(default=self.app_deploy_default), None)
-        self.deploy_override_combo.addItem(_("Folder"), "folder")
-        self.deploy_override_combo.addItem(_("Flatten"), "flatten")
-        self.deploy_override_combo.addItem(_("実体コピー"), "copy")  # Phase 30: Copy mode
+            self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
-        curr_deploy = self.current_config.get('deploy_type')
-        idx = self.deploy_override_combo.findData(curr_deploy)
+        # New Rule Options
+        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit)"), "inherit")
+        self.deploy_rule_override_combo.addItem(_("whole folder"), "folder")
+        self.deploy_rule_override_combo.addItem(_("all files (flatten)"), "files")
+        self.deploy_rule_override_combo.addItem(_("tree (relative)"), "tree")
+        self.deploy_rule_override_combo.addItem(_("Custom (Individual Settings)"), "custom")
+        
+        curr_rule = self.current_config.get('deploy_rule')
+        if not curr_rule:
+            # Fallback for old configs
+            old_type = self.current_config.get('deploy_type')
+            if old_type == 'flatten': curr_rule = 'files'
+            elif old_type: curr_rule = old_type
+
+        idx = self.deploy_rule_override_combo.findData(curr_rule)
         if idx >= 0 and not self.batch_mode:
-            self.deploy_override_combo.setCurrentIndex(idx)
+            self.deploy_rule_override_combo.setCurrentIndex(idx)
         elif self.batch_mode:
-            self.deploy_override_combo.setCurrentIndex(0)
+            self.deploy_rule_override_combo.setCurrentIndex(0)
             
-        adv_form.addRow(_("Deploy Type:"), self.deploy_override_combo)
+        adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
+
+        # Skip Levels for TREE mode (Moved below Deploy Rule)
+        self.skip_levels_spin = QSpinBox()
+        self.skip_levels_spin.setRange(0, 5)
+        self.skip_levels_spin.setSuffix(_(" levels"))
+        
+        # Extract skip_levels from rules JSON if exists
+        rules_json = self.current_config.get('deployment_rules', '') or ''
+        try:
+            import json
+            current_rules = json.loads(rules_json) if rules_json else {}
+            # Use rules value, or fallback to app default if it's a new config or specifically requested?
+            # Actually, usually 0 is fine if not set.
+            self.skip_levels_spin.setValue(int(current_rules.get('skip_levels', self.app_skip_levels_default)))
+        except:
+            self.skip_levels_spin.setValue(self.app_skip_levels_default)
+            
+        self.skip_levels_label = QLabel(_("Tree Skip Levels:"))
+        adv_form.addRow(self.skip_levels_label, self.skip_levels_spin)
+        
+        # Visibility Logic
+        self.deploy_rule_override_combo.currentIndexChanged.connect(self._update_tree_skip_visibility)
+        QTimer.singleShot(0, self._update_tree_skip_visibility)
+
+        # Transfer Mode Override
+        self.transfer_mode_override_combo = QComboBox()
+        self.transfer_mode_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        if self.batch_mode:
+            self.transfer_mode_override_combo.addItem(_("--- No Change ---"), "KEEP")
+            
+        app_default_mode = getattr(self, 'app_transfer_mode', 'symlink')
+        self.transfer_mode_override_combo.addItem(_("App Default ({default})").format(default=app_default_mode), None)
+        self.transfer_mode_override_combo.addItem(_("Symbolic Link"), "symlink")
+        self.transfer_mode_override_combo.addItem(_("Physical Copy"), "copy")
+        
+        curr_mode = self.current_config.get('transfer_mode')
+        idx = self.transfer_mode_override_combo.findData(curr_mode)
+        if idx >= 0 and not self.batch_mode:
+            self.transfer_mode_override_combo.setCurrentIndex(idx)
+        elif self.batch_mode:
+            self.transfer_mode_override_combo.setCurrentIndex(0)
+        adv_form.addRow(_("Transfer Mode:"), self.transfer_mode_override_combo)
+
+        # Tree Skip moved above
 
         self.conflict_override_combo = QComboBox()
         self.conflict_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
@@ -2528,7 +2831,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
             adv_form.addRow(_("Libraries:"), lib_row)
         
-        layout.addWidget(adv_group)
+        right_layout.addWidget(adv_group)
+        right_layout.addStretch() # Push Up
+        
+        # Phase 33: Ensure Left Column Stretches appropriately
+        layout.addStretch()
         
         # Update preview if image exists, or try managed thumbnail, or first preview
         if self.current_config.get('image_path'):
@@ -2545,9 +2852,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                     self.image_edit.setText(first_preview[0])
                     self._update_preview(first_preview[0])
             
-        layout.addStretch()
-        
-        # Actions
+        # Actions - Add to Root Layout
         btn_layout = QHBoxLayout()
         self.ok_btn = QPushButton(_("Save (Alt + Enter)"))
         self.ok_btn.setObjectName("save_btn")
@@ -2561,16 +2866,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self) # Support numpad
         self.save_shortcut_win.activated.connect(self.accept)
         
+        # Button Styling & Layout (Unified)
         self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
+        self.ok_btn.setFixedWidth(160)
         
         self.cancel_btn = QPushButton(_("Cancel"))
+        self.cancel_btn.setFixedWidth(160)
         self.cancel_btn.clicked.connect(self.reject)
         
         btn_layout.addStretch()
-        btn_layout.addWidget(self.ok_btn)
         btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.ok_btn)
         
-        layout.addLayout(btn_layout)
+        self.root_layout.addLayout(btn_layout)
     
     def _open_actual_folder(self):
         """Open the folder in Explorer."""
@@ -2592,6 +2900,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         """Called from PreviewTableDialog to set a path as the folder icon."""
         import os
         if path and os.path.exists(path):
+            self.pending_icon_path = path
             self.image_edit.setText(path)
             self._update_preview(path)
 
@@ -2747,9 +3056,40 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.lib_deps = dialog.get_lib_deps_json()
             self._update_lib_display()
 
+    def _update_tree_skip_visibility(self):
+        """Show/Hide Tree Skip Levels based on Deploy Rule."""
+        rule = self.deploy_rule_override_combo.currentData()
+        is_tree = rule == "tree"
+        self.skip_levels_spin.setVisible(is_tree)
+        self.skip_levels_label.setVisible(is_tree)
+        if is_tree:
+            # Load app default every time it becomes visible
+            self.skip_levels_spin.setValue(self.app_skip_levels_default)
+
     def _browse_target_override(self):
-        # Removed in Phase 3.7
-        pass
+        """Browse for a custom target destination path."""
+        from PyQt6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, _("Select Target Destination Override"))
+        if path:
+            self.target_override_edit.setText(os.path.normpath(path))
+
+        if path:
+            self.target_override_edit.setText(os.path.normpath(path))
+
+    def _on_target_choice_changed(self, *args):
+        choice = self.target_combo.currentData()
+        self.manual_path_container.setVisible(choice == 4)
+
+    def _get_selected_target_path(self):
+        choice = self.target_combo.currentData()
+        if choice == 0: # Inherit
+            return None
+        if choice >= 1 and choice <= 3: # Roots
+            idx = choice - 1
+            return self.target_roots[idx] if len(self.target_roots) > idx else None
+        if choice == 4: # Manual
+            return self.target_override_edit.text().strip() or None
+        return None
 
     def _crop_image(self):
         """Open specialized cropper for the current image, thumbnail, or a new one."""
@@ -2833,6 +3173,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
     def _save_pixmap_to_cache(self, pixmap, original_source):
         import hashlib
         import os
+        import time
         
         # Cache directory is now relative to Project Root / resource / app / <app_name>
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -2840,7 +3181,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
         os.makedirs(cache_dir, exist_ok=True)
         
-        hash_name = hashlib.md5(original_source.encode()).hexdigest()[:12]
+        unique_key = f"{original_source}_{time.time()}"
+        hash_name = hashlib.md5(unique_key.encode()).hexdigest()[:12]
         # Use PNG for cropped items to maintain quality/transparency
         cache_path = os.path.join(cache_dir, f"crop_{hash_name}.png")
         pixmap.save(cache_path, "PNG")
@@ -2851,6 +3193,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         from PyQt6.QtCore import Qt
         import os
         import hashlib
+        import time
         
         # Cache directory is now relative to Project Root / resource / app / <app_name>
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -2858,7 +3201,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
         os.makedirs(cache_dir, exist_ok=True)
         
-        hash_name = hashlib.md5(source_path.encode()).hexdigest()[:12]
+        unique_key = f"{source_path}_{time.time()}"
+        hash_name = hashlib.md5(unique_key.encode()).hexdigest()[:12]
         ext = os.path.splitext(source_path)[1]
         cache_path = os.path.join(cache_dir, f"thumb_{hash_name}{ext}")
         
@@ -3009,15 +3353,33 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             'display_style_package': self.style_combo_pkg.currentData(),
             'tags': ", ".join(all_tags) if all_tags else None,
             'is_visible': 0 if self.hide_checkbox.isChecked() else 1,
-            'deploy_type': self.deploy_override_combo.currentData(),
+            'deploy_rule': self.deploy_rule_override_combo.currentData(),
+            'transfer_mode': self.transfer_mode_override_combo.currentData(),
+            'deploy_type': None, # Supplant legacy
             'conflict_policy': self.conflict_override_combo.currentData(),
-            'deployment_rules': self.rules_edit.toPlainText().strip() or None,
             'inherit_tags': 1 if self.inherit_tags_chk.isChecked() else 0,
+            'target_override': self._get_selected_target_path(),
             'conflict_tag': getattr(self, 'conflict_tag_edit', None) and self.conflict_tag_edit.text().strip() or None,
             'conflict_scope': getattr(self, 'conflict_scope_combo', None) and self.conflict_scope_combo.currentData() or 'disabled',
             'lib_deps': self.lib_deps if not self.batch_mode else None,
         }
         
+        # Inject skip_levels into rules JSON
+        skip_val = self.skip_levels_spin.value()
+        rules_str = self.rules_edit.toPlainText().strip()
+        if skip_val > 0 or rules_str:
+            try:
+                import json
+                rules_obj = json.loads(rules_str) if rules_str else {}
+                if skip_val > 0:
+                    rules_obj['skip_levels'] = skip_val
+                elif 'skip_levels' in rules_obj:
+                    del rules_obj['skip_levels']
+                rules_str = json.dumps(rules_obj) if rules_obj else ""
+            except:
+                pass 
+        data['deployment_rules'] = rules_str or None
+
         if self.batch_mode:
             # Only return fields that are NOT the "No Change" marker
             # For combos, KEEP is the marker. For text, empty might be marker.
@@ -3827,19 +4189,29 @@ class IconCropDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        hint_text = _("Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square).")
+        self.hint_label = QLabel(_("Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square)."))
         if self.allow_free:
-            hint_text = _("Drag to move, resize corner for free selection.")
+            self.hint_label.setText(_("Drag to move, resize corner for free selection."))
             
-        hint = QLabel(hint_text)
-        hint.setStyleSheet("color: #888; font-style: italic;")
-        layout.addWidget(hint)
+        self.hint_label.setStyleSheet("color: #888; font-style: italic;")
+        layout.addWidget(self.hint_label)
         
         # Use Custom Label
         self.crop_label = CropLabel(self.display_pixmap, self, allow_free=self.allow_free)
         layout.addWidget(self.crop_label)
         
         btns = QHBoxLayout()
+        
+        # Toggle Mode Button
+        self.mode_btn = QPushButton(_("Mode: Free") if self.allow_free else _("Mode: Square"))
+        self.mode_btn.setCheckable(True)
+        self.mode_btn.setChecked(self.allow_free)
+        self.mode_btn.clicked.connect(self._toggle_mode)
+        self.mode_btn.setStyleSheet("background-color: #34495e; color: white; border: 1px solid #555;")
+        btns.addWidget(self.mode_btn)
+        
+        btns.addStretch()
+        
         btn_ok = QPushButton(_("Crop && Apply"))
         btn_ok.clicked.connect(self.accept)
         btn_ok.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
@@ -3847,10 +4219,28 @@ class IconCropDialog(QDialog):
         btn_cancel = QPushButton(_("Cancel"))
         btn_cancel.clicked.connect(self.reject)
         
-        btns.addStretch()
         btns.addWidget(btn_ok)
         btns.addWidget(btn_cancel)
         layout.addLayout(btns)
+
+    def _toggle_mode(self):
+        self.allow_free = self.mode_btn.isChecked()
+        self.crop_label.allow_free = self.allow_free
+        
+        if self.allow_free:
+            self.mode_btn.setText(_("Mode: Free"))
+            self.hint_label.setText(_("Drag to move, resize corner for free selection."))
+        else:
+            self.mode_btn.setText(_("Mode: Square"))
+            self.hint_label.setText(_("Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square)."))
+            
+            # Forge aspect ratio
+            w, h = self.crop_label.selection_rect.width(), self.crop_label.selection_rect.height()
+            size = min(w, h)
+            self.crop_label.selection_rect.setWidth(size)
+            self.crop_label.selection_rect.setHeight(size)
+            
+        self.crop_label.update()
 
     def get_cropped_pixmap(self):
         # Convert display rect to source rect

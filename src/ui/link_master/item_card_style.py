@@ -1,44 +1,50 @@
 def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict, 
                     has_conflict_children, is_library_alt_version, is_registered,
-                    is_package, is_selected, is_focused, has_name_conflict=False, has_target_conflict=False):
+                    is_package, is_selected, is_focused, has_name_conflict=False, 
+                    has_target_conflict=False, has_linked_children=False, has_unlinked_children=False, has_partial_children=False):
     """Calculate status and background colors for ItemCard."""
     status_color = "#444"
     bg_color = "#333"
     
+    # Priority 1: Conflicts (Red border)
+    # Only physical link conflict, target conflict, or logical conflict trigger red
+    # NOTE: has_name_conflict REMOVED - it was unwanted functionality
     if link_status == 'conflict' or \
          has_logical_conflict or \
-         has_name_conflict or \
          has_target_conflict or \
-         (not is_package and has_conflict_children):
-        status_color = "#e74c3c" # Red
+         (not is_package and has_conflict_children):  # Categories with conflict children
+        status_color = COLOR_RED
         bg_color = "#3d2a2a"
+    # Priority 2: Library Alt Version
     elif is_library_alt_version:
-        status_color = "#9acd32" # Yellow-green
+        status_color = COLOR_LIB_ALT
         bg_color = "#2d3d2a"
+    # Priority 3: Misplaced
     elif is_misplaced:
-        status_color = "#ff69b4" # Pink
+        status_color = COLOR_PINK
         bg_color = "#3d2a35"
+    # Priority 4: Partial Link
     elif is_partial and (link_status == 'linked' or link_status == 'partial'):
-        status_color = "#f1c40f" # Yellow
+        status_color = COLOR_YELLOW
         bg_color = "#3d3d2a"
+    # Priority 5: Linked (for PACKAGES)
     elif link_status == 'linked':
-        status_color = "#27ae60" # Green
+        status_color = COLOR_GREEN
         bg_color = "#2a332a"
+    # Priority 6: Unregistered
     elif not is_registered:
-        status_color = "#9b59b6" # Amethyst Purple
+        status_color = COLOR_PURPLE
         bg_color = "#322a3d"
-    # Note: Linked children (orange) logic was here too, but missed in above priority if not linked
-    # Let's add it back correctly (lower priority than linked/unregistered)
-    # Wait, in original code it was:
-    # elif self.link_status == 'linked': ...
-    # elif self.has_linked_children: ...
-    # So linked children is lower than linked.
+    # Priority 7: Category hierarchical status (ONLY for categories, not packages)
+    elif not is_package:
+        # Categories: Check children status
+        if has_partial_children:
+            status_color = COLOR_YELLOW
+            bg_color = "#3d3d2a"
+        elif has_linked_children:
+            status_color = COLOR_GREEN
+            bg_color = "#2a332a"
     
-    # Re-evaluating orange (linked children)
-    if status_color == "#444": # Not set by higher priority
-        # We need has_linked_children as well
-        pass
-
     return status_color, bg_color
 
 def get_card_stylesheet(status_color, bg_color, radius="8px"):

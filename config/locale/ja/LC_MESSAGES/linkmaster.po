@@ -161,7 +161,7 @@ msgid "Emoji (e.g. ⭐)"
 msgstr "絵文字 (例: ⭐)"
 
 msgid "{mode} Application"
-msgstr "{mode} アプリケーション"
+msgstr "{mode} 設定"
 
 msgid "App Name:"
 msgstr "アプリ名:"
@@ -195,6 +195,9 @@ msgstr "[競合] {name}"
 
 msgid "Target App:"
 msgstr "対象アプリ:"
+
+msgid "Packages"
+msgstr "パッケージ"
 
 msgid "Edit"
 msgstr "編集"
@@ -556,11 +559,11 @@ msgid "Reset This Folder Config"
 msgstr "このフォルダ設定をリセット"
 
 # Tooltips - Main Window
-msgid "Show linked categories/packages"
-msgstr "リンク済みパッケージを表示"
+msgid "Show linked folders"
+msgstr "リンク済みフォルダを表示"
 
-msgid "Show unlinked categories/packages"
-msgstr "未リンクパッケージを表示"
+msgid "Show unlinked folders"
+msgstr "未リンクフォルダを表示"
 
 msgid "Unlink All Active Links"
 msgstr "全アクティブリンクを解除"
@@ -601,15 +604,7 @@ msgstr "特殊機能"
 msgid "Edit Frequent Tags"
 msgstr "よく使うタグを編集"
 
-# Card Settings Panel
-msgid "<b>📓 Card Settings</b>"
-msgstr "<b>📓 カードセッティング</b>"
-
-msgid "Reset"
-msgstr "戻す"
-
-msgid "Lock Display Mode (Persist)"
-msgstr "表示モードを固定（保持）する"
+# Card Settings Panel - (Consolidated at line 1470+)
 
 msgid "👁 <b>Display Settings</b>"
 msgstr "👁 <b>表示設定</b>"
@@ -617,11 +612,8 @@ msgstr "👁 <b>表示設定</b>"
 msgid "  <font color='#888'>Link Button (🌐)</font>"
 msgstr "  <font color='#888'>リンクボタン (🌐)</font>"
 
-msgid "Show in Category"
-msgstr "カテゴリに表示"
-
-msgid "Show in Package"
-msgstr "パッケージに表示"
+msgid "Show in {type}"
+msgstr "{type}に表示"
 
 msgid "  <font color='#888'>Deploy Button (🔵)</font>"
 msgstr "  <font color='#888'>デプロイボタン (🔵)</font>"
@@ -768,8 +760,20 @@ msgstr "📤 エクスポート"
 msgid "📥 Import"
 msgstr "📥 インポート"
 
-msgid "📦 Package Size Management"
-msgstr "📦 パッケージサイズ管理"
+msgid "Application Settings"
+msgstr "アプリケーション設定"
+
+msgid "Edit Settings"
+msgstr "設定を編集"
+
+msgid "Preview: {name}"
+msgstr "プレビュー: {name}"
+
+msgid "Package Count: {count}"
+msgstr "パッケージ数: {count}"
+
+msgid "Category Count: {count}"
+msgstr "カテゴリ数: {count}"
 
 msgid "Recalculate disk usage for all packages. Useful for verifying actual size when managing large mods."
 msgstr "全パッケージのディスク使用量を再計算。大規模MOD管理時のサイズ確認に便利"
@@ -796,8 +800,38 @@ msgid "⚠ Reset All Attributes"
 msgstr "⚠ 全属性をリセット"
 
 # Context Menu - Main Window
-msgid "Folder: {name}"
-msgstr "フォルダ: {name}"
+msgid "Category/Package: {name}"
+msgstr "カテゴリ/パッケージ: {name}"
+
+msgid "👁 Show Category/Package"
+msgstr "👁 カテゴリ/パッケージを表示"
+
+msgid "👻 Hide Category/Package"
+msgstr "👻 カテゴリ/パッケージを非表示"
+
+msgid "🗑 Move Category/Package to Trash"
+msgstr "🗑 カテゴリ/パッケージをゴミ箱に移動"
+
+msgid "Showing hidden Categories/Packages (click to hide)"
+msgstr "非表示のカテゴリ/パッケージを表示中 (クリックで隠す)"
+
+msgid "Show hidden Categories/Packages"
+msgstr "非表示のカテゴリ/パッケージを表示"
+
+msgid "Quick View Manager (Bulk Edit Visible Folders)"
+msgstr "クイックビューマネージャー (表示中のフォルダを一括編集)"
+
+msgid "Show only folders with favorites"
+msgstr "お気に入りフォルダのみ表示"
+
+msgid "Show only linked folders"
+msgstr "リンク済みフォルダのみ表示"
+
+msgid "Show only unlinked folders"
+msgstr "未リンクフォルダのみ表示"
+
+msgid "Show/Hide hidden folders"
+msgstr "隠しフォルダを表示/非表示"
 
 msgid "📦 Restore to Original"
 msgstr "📦 元の場所に復元"
@@ -1912,3 +1946,56 @@ msgstr "👁 表示"
 
 msgid "👁 Hide"
 msgstr "👁 非表示"
+
+# Preview Window Context Menu
+msgid "🎬 Play in dedicated window"
+msgstr "🎬 専用ウィンドウで再生"
+
+msgid "📁 Open folder"
+msgstr "📁 フォルダを開く"
+
+msgid "🚀 Open with external app"
+msgstr "🚀 外部アプリで開く"
+
+msgid "📂 Open in Explorer"
+msgstr "📂 エクスプローラーで開く"
+
+msgid "❌ Remove from list"
+msgstr "❌ リストから削除"
+
+# Library Panel Confirmation
+msgid "Are you sure you want to remove the selected version from the library?"
+msgstr "選択中のバージョンをライブラリから解除しますか？"
+
+# Tools Panel
+msgid "Last check: {time}"
+msgstr "最終チェック: {time}"
+
+# Settings Panel Additions
+msgid "Show in Folder Area"
+msgstr "フォルダエリアに表示"
+
+msgid "Show in Item Area"
+msgstr "アイテムエリアに表示"
+
+# App Deletion
+msgid "Final Confirmation"
+msgstr "最終確認"
+
+msgid "This will permanently delete the database for '{name}'.\nAre you absolutely sure?"
+msgstr "アプリ '{name}' のデータベースを永久に削除します。\n本当によろしいですか？"
+
+msgid "Default Tree Skip:"
+msgstr "デフォルトTree Skip数:"
+
+msgid " levels"
+msgstr " 階層"
+
+msgid "Tree Skip Levels:"
+msgstr "Tree Skip階層数:"
+
+msgid "Target Override:"
+msgstr "ターゲット上書き:"
+
+msgid "Select Target Destination Override"
+msgstr "ターゲット上書き先を選択"

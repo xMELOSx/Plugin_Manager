@@ -15,13 +15,31 @@ def create_item_context_menu(window, rel_path):
     if not os.path.exists(full_src): return None
     
     config = window.db.get_folder_config(rel_path) or {}
-    is_trash_view = "_Trash" in rel_path.replace('\\\\', '/')
+    # Check for both legacy _Trash and new resource/app/{app}/Trash paths
+    path_normalized = rel_path.replace('\\\\', '/')
+    is_trash_view = "_Trash" in path_normalized or "/Trash" in path_normalized
     
     menu = QMenu(window)
     menu.setStyleSheet(window._menu_style())
     
     folder_name = os.path.basename(rel_path) if rel_path else _("Root")
-    menu.addAction(_("Folder: {name}").format(name=folder_name)).setEnabled(False)
+    
+    # Phase 33: Simplified Root Menu
+    if not rel_path:
+        # 1. Deploy All
+        act_dep = menu.addAction(_("🚀 Deploy Links (Deploy All)"))
+        act_dep.triggered.connect(lambda: window._handle_deploy_single(rel_path))
+        
+        menu.addSeparator()
+        
+        # 2. Open in Explorer - use full_src which equals storage_root for root menu
+        storage_path = window.storage_root  # Capture value now, not later
+        act_explore = menu.addAction(_("📁 Open in Explorer"))
+        act_explore.triggered.connect(lambda checked=False, p=storage_path: window._open_path_in_explorer(p))
+        
+        return menu
+
+    menu.addAction(_("Category/Package: {name}").format(name=folder_name)).setEnabled(False)
     menu.addSeparator()
 
     # 1. Deployment Actions (or Restore if in Trash)
@@ -33,9 +51,67 @@ def create_item_context_menu(window, rel_path):
         target_dir = app_data.get(window.current_target_key) if app_data else None
         
         if window.deployer and target_dir:
-            target_link = config.get('target_override') or os.path.join(target_dir, folder_name)
-            status_res = window.deployer.get_link_status(target_link, expected_source=full_src)
+            # Phase 5 & 7: Standardized Rule Resolution
+            deploy_rule = config.get('deploy_rule')
+            if not deploy_rule or deploy_rule in ("default", "inherit"):
+                # Fallback to legacy deploy_type if set
+                legacy_type = config.get('deploy_type')
+                if legacy_type and legacy_type != 'folder':
+                    deploy_rule = legacy_type
+                else:
+                    # Determine App-Default based on current target key
+                    current_target_key = getattr(window, 'current_target_key', 'target_root')
+                    app_rule_key = 'deployment_rule'
+                    if current_target_key == 'target_root_2': app_rule_key = 'deployment_rule_b'
+                    elif current_target_key == 'target_root_3': app_rule_key = 'deployment_rule_c'
+                    
+                    app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
+                    deploy_rule = app_default_rule
+            
+            # Reconstruct Target Path based on Rule
+            target_link = config.get('target_override')
+            if not target_link:
+                if deploy_rule == 'files':
+                    target_link = target_dir
+                elif deploy_rule == 'tree':
+                    import json
+                    skip_val = 0
+                    rules_json = config.get('deployment_rules')
+                    if rules_json:
+                        try:
+                            rules_obj = json.loads(rules_json)
+                            skip_val = int(rules_obj.get('skip_levels', 0))
+                        except: pass
+                    
+                    parts = rel_path.replace('\\', '/').split('/')
+                    if len(parts) > skip_val:
+                        mirrored = "/".join(parts[skip_val:])
+                        target_link = os.path.join(target_dir, mirrored)
+                    else:
+                        target_link = target_dir
+                else:
+                    target_link = os.path.join(target_dir, folder_name)
+
+                    target_link = os.path.join(target_dir, folder_name)
+            
+            # Phase 14 Fix: Resolve transfer_mode for accurate status check
+            tm = config.get('transfer_mode')
+            if not tm or tm == 'KEEP':
+                # Try getting parent mode
+                try:
+                    p_rel = os.path.dirname(rel_path)
+                    if p_rel and p_rel != '.' and p_rel != rel_path:
+                         p_conf = window.db.get_folder_config(p_rel)
+                         if p_conf:
+                             tm = p_conf.get('transfer_mode')
+                except: pass
+            
+            if not tm or tm == 'KEEP':
+                 tm = app_data.get('transfer_mode', 'symlink')
+
+            status_res = window.deployer.get_link_status(target_link, expected_source=full_src, expected_transfer_mode=tm)
             status = status_res.get('status', 'none')
+
             
             # Phase 28: Check Tag Conflict
             tag_conflict = window._check_tag_conflict(rel_path, config, app_data)
@@ -73,10 +149,10 @@ def create_item_context_menu(window, rel_path):
     if not is_trash_view:
         is_hidden = (config.get('is_visible', 1) == 0)
         if is_hidden:
-            act_vis = menu.addAction(_("👁 Show Item"))
+            act_vis = menu.addAction(_("👁 Show Category/Package"))
             act_vis.triggered.connect(lambda: window._update_folder_visibility(rel_path, False))
         else:
-            act_vis = menu.addAction(_("👻 Hide Item"))
+            act_vis = menu.addAction(_("👻 Hide Category/Package"))
             act_vis.triggered.connect(lambda: window._update_folder_visibility(rel_path, True))
 
     menu.addSeparator()
@@ -101,7 +177,7 @@ def create_item_context_menu(window, rel_path):
     # 4. Trash / Restore
     if rel_path:
         if not is_trash_view:
-            act_trash = menu.addAction(_("🗑 Move to Trash"))
+            act_trash = menu.addAction(_("🗑 Move Category/Package to Trash"))
             act_trash.triggered.connect(lambda: window._on_package_move_to_trash(full_src))
             
     return menu

@@ -33,14 +33,32 @@ class LangManager(QObject):
         
         self.logger = logging.getLogger("LangManager")
         
-        # Get paths
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Get paths (Support for PyInstaller sys._MEIPASS)
+        import sys
+        if hasattr(sys, '_MEIPASS'):
+            # Path inside EXE
+            project_root = sys._MEIPASS
+        else:
+            # Development path
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
         self.locale_dir = os.path.join(project_root, "config", "locale")
-        self.config_path = os.path.join(project_root, "config", "window.json")
         
-        # Ensure locale directory exists
+        # config/window.json should always be in the REAL project root (next to EXE or in development dir)
+        # to ensure it's writable and persists changes.
+        if hasattr(sys, '_MEIPASS'):
+             # Real executable location
+             real_root = os.path.dirname(sys.executable)
+             self.config_path = os.path.join(real_root, "config", "window.json")
+        else:
+             self.config_path = os.path.join(project_root, "config", "window.json")
+        
+        # Ensure locale directory exists (only check if not in MEIPASS usually, or just check both)
         if not os.path.exists(self.locale_dir):
-            os.makedirs(self.locale_dir)
+            try:
+                os.makedirs(self.locale_dir, exist_ok=True)
+            except Exception:
+                pass # Read-only inside EXE usually
         
         # Current language
         self._current_lang_code = "ja"  # Default to Japanese
@@ -124,7 +142,7 @@ class LangManager(QObject):
             import subprocess
             result = subprocess.run(
                 ["msgfmt", "-o", mo_path, po_path],
-                capture_output=True, text=True
+                capture_output=True, text=True, encoding='utf-8', errors='replace'
             )
             if result.returncode == 0:
                 self.logger.info(f"Compiled {po_path} -> {mo_path}")
@@ -165,7 +183,7 @@ class LangManager(QObject):
                 
                 if line.startswith('msgid '):
                     # Save previous entry
-                    if current_msgid and current_msgstr:
+                    if current_msgid is not None and current_msgstr is not None:
                         translations[current_msgid] = current_msgstr
                     
                     # Start new msgid
@@ -189,7 +207,7 @@ class LangManager(QObject):
                         
                 elif not line or line.startswith('#'):
                     # Empty line or comment - save entry if complete
-                    if current_msgid and current_msgstr:
+                    if current_msgid is not None and current_msgstr is not None:
                         translations[current_msgid] = current_msgstr
                     current_msgid = None
                     current_msgstr = None
@@ -197,7 +215,7 @@ class LangManager(QObject):
                     in_msgstr = False
             
             # Save last entry
-            if current_msgid and current_msgstr:
+            if current_msgid is not None and current_msgstr is not None:
                 translations[current_msgid] = current_msgstr
             
             self._fallback_translations = translations
@@ -213,18 +231,43 @@ class LangManager(QObject):
         """Load language for given language code."""
         # Try to compile .po to .mo
         self._compile_po_to_mo(lang_code)
-        
         mo_path = os.path.join(self.locale_dir, lang_code, "LC_MESSAGES", "linkmaster.mo")
-        
         if os.path.exists(mo_path):
             try:
-                with open(mo_path, 'rb') as f:
-                    self._translator = gettext.GNUTranslations(f)
+                # Use standard gettext built-in for potentially better system compatibility
+                trans = gettext.translation(
+                    'linkmaster', 
+                    localedir=self.locale_dir, 
+                    languages=[lang_code],
+                    fallback=False
+                )
+                self._translator = trans
                 self._current_lang_code = lang_code
-                self.logger.info(f"Loaded language from .mo: {lang_code}")
+                self.logger.info(f"Loaded language from .mo via gettext.translation: {lang_code}")
                 return True
             except Exception as e:
-                self.logger.warning(f"Failed to load .mo file: {e}")
+                self.logger.debug(f"gettext.translation failed ({lang_code}), trying manual GNUTranslations: {repr(e)}")
+                # Manual fallback for custom directory structures
+                try:
+                    with open(mo_path, 'rb') as f:
+                        self._translator = gettext.GNUTranslations(f)
+                    
+                    # If we got here, check if it actually works
+                    try:
+                        # Test if we can at least get an empty string or metadata
+                        self._translator.gettext("") 
+                    except UnicodeDecodeError:
+                        # If gettext("") fails, it might be due to a weird header
+                        # but common translations might still work. 
+                        # However, it's safer to use the fallback parser.
+                        raise ValueError("MO header decoding failed (UnicodeDecodeError)")
+                        
+                    self._current_lang_code = lang_code
+                    self.logger.info(f"Loaded language from .mo (manual): {lang_code}")
+                    return True
+                except Exception as e2:
+                    self.logger.warning(f"Failed to load .mo file ({lang_code}): {repr(e2)}")
+                    self._translator = None
         
         # Fallback: try to parse .po directly
         po_path = os.path.join(self.locale_dir, lang_code, "LC_MESSAGES", "linkmaster.po")

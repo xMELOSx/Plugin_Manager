@@ -183,3 +183,24 @@ class MenuStyles:
         QMenu::item:disabled { color: #555; }
         QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }
     """
+
+
+class TooltipStyles:
+    """Reusable QToolTip stylesheet templates for consistent tooltips."""
+    
+    # Standard dark tooltip (use with setStyleSheet)
+    DARK = """
+        QToolTip {
+            color: #ffffff;
+            background-color: #2b2b2b;
+            border: 1px solid #76797C;
+            padding: 4px;
+        }
+    """
+    
+    @staticmethod
+    def apply_to_widget(widget):
+        """Apply the dark tooltip style to a widget."""
+        current = widget.styleSheet() or ""
+        if "QToolTip" not in current:
+            widget.setStyleSheet(current + TooltipStyles.DARK)

@@ -38,14 +38,14 @@ class ToolsPanel(QWidget):
         self.title_lbl.hide() # We use header_lbl now
         layout.addWidget(self.title_lbl)
         
-        line = QFrame()
+        line = QFrame(self)
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         line.setStyleSheet("background-color: #444;")
         layout.addWidget(line)
 
         # 1. Manual Rebuild (First)
-        rebuild_group = QWidget()
+        rebuild_group = QWidget(self)
         rebuild_layout = QVBoxLayout(rebuild_group)
         rebuild_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -71,7 +71,7 @@ class ToolsPanel(QWidget):
         layout.addWidget(rebuild_group)
 
         # 2. UI Optimization (Second)
-        pool_group = QWidget()
+        pool_group = QWidget(self)
         pool_layout = QVBoxLayout(pool_group)
         pool_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -106,7 +106,7 @@ class ToolsPanel(QWidget):
         layout.addWidget(pool_group)
         
         # 3. Portability (Import/Export) - Third
-        port_group = QWidget()
+        port_group = QWidget(self)
         port_layout = QVBoxLayout(port_group)
         port_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -140,13 +140,13 @@ class ToolsPanel(QWidget):
         layout.addWidget(port_group)
         
         # 3.5 Bulk Size Check (New Phase 30)
-        line2 = QFrame()
+        line2 = QFrame(self)
         line2.setFrameShape(QFrame.Shape.HLine)
         line2.setFrameShadow(QFrame.Shadow.Sunken)
         line2.setStyleSheet("background-color: #444; margin-top: 5px;")
         layout.addWidget(line2)
 
-        size_group = QWidget()
+        size_group = QWidget(self)
         size_layout = QVBoxLayout(size_group)
         size_layout.setContentsMargins(0, 5, 0, 0)
 
@@ -192,7 +192,7 @@ class ToolsPanel(QWidget):
         layout.addWidget(size_group)
 
         # 3.8 UI Display Settings (Phase 2)
-        ui_group = QWidget()
+        ui_group = QWidget(self)
         ui_layout = QVBoxLayout(ui_group)
         ui_layout.setContentsMargins(0, 5, 0, 0)
         
@@ -223,7 +223,7 @@ class ToolsPanel(QWidget):
         layout.addWidget(ui_group)
 
         # 4. Reset All Attributes (Last, with warning styling)
-        reset_group = QWidget()
+        reset_group = QWidget(self)
         reset_layout = QVBoxLayout(reset_group)
         reset_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -286,11 +286,11 @@ class ToolsPanel(QWidget):
 
     def set_last_check_time(self, time_str: str):
         """Update the label showing when the last size check was performed."""
-        self.lbl_last_size_check.setText(f"最終チェック: {time_str}")
+        self.lbl_last_size_check.setText(_("Last check: {time}").format(time=time_str))
 
     def _create_h_line(self):
         """Helper to create a standard horizontal separator."""
-        line = QFrame()
+        line = QFrame(self)
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         line.setStyleSheet("background-color: #444; min-height: 1px; max-height: 1px;")

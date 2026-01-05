@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtCore import QThread, QTimer
 
 from src.core.lang_manager import _
+from src.core.link_master.deployer import DeploymentCollisionError
 from .lm_batch_ops_worker import TagConflictWorker
 
 class LMDeploymentOpsMixin:
@@ -205,16 +206,73 @@ class LMDeploymentOpsMixin:
         
         full_src = os.path.join(self.storage_root, rel_path)
         
-        # Force sweep-unlink before deploying (skip cascade prompt for the item being deployed)
-        self._unlink_single(rel_path, update_ui=False, _cascade=False)
+        # Phase 28: Optimization - DO NOT call _unlink_single (sweepy) before every deploy.
+        # The deployer.deploy_with_rules will handle conflict at the SPECIFIC target path.
+        # This prevents "Target not found" warnings on un-related targets like GIMI2 when only GIMI is active.
+        # self._unlink_single(rel_path, update_ui=False, _cascade=False) 
         
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path)
-        target_link = config.get('target_override') or os.path.join(target_root, folder_name)
         
-        rules = config.get('deployment_rules')
-        d_type = config.get('deploy_type') or app_data.get('deployment_type', 'folder')
+        # Phase 5: Resolve Deployment Rule and Transfer Mode
+        deploy_rule = config.get('deploy_rule')
+        
+        # Determine App-Default based on selected target
+        app_rule_key = 'deployment_rule'
+        target_key = getattr(self, 'current_target_key', 'target_root')
+        if target_key == 'target_root_2': app_rule_key = 'deployment_rule_b'
+        elif target_key == 'target_root_3': app_rule_key = 'deployment_rule_c'
+        
+        app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
+        
+        if not deploy_rule or deploy_rule in ("default", "inherit"):
+            # Fallback to legacy deploy_type if set to something other than 'folder'
+            legacy_type = config.get('deploy_type')
+            if legacy_type and legacy_type != 'folder':
+                deploy_rule = legacy_type
+            else:
+                deploy_rule = app_default_rule
+        
+        # Keep internal compatibility: 'flatten' -> 'files'
+        if deploy_rule == 'flatten':
+            deploy_rule = 'files'
+            
+        transfer_mode = config.get('transfer_mode')
+        if not transfer_mode or transfer_mode == "default":
+            transfer_mode = app_data.get('transfer_mode', 'symlink')
+
         c_policy = config.get('conflict_policy') or app_data.get('conflict_policy', 'backup')
+        if c_policy == "default":
+             c_policy = app_data.get('conflict_policy', 'backup')
+
+        # Determine Target Link Path
+        target_link = config.get('target_override')
+        if not target_link:
+            if deploy_rule == 'files':
+                # 'files' (formerly flatten): Deploy contents directly into target_root
+                target_link = target_root
+            elif deploy_rule == 'tree':
+                # Reconstruct hierarchy from storage root (Phase 7 fix)
+                import json
+                rules_json = config.get('deployment_rules')
+                skip_val = 0
+                if rules_json:
+                    try:
+                        rules_obj = json.loads(rules_json)
+                        skip_val = int(rules_obj.get('skip_levels', 0))
+                    except: pass
+                
+                parts = rel_path.replace('\\', '/').split('/')
+                if len(parts) > skip_val:
+                    mirrored = "/".join(parts[skip_val:])
+                    target_link = os.path.join(target_root, mirrored)
+                else:
+                    target_link = target_root
+            else:
+                # 'folder': Create a subfolder with the package name
+                target_link = os.path.join(target_root, folder_name)
+
+        rules = config.get('deployment_rules')
 
         # Library Version Conflict Check
         if config.get('is_library', 0):
@@ -277,10 +335,35 @@ class LMDeploymentOpsMixin:
             else:
                 return False
 
-        success = self.deployer.deploy_with_rules(
-            full_src, target_link, rules, 
-            deploy_type=d_type, conflict_policy=c_policy
-        )
+        try:
+            success = self.deployer.deploy_with_rules(
+                full_src, target_link, rules, 
+                deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
+                conflict_policy=c_policy
+            )
+        except DeploymentCollisionError as e:
+            self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
+            
+            # Show Dialog
+            detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
+            
+            # Limit display to first 10
+            display_limit = 10
+            count = 0
+            for item in e.collisions:
+                if count >= display_limit:
+                    detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
+                    break
+                
+                # item is dict: target, source_existing, source_conflicting
+                tgt = item['target']
+                src_exist = os.path.basename(item['source_existing'])
+                src_new = os.path.basename(item['source_conflicting'])
+                detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
+                count += 1
+                
+            QMessageBox.critical(self.window(), _("Deployment Collision"), detail_txt)
+            return False
         
         if success:
              self.db.update_folder_display_config(rel_path, last_known_status='linked')
@@ -296,6 +379,7 @@ class LMDeploymentOpsMixin:
                 QMessageBox.information(self, _("Conflict Handled"), msg)
 
              if update_ui:
+                # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
                 self._update_card_by_path(full_src)
                 if hasattr(self, '_update_total_link_count'):
                     self._update_total_link_count()
@@ -318,6 +402,10 @@ class LMDeploymentOpsMixin:
         search_roots = []
         if 'target_root' in app_data: search_roots.append(app_data['target_root'])
         if 'target_root_2' in app_data: search_roots.append(app_data['target_root_2'])
+        if 'target_root_3' in app_data: search_roots.append(app_data['target_root_3'])
+        
+        # Phase 7: Filter out None values to prevent TypeError in os.path.isdir
+        search_roots = [r for r in search_roots if r is not None]
         
         config = self.db.get_folder_config(rel_path) or {}
         if config.get('target_override'):
@@ -341,9 +429,80 @@ class LMDeploymentOpsMixin:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
 
-        # Proceed with unlinking current item
-        self.logger.debug(f"Exhaustive sweep unlinking for: {rel_path}")
-        self.deployer.remove_links_pointing_to(search_roots, full_src)
+        # Phase 5: Resolve Deployment Rule and Transfer Mode (Identical logic to _deploy_single)
+        deploy_rule = config.get('deploy_rule')
+        
+        # Determine App-Default based on selected target
+        app_rule_key = 'deployment_rule'
+        target_key = getattr(self, 'current_target_key', 'target_root')
+        if target_key == 'target_root_2': app_rule_key = 'deployment_rule_b'
+        elif target_key == 'target_root_3': app_rule_key = 'deployment_rule_c'
+        
+        app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
+        
+        if not deploy_rule or deploy_rule in ("default", "inherit"):
+            legacy_type = config.get('deploy_type')
+            if legacy_type and legacy_type != 'folder':
+                deploy_rule = legacy_type
+            else:
+                deploy_rule = app_default_rule
+        
+        # Keep internal compatibility: 'flatten' -> 'files'
+        if deploy_rule == 'flatten':
+            deploy_rule = 'files'
+            
+        transfer_mode = config.get('transfer_mode')
+        if not transfer_mode or transfer_mode == "default":
+            transfer_mode = app_data.get('transfer_mode', 'symlink')
+
+        # Proceed with unlinking
+        self.logger.debug(f"Exhaustive sweep unlinking for: {rel_path} (Rule: {deploy_rule}, Mode: {transfer_mode})")
+        
+        for search_root in search_roots:
+            if not search_root or not os.path.exists(search_root):
+                continue
+
+            # Determine Target Link Path (Replicated from deployer logic)
+            target_link = config.get('target_override')
+            if not target_link:
+                if deploy_rule == 'files':
+                    target_link = search_root
+                elif deploy_rule == 'tree':
+                     # Tree mode logic
+                     import json
+                     skip_val = 0
+                     rules_json = config.get('deployment_rules')
+                     if rules_json:
+                         try:
+                             rules_obj = json.loads(rules_json)
+                             skip_val = int(rules_obj.get('skip_levels', 0))
+                         except: pass
+                     
+                     parts = rel_path.replace('\\', '/').split('/')
+                     if len(parts) > skip_val:
+                         mirrored = "/".join(parts[skip_val:])
+                         target_link = os.path.join(search_root, mirrored)
+                     else:
+                         target_link = search_root
+                else:
+                    folder_name = os.path.basename(rel_path)
+                    target_link = os.path.join(search_root, folder_name)
+            
+            # Use unified undeploy with transfer_mode
+            # For Tree+Copy mode, we need file-by-file deletion to avoid deleting unrelated content
+            if deploy_rule == 'tree' and transfer_mode == 'copy':
+                 # Safe Tree Undeploy: delete source-matched files only, then prune empty dirs
+                 deleted_count = self._safe_tree_undeploy(full_src, target_link)
+                 if deleted_count > 0:
+                      self.logger.info(f"Tree undeploy: removed {deleted_count} items from {target_link}")
+            else:
+                 if self.deployer.undeploy(target_link, transfer_mode=transfer_mode, source_path_hint=full_src):
+                      self.logger.info(f"Unlinked/Undeployed: {target_link}")
+
+        # Phase 28: Optimization - Stop exhaustive sweeping of all targets on every deploy/unlink.
+        # This was causing "Target not found" warnings and massive filesystem overhead.
+        # self.deployer.remove_links_pointing_to(search_roots, full_src) 
+        self.logger.debug(f"Unlink complete for: {rel_path} (targeted roots only)")
         self.db.update_folder_display_config(rel_path, last_known_status='unlinked')
 
         if update_ui:
@@ -356,6 +515,36 @@ class LMDeploymentOpsMixin:
             
             self._refresh_tag_visuals()
         
+        # Phase 7: Pruning - Remove newly empty parent directories up to target roots
+        for search_root in search_roots:
+            if not search_root or not os.path.exists(search_root): continue
+            
+            # Determine the path that was targeted for this mod in this root
+            # We don't know the EXACT rule used during deploy, so we try parent of the likely targets
+            likely_targets = [
+                os.path.join(search_root, os.path.basename(rel_path)), # folder mode
+                # For tree/custom, it depends on rel_path. We can try to reconstruct it or just use the exhaustive list.
+                # Actually, the deployer.remove_links_pointing_to already cleans up empty dirs it finds.
+                # But we want to be more proactive for "tree" modes where intermediate folders were created.
+            ]
+            
+            # If we know it's tree/custom, we can be more specific. 
+            # For now, let's just use the rel_path mapped to search_root as a candidate for clearing.
+            candidate = os.path.join(search_root, rel_path.replace('\\', '/'))
+            curr = os.path.dirname(candidate)
+            
+            while curr and len(curr) > len(search_root):
+                if os.path.exists(curr) and os.path.isdir(curr):
+                    try:
+                        if not os.listdir(curr):
+                            self.logger.info(f"[Pruning] Removing empty directory: {curr}")
+                            os.rmdir(curr)
+                            curr = os.path.dirname(curr)
+                        else:
+                            break
+                    except: break
+                else: break
+
         return True
 
     def _find_packages_depending_on_library(self, lib_name: str) -> list:
@@ -384,6 +573,73 @@ class LMDeploymentOpsMixin:
                     break 
         
         return dependent_packages
+
+    def _safe_tree_undeploy(self, source_path: str, target_root: str) -> int:
+        """
+        Safely undeploy Tree mode copies by deleting only source-matched files,
+        then pruning only empty directories.
+        
+        Args:
+            source_path: The source folder that was deployed.
+            target_root: The target folder where files were copied to.
+        
+        Returns:
+            Number of items deleted.
+        """
+        import shutil
+        
+        if not os.path.isdir(source_path):
+             self.logger.warning(f"Source path is not a directory: {source_path}")
+             return 0
+        
+        deleted_count = 0
+        deleted_dirs = []  # Track directories to prune later
+        
+        # Phase 1: Delete files that match source structure
+        for root, dirs, files in os.walk(source_path, topdown=False):
+            # Calculate relative path from source_path
+            rel_root = os.path.relpath(root, source_path)
+            if rel_root == '.':
+                 target_dir = target_root
+            else:
+                 target_dir = os.path.join(target_root, rel_root)
+            
+            # Delete files
+            for f in files:
+                target_file = os.path.join(target_dir, f)
+                if os.path.exists(target_file) and not os.path.islink(target_file):
+                    try:
+                        os.remove(target_file)
+                        deleted_count += 1
+                        self.logger.debug(f"Deleted file: {target_file}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to delete file {target_file}: {e}")
+            
+            # Mark directories for potential pruning (handle later)
+            for d in dirs:
+                target_subdir = os.path.join(target_dir, d)
+                if os.path.isdir(target_subdir) and not os.path.islink(target_subdir):
+                    deleted_dirs.append(target_subdir)
+        
+        # Add the root target itself for pruning check
+        deleted_dirs.append(target_root)
+        
+        # Phase 2: Prune ONLY empty directories (deepest first via sorting by length)
+        # Sort by path length descending to process deepest dirs first
+        deleted_dirs.sort(key=lambda x: len(x), reverse=True)
+        
+        for d in deleted_dirs:
+            if os.path.isdir(d):
+                try:
+                    # Only remove if EMPTY
+                    if not os.listdir(d):
+                        os.rmdir(d)
+                        deleted_count += 1
+                        self.logger.debug(f"Pruned empty dir: {d}")
+                except Exception as e:
+                    self.logger.debug(f"Could not prune dir {d}: {e}")
+        
+        return deleted_count
 
     def _deploy_items(self, rel_paths, skip_refresh=False):
         """Deploy multiple items. Wrapper around _deploy_single."""
@@ -466,7 +722,9 @@ class LMDeploymentOpsMixin:
         """Callback from background worker. Updates visible cards on Main Thread."""
         if not result: return
         
-        cached_configs = {k.replace('\\', '/'): v for k, v in result['all_configs'].items()} 
+        # Phase 28/31 Optim: Use pre-calculated abs_config_map for O(1) matching
+        # Avoids calling os.path.relpath(card.path) which is very slow on UI thread.
+        abs_config_map = result.get('abs_config_map', {})
         
         change_count = 0
         card_count = 0
@@ -478,37 +736,30 @@ class LMDeploymentOpsMixin:
                 card_count += 1
                 card_changed = False
                 
-                try:
-                    rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
-                except: rel = ""
+                # Use norm_path (cached in ItemCard) or path
+                path_key = getattr(card, 'norm_path', (card.path or "").replace('\\', '/'))
+                cfg = abs_config_map.get(path_key, {})
                 
-                cfg = cached_configs.get(rel, {})
-                
-                is_alt = cfg.get('is_library_alt_version', False)
-                if getattr(card, 'is_library_alt_version', False) != is_alt:
-                    card.is_library_alt_version = is_alt
-                    card_changed = True
+                if cfg:
+                    is_alt = cfg.get('is_library_alt_version', False)
+                    if getattr(card, 'is_library_alt_version', False) != is_alt:
+                        card.is_library_alt_version = is_alt
+                        card_changed = True
 
-                has_logical = cfg.get('has_logical_conflict', False)
-                if getattr(card, 'has_logical_conflict', False) != has_logical:
-                    card.has_logical_conflict = has_logical
-                    card_changed = True
+                    has_logical = cfg.get('has_logical_conflict', False)
+                    if getattr(card, 'has_logical_conflict', False) != has_logical:
+                        card.has_logical_conflict = has_logical
+                        card_changed = True
 
-                if card_changed:
-                    change_count += 1
-                    card._update_style()
+                    if card_changed:
+                        change_count += 1
+                        card._update_style()
         
-        bulk_updates = {}
-        for rel_p, cfg in cached_configs.items():
-            is_alt = cfg.get('is_library_alt_version', False)
-            has_logical = cfg.get('has_logical_conflict', False)
-            bulk_updates[rel_p] = {
-                'has_logical_conflict': 1 if has_logical else 0,
-                'is_library_alt_version': 1 if is_alt else 0
-            }
+        # Note: Bulk DB update now handled INSIDE the background worker thread.
+        # self.db.update_visual_flags_bulk(bulk_updates) # Removed
         
-        self.db.update_visual_flags_bulk(bulk_updates)
-        self._refresh_category_cards_cached(cached_configs)
+        # Still need to update category summary UI (green frames)
+        self._refresh_category_cards_cached(result.get('all_configs', {}))
         
         if hasattr(self, 'library_panel') and self.library_panel:
              self.library_panel.refresh()
@@ -529,8 +780,8 @@ class LMDeploymentOpsMixin:
             if item and item.widget():
                 card = item.widget()
                 if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
-                    has_linked, has_conflict = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict)
+                    has_linked, has_conflict, has_partial = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial)
 
     def _on_card_deployment_requested(self, path):
         """Phase 30: Handle direct deployment toggle from card overlay button."""

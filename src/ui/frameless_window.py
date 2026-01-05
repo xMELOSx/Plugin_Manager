@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
 from PyQt6.QtCore import Qt, QPoint, QSize, QEvent, QTimer
-from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter
+from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter, QBrush
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import Win32Mixin, DraggableMixin, ResizableMixin
 import os
@@ -26,14 +26,13 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         # 0. Preparation for "No White Flash"
         self.setWindowOpacity(0.0) # Hide immediately
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        # self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent) # Remove: may cause alpha accumulation on some systems
+        
         
         # 1. Base UI Props
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # Enable transparency - this is the ONLY attribute we need for semi-transparent background
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        # Take full responsibility for background drawing
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         
         # 2. Force DWM Dark mode (for window border color)
         force_dark_mode(self)
@@ -53,22 +52,32 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
 
     def _init_frameless_ui(self):
+        # Ensure the Window itself is transparent so only our painted background/container is seen
+        self.setStyleSheet("background: transparent;")
+        
         # Main container - uses parent's paintEvent for background
-        self.container = QWidget()
+        self.container = QWidget(self)
         self.container.setObjectName("FramelessContainer")
         self.container.setMouseTracking(True)
         self.container.installEventFilter(self)
         self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         self._update_stylesheet()
-        self.setCentralWidget(self.container)
+        self.setCentralWidget(self.container) # Assuming set_content_widget is a typo and it should be setCentralWidget
+        
+        # Debug window should be opaque for better readability
+        # Now that FramelessDialog (via LinkMasterDebugWindow inheritance) has paintEvent, this will work.
+        # But wait, LinkMasterDebugWindow inherits FramelessWindow, which ALREADY has paintEvent!
+        # The user's issue with DebugWindow "half transparency" was due to default 0.9 opacity.
+        self.set_background_opacity(0.95)
+
         
         self.main_layout = QVBoxLayout(self.container)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
         # Title Bar
-        self.title_bar = QWidget()
+        self.title_bar = QWidget(self.container)
         self.title_bar.setObjectName("TitleBar")
         self.title_bar.setStyleSheet("background-color: transparent;")
         self.title_bar.setFixedHeight(40)
@@ -80,7 +89,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.title_bar_layout.setSpacing(2)
 
         # Icon Label
-        self.icon_label = QLabel()
+        self.icon_label = QLabel(self.title_bar)
         self.icon_label.setObjectName("titlebar_icon")
         self.icon_label.setFixedSize(24, 24)
         self.icon_label.setVisible(False)
@@ -88,7 +97,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         
         # Title Label
         from src.core.version import VERSION_STRING
-        self.title_label = QLabel(VERSION_STRING)
+        self.title_label = QLabel(VERSION_STRING, self.title_bar)
         self.title_label.setObjectName("titlebar_title")
         self.title_label.setStyleSheet("padding-left: 5px;")
         self.title_bar_layout.addWidget(self.title_label)
@@ -96,7 +105,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.title_bar_layout.addStretch()
         
         # Center Container for Executable Links (Phase 28)
-        self.title_bar_center = QWidget()
+        self.title_bar_center = QWidget(self.title_bar)
         self.title_bar_center_layout = QHBoxLayout(self.title_bar_center)
         self.title_bar_center_layout.setContentsMargins(0, 0, 0, 0)
         self.title_bar_center_layout.setSpacing(5)
@@ -118,7 +127,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.main_layout.addWidget(self.title_bar)
         
         # Content Area
-        self.content_area = QWidget()
+        self.content_area = QWidget(self.container)
         self.main_layout.addWidget(self.content_area)
         self.content_area.setMouseTracking(True)
         # self.content_area.installEventFilter(self) # Redundant
@@ -134,12 +143,22 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
     def set_background_opacity(self, opacity: float):
         """Sets the background opacity (0.0 to 1.0) separate from content."""
         self._bg_opacity = max(0.0, min(1.0, opacity))
-        self._update_stylesheet()
+        # Background is handled by paintEvent, no need to re-apply global stylesheet
+        self.update()
 
     def set_content_opacity(self, opacity: float):
-        """Sets the text/content opacity (0.0 to 1.0)."""
+        """Sets the text/content opacity (0.0 to 1.0).
+        
+        Optimization: Uses a short timer to debounce stylesheet updates during slider movement.
+        """
         self._content_opacity = max(0.0, min(1.0, opacity))
-        self._update_stylesheet()
+        
+        if not hasattr(self, '_opacity_timer'):
+            self._opacity_timer = QTimer(self)
+            self._opacity_timer.setSingleShot(True)
+            self._opacity_timer.timeout.connect(self._update_stylesheet)
+        
+        self._opacity_timer.start(30) # 30ms debounce
 
     def _update_stylesheet(self):
         radius = f"{self.border_radius}px" if not self.isMaximized() and not self.isFullScreen() else "0px"
@@ -179,11 +198,19 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             
             QScrollArea {{
                 border: 1px solid #555;
-                background-color: transparent; /* Keep transparent to show window blur if needed, but border is key */
+                background-color: transparent;
+            }}
+            /* Make scroll area viewport and contents transparent */
+            QScrollArea > QWidget > QWidget {{
+                background: transparent;
+            }}
+            QAbstractScrollArea::viewport {{
+                background: transparent;
             }}
             
             QTreeView {{
-                background-color: rgba(30, 30, 30, {bg_alpha}); /* Tree can remain semi-transparent or opaque? User said Dropdown specifically. Let's keep tree semi for now, but ensure text is bright. */
+                /* Opaque background - window paintEvent handles transparency */
+                background-color: #1e1e1e;
                 border: 1px solid #444;
                 color: #e0e0e0;
             }}
@@ -233,7 +260,25 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
                 border: 2px solid #3498db;
                 image: url({check_icon_path});
             }}
-            
+
+            /* Fix QSpinBox visibility in dark mode */
+            QSpinBox, QDoubleSpinBox {{
+                color: #e0e0e0;
+                background-color: #252525;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 4px;
+                padding-right: 20px; /* Space for buttons */
+            }}
+            QSpinBox::up-button, QSpinBox::down-button, 
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+                background: #333;
+                border-left: 1px solid #555;
+                width: 16px;
+            }}
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 4px solid #aaa; }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #aaa; }}
+
             QPushButton {{
                 color: {text_color_rgba};
                 background-color: #444;
@@ -248,29 +293,41 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
     def paintEvent(self, event):
         """Paint background directly to prevent OS/Qt state interference."""
         painter = QPainter(self)
-        # CompositionMode_Source: Overwrite pixels completely, ignoring previous state
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Use Source to REPLACE pixels to exact opacity. 
+        # Prevents both accumulation (darker) and flicker (clearing).
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         
-        # Calculate alpha from opacity setting
+        # Calculate color with opacity
         bg_alpha = int(self._bg_opacity * 255)
-        # Dark gray background (#2b2b2b) with user-defined opacity
-        target_color = QColor(43, 43, 43, bg_alpha)
+        # Ensure we clamp alpha
+        bg_alpha = max(0, min(255, bg_alpha))
+        bg_color = QColor(43, 43, 43, bg_alpha)
         
-        # Fill entire window with the target color
-        painter.fillRect(self.rect(), target_color)
+        # DEBUG: Log opacity (Removed)
         
-        # Draw border
-        border_alpha = int(self._bg_opacity * 255)
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        
         radius = self.border_radius if not self.isMaximized() and not self.isFullScreen() else 0
+        
+        if self.isMaximized():
+             painter.drawRect(self.rect())
+        else:
+             painter.drawRoundedRect(self.rect(), radius, radius)
+        
+        # Draw border (SourceOver to blend ON TOP of background)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        border_alpha = int(self._bg_opacity * 255)
         if radius > 0:
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
             from PyQt6.QtGui import QPen
             painter.setPen(QPen(QColor(68, 68, 68, border_alpha), 1))
             painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), radius, radius)
-        
-        # Restore normal mode for child widgets
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            
         painter.end()
+        # Debug: Log paint event occasionally or on specific state
+        # print(f"DEBUG: Painted {self.objectName()} with bg_opacity={self._bg_opacity}, alpha={bg_alpha}")
 
     def _add_default_controls(self):
         self.min_btn = TitleBarButton("_")
@@ -321,6 +378,10 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
 
     def add_title_bar_button(self, btn: TitleBarButton, index: int = 0):
         self.control_layout.insertWidget(index, btn)
+
+    def add_title_bar_widget(self, widget: QWidget, index: int = 0):
+        """Add a custom widget (e.g., QLabel) to the control area of the title bar."""
+        self.control_layout.insertWidget(index, widget)
 
     def set_content_widget(self, widget: QWidget):
         if self.content_area.layout():
@@ -469,6 +530,16 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
              self.icon_label.setVisible(True)
              self.setWindowIcon(icon)
 
+    def center_on_screen(self):
+        """Center the window on its current screen."""
+        screen = self.screen()
+        if not screen: return
+        geo = self.geometry()
+        screen_geo = screen.availableGeometry()
+        x = screen_geo.x() + (screen_geo.width() - geo.width()) // 2
+        y = screen_geo.y() + (screen_geo.height() - geo.height()) // 2
+        self.move(x, y)
+
 class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
     """
     Common base class for all Link Master dialogs.
@@ -480,7 +551,7 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         # 0. Preparation for "No White Flash"
         self.setWindowOpacity(0.0) # Hide immediately
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        # self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent) # Removed to prevent opacity accumulation
         
         # 1. Base UI Props
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -514,13 +585,22 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         self._init_frameless_ui()
         
         # 4. Show with short delay to ensure first paint is done
-        QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
+        self._auto_fade_in = True
+        QTimer.singleShot(30, self._check_auto_fade)
         
+    def _check_auto_fade(self):
+        if self._auto_fade_in:
+            self.setWindowOpacity(1.0)
+            
     def _init_frameless_ui(self):
         # QDialog doesn't have setCentralWidget, so we use a main layout on self.
         
         # Main container
-        self.container = QWidget()
+        self.container = QWidget(self)
+        # self.container.setWindowFlags(Qt.WindowType.Widget) 
+        self.container.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        # Fix: Prevent double-translucency by treating container as opaque
+        self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.container.setObjectName("FramelessContainer")
         self.container.installEventFilter(self)
         
@@ -538,7 +618,7 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         self.main_layout.setSpacing(0)
         
         # 1. Custom Title Bar
-        self.title_bar = QWidget()
+        self.title_bar = QWidget(self.container)
         self.title_bar.setObjectName("TitleBar")
         self.title_bar.setFixedHeight(32)
         self.title_bar.setStyleSheet("background-color: transparent;")
@@ -547,13 +627,13 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         tb_layout.setContentsMargins(10, 0, 5, 0)
         
         # Icon
-        self.icon_label = QLabel()
+        self.icon_label = QLabel(self.title_bar)
         self.icon_label.setFixedSize(24, 24)
         self.icon_label.setVisible(False)
         tb_layout.addWidget(self.icon_label)
         
         # Title
-        self.title_label = QLabel("Dialog")
+        self.title_label = QLabel("Dialog", self.title_bar)
         self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; font-family: 'Segoe UI', sans-serif;")
         tb_layout.addWidget(self.title_label)
         
@@ -579,10 +659,43 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         self.main_layout.addWidget(self.title_bar)
         
         # 2. Content Area
-        self.content_area = QWidget()
+        self.content_area = QWidget(self.container)
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.addWidget(self.content_area)
+
+    def set_background_opacity(self, opacity: float):
+        self._bg_opacity = max(0.0, min(1.0, opacity))
+        self.update()
+
+    def paintEvent(self, event):
+        # Allow Windows to handle transparency properly without artifacts
+        painter = QPainter(self)
+        
+        # 1. Clear existing content first to prevent accumulation
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        
+        # 2. Draw Background once
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        
+        # Calculate color with opacity
+        bg_color = QColor(43, 43, 43)
+        bg_color.setAlphaF(self._bg_opacity)
+        
+        # DEBUG: Log opacity (Removed)
+        
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        rect = self.rect()
+        radius = self.border_radius
+        
+        if self.isMaximized():
+             painter.drawRect(rect)
+        else:
+             painter.drawRoundedRect(rect, radius, radius)
 
     def _update_stylesheet(self):
         # Ensure the Main Window (Dialog) is fully transparent so only our container is seen
@@ -590,7 +703,7 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         
         self.container.setStyleSheet(f"""
             QWidget#FramelessContainer {{
-                background-color: rgba(43, 43, 43, {self._bg_opacity});
+                background-color: transparent; /* Fixed: Prevents double-opacity */
                 border: 1px solid #444;
                 border-radius: {self.border_radius}px;
             }}
@@ -707,3 +820,13 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
             self._update_cursor(edges)
             
         super().mouseReleaseEvent(event)
+
+    def center_on_screen(self):
+        """Center the dialog on its current screen."""
+        screen = self.screen()
+        if not screen: return
+        geo = self.geometry()
+        screen_geo = screen.availableGeometry()
+        x = screen_geo.x() + (screen_geo.width() - geo.width()) // 2
+        y = screen_geo.y() + (screen_geo.height() - geo.height()) // 2
+        self.move(x, y)

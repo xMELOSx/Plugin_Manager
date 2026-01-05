@@ -23,18 +23,22 @@ import os
 import time
 from src.core.lang_manager import _
 from src.ui.link_master.item_card import ItemCard
+import re # Phase 33: Natural Sort
 
 
 class LMScanHandlerMixin:
     """スキャン結果処理とカード生成を担当するMixin。"""
     
-    def _on_scan_results_ready(self, results, original_path, context="view"):
+    def _on_scan_results_ready(self, results, original_path, context="view", app_id=None):
         """Populates the category and package layouts based on scan results and context."""
         import time
         start_t = time.perf_counter()
         
-        # 1. Validate context and prevent race conditions
-        if not self._validate_scan_context(original_path, context):
+        # Reset scan-in-progress flag to allow new scans
+        self._scan_in_progress = False
+        
+        # 1. Validate context and prevent race conditions (Phase 33: includes app_id)
+        if not self._validate_scan_context(original_path, context, app_id):
             return
             
         app_data = self.app_combo.currentData()
@@ -58,8 +62,14 @@ class LMScanHandlerMixin:
         # 6. Finalize UI (Labels, margins, styles)
         self._finalize_scan_ui(counts, context, original_path, start_t)
 
-    def _validate_scan_context(self, original_path, context):
+    def _validate_scan_context(self, original_path, context, app_id=None):
         """Phase 28: Scan version tracking and context validation to prevent stale results."""
+        # Phase 33: App ID Validation to prevent bleed between different apps
+        if app_id and hasattr(self, 'current_app_id'):
+            if str(app_id) != str(self.current_app_id):
+                self.logger.warning(f"[RaceCondition] Rejected stale scan results for App ID: {app_id} (Current: {self.current_app_id})")
+                return False
+
         if not hasattr(self, '_scan_version'):
             self._scan_version = 0
             
@@ -98,15 +108,27 @@ class LMScanHandlerMixin:
             if view_rel == ".": view_rel = ""
         except: view_rel = ""
         
-        view_config = folder_configs.get(view_rel, {})
-        level_default = 'mini_image'
+        # Phase 32 Fix: App Defaults take precedence over Root Config if set in Root
+        # But normally Folder Config overrides App Default.
+        # User requested: Root folder should respect App Settings.
+        # We enforce this by ignoring display keys in view_config for Root ("").
+        view_config = folder_configs.get(view_rel, {}).copy() # Copy to avoid mutating global cache if reused
+        if view_rel == "":
+            view_config.pop('display_style', None)
+            view_config.pop('display_style_package', None)
+        
+        # Defaults from App Data
+        app_cat_style_default = app_data.get('default_category_style', 'image')
+        app_pkg_style_default = app_data.get('default_package_style', 'image')
+        
+        # Mapping for legacy modes
+        mapping = {'image': 'mini_image', 'text': 'text_list'}
         
         # Resolve Category display mode
         if self.cat_display_override is not None:
             view_display_mode = self.cat_display_override
         else:
-            raw_mode = view_config.get('display_style') or level_default
-            mapping = {'image': 'mini_image', 'text': 'text_list'}
+            raw_mode = view_config.get('display_style') or app_cat_style_default
             view_display_mode = mapping.get(raw_mode, raw_mode)
         self.current_view_display_mode = view_display_mode
         
@@ -116,8 +138,7 @@ class LMScanHandlerMixin:
         elif context == "search" and getattr(self, 'current_pkg_display_mode', None):
             pkg_display_mode = self.current_pkg_display_mode
         else:
-            raw_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style', 'mini_image')
-            mapping = {'image': 'mini_image', 'text': 'text_list'}
+            raw_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style') or app_pkg_style_default
             pkg_display_mode = mapping.get(raw_pkg_mode, raw_pkg_mode)
         self.current_pkg_display_mode = pkg_display_mode
         
@@ -129,27 +150,18 @@ class LMScanHandlerMixin:
             'app_name': app_name,
             'app_deploy_default': app_data.get('deployment_type', 'folder'),
             'app_conflict_default': app_data.get('conflict_policy', 'backup'),
-            'app_cat_style_default': app_data.get('default_category_style', 'image'),
-            'app_pkg_style_default': app_data.get('default_package_style', 'image'),
+            'app_cat_style_default': app_cat_style_default,
+            'app_pkg_style_default': app_pkg_style_default,
             'target_root': app_data.get(self.current_target_key)
         }
 
     def _get_sorted_results(self, results, storage_root, folder_configs):
-        """Sort scan results based on Favorite, Score, Sort Order, and Name."""
+        """Sort scan results based on Name (Natural, Ascending)."""
         def sort_key(r):
-            item_abs = r['abs_path']
-            try:
-                rel = os.path.relpath(item_abs, storage_root).replace('\\', '/')
-            except: rel = ""
-            cfg = folder_configs.get(rel, {})
-            is_fav = cfg.get('is_favorite', 0) or r.get('is_favorite', 0)
-            score = cfg.get('score', 0) or r.get('score', 0)
-            return (
-                0 if is_fav else 1,
-                -int(score or 0),
-                cfg.get('sort_order', 0), 
-                r['item']['name'].lower()
-            )
+            import re
+            name_str = r['item']['name'].lower()
+            return [int(c) if c.isdigit() else c for c in re.split('([0-9]+)', name_str)]
+
         results.sort(key=sort_key)
         return results
 
@@ -163,10 +175,36 @@ class LMScanHandlerMixin:
         elif context == "contents":
             self.pkg_result_label.setText("")
             
-        self._update_cat_button_styles(view_config, 'mini_image')
-        self._update_pkg_button_styles(view_config)
+        # Determine defaults for button update (using mapping)
+        mapping = {'image': 'mini_image', 'text': 'text_list'}
+        app_cat_def = app_data.get('default_category_style', 'image')
+        cat_level_def = mapping.get(app_cat_def, app_cat_def)
+        
+        app_pkg_def = app_data.get('default_package_style', 'image')
+        pkg_level_def = mapping.get(app_pkg_def, app_pkg_def)
+        self._update_cat_button_styles(view_config, cat_level_def)
+        self._update_pkg_button_styles(view_config, pkg_level_def)
+        
         self._release_all_active_cards(context)
         
+        # Phase 32: Extra Safety - Ensure layouts are physically empty to prevent alpha stacking
+        # even if some non-pooled widgets were left behind.
+        if context in ["all", "category", "cat", "view"]:
+            if hasattr(self, 'cat_layout'):
+                while self.cat_layout.count():
+                    item = self.cat_layout.takeAt(0)
+                    if item.widget():
+                        item.widget().hide() 
+                        item.widget().setParent(None)
+        
+        if context in ["all", "package", "pkg", "contents"]:
+            if hasattr(self, 'pkg_layout'):
+                while self.pkg_layout.count():
+                    item = self.pkg_layout.takeAt(0)
+                    if item.widget():
+                        item.widget().hide()
+                        item.widget().setParent(None)
+
         if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(False)
         if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(False)
         if hasattr(self, 'pkg_layout') and hasattr(self.pkg_layout, 'setBatchMode'):
@@ -251,11 +289,12 @@ class LMScanHandlerMixin:
             deployment_rules=item_config.get('deployment_rules'),
             manual_preview_path=item_config.get('manual_preview_path'),
             is_hidden=(item_config.get('is_visible', 1) == 0),
-            deploy_type=item_config.get('deploy_type') or configs['app_deploy_default'],
+            deploy_rule=r.get('deploy_rule') or item_config.get('deploy_rule') or item_config.get('deploy_type') or configs['app_deploy_default'],
             conflict_policy=item_config.get('conflict_policy') or configs['app_conflict_default'],
             storage_root=storage_root,
             db=self.db,
             has_linked=r.get('has_linked', False),
+            has_unlinked=r.get('has_unlinked', False),
             has_favorite=r.get('has_favorite', False),
             has_conflict_children=r.get('has_conflict', False),
             link_status=r.get('link_status', 'none'),
@@ -281,6 +320,7 @@ class LMScanHandlerMixin:
             score=r.get('score', 0),
             url_list=r.get('url_list', '[]'),
             lib_name=item_config.get('lib_name', ''),
+            is_library=r.get('is_library', 0),
             is_library_alt_version=r.get('is_library_alt_version', False),
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
@@ -334,14 +374,22 @@ class LMScanHandlerMixin:
 
         self._apply_card_filters()
         
+        # Note: _refresh_category_cards removed from hot path for performance.
+        # Category status is updated via deploy_changed signal from individual cards.
+        # Phase 7: Schedule delayed refresh to ensure borders (red frames) appear on init
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._refresh_category_cards)
+        
         duration = time.perf_counter() - start_t
         self.logger.info(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
 
     def _update_cat_button_styles(self, view_config, level_default):
         """Update category display mode button styles."""
-        self.btn_cat_text.setStyleSheet(self.btn_normal_style)
-        self.btn_cat_image.setStyleSheet(self.btn_normal_style)
-        self.btn_cat_both.setStyleSheet(self.btn_normal_style)
+        for btn in [self.btn_cat_text, self.btn_cat_image, self.btn_cat_both]:
+            if hasattr(btn, '_force_state'):
+                btn._force_state(False)
+            else:
+                btn.setStyleSheet(self.btn_normal_style)
         
         mapping = {'image': 'mini_image', 'text': 'text_list'}
         if self.cat_display_override is not None:
@@ -350,7 +398,11 @@ class LMScanHandlerMixin:
                 'mini_image': self.btn_cat_image,
                 'image_text': self.btn_cat_both
             }.get(self.cat_display_override)
-            if target_btn: target_btn.setStyleSheet(self.btn_selected_style)
+            if target_btn:
+                if hasattr(target_btn, '_force_state'):
+                    target_btn._force_state(True, is_override=True)
+                else:
+                    target_btn.setStyleSheet(self.btn_selected_style)
         else:
             folder_mode = mapping.get(view_config.get('display_style'), view_config.get('display_style') or level_default)
             target_btn = {
@@ -358,13 +410,19 @@ class LMScanHandlerMixin:
                 'mini_image': self.btn_cat_image,
                 'image_text': self.btn_cat_both
             }.get(folder_mode)
-            if target_btn: target_btn.setStyleSheet(self.btn_no_override_style)
+            if target_btn:
+                if hasattr(target_btn, '_force_state'):
+                    target_btn._force_state(True, is_override=False)
+                else:
+                    target_btn.setStyleSheet(self.btn_no_override_style)
 
-    def _update_pkg_button_styles(self, view_config):
+    def _update_pkg_button_styles(self, view_config, level_default='mini_image'):
         """Update package display mode button styles."""
-        self.btn_pkg_text.setStyleSheet(self.btn_normal_style)
-        self.btn_pkg_image.setStyleSheet(self.btn_normal_style)
-        self.btn_pkg_image_text.setStyleSheet(self.btn_normal_style)
+        for btn in [self.btn_pkg_text, self.btn_pkg_image, self.btn_pkg_image_text]:
+            if hasattr(btn, '_force_state'):
+                btn._force_state(False)
+            else:
+                btn.setStyleSheet(self.btn_normal_style)
         
         mapping = {'image': 'mini_image', 'text': 'text_list'}
         if self.pkg_display_override is not None:
@@ -373,16 +431,24 @@ class LMScanHandlerMixin:
                 'mini_image': self.btn_pkg_image,
                 'image_text': self.btn_pkg_image_text
             }.get(self.pkg_display_override)
-            if target_btn: target_btn.setStyleSheet(self.btn_selected_style)
+            if target_btn:
+                if hasattr(target_btn, '_force_state'):
+                    target_btn._force_state(True, is_override=True)
+                else:
+                    target_btn.setStyleSheet(self.btn_selected_style)
         else:
-            folder_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style', 'mini_image')
+            folder_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style') or level_default
             folder_pkg_mode = mapping.get(folder_pkg_mode, folder_pkg_mode)
             target_btn = {
                 'text_list': self.btn_pkg_text,
                 'mini_image': self.btn_pkg_image,
                 'image_text': self.btn_pkg_image_text
             }.get(folder_pkg_mode)
-            if target_btn: target_btn.setStyleSheet(self.btn_no_override_style)
+            if target_btn:
+                if hasattr(target_btn, '_force_state'):
+                    target_btn._force_state(True, is_override=False)
+                else:
+                    target_btn.setStyleSheet(self.btn_no_override_style)
 
     def _on_scan_finished(self):
         """Called when scan is complete."""
@@ -393,91 +459,85 @@ class LMScanHandlerMixin:
 
     def _scan_children_status(self, folder_path: str, target_root: str, cached_configs: dict = None) -> tuple:
         """Helper to scan direct children for status (used by top area).
-        Phase 3.6: Correctly resolve child target paths via DB to avoid false conflict.
+        
+        UNIFIED APPROACH: Uses DB's last_known_status for consistency with initial load.
         Phase 28 Optim: Accepts cached_configs to avoid O(N) DB calls.
         """
         has_linked = False
         has_conflict = False
+        has_partial = False
+        has_unlinked = False # Picked up by Phase 7 loop logic
         
         # Get app data for storage_root
         app_data = self.app_combo.currentData()
         storage_root = app_data.get('storage_root')
-        if not storage_root: return False, False
+        if not storage_root: return False, False, False, False
         
-        # Phase 28: Fetch all configs for Tag Conflict Check
+        # Get folder_path relative to storage_root
+        try:
+            folder_rel = os.path.relpath(folder_path, storage_root).replace('\\', '/')
+            if folder_rel == ".": folder_rel = ""
+        except: 
+            return False, False, False, False
+        
+        # Phase 28: Fetch all configs
         if cached_configs is not None:
             folder_configs = cached_configs
         else:
-             # Fallback for single calls (if any)
-             all_configs_raw = self.db.get_all_folder_configs()
-             folder_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
+            all_configs_raw = self.db.get_all_folder_configs()
+            folder_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
 
-        # Get all configs once to avoid repeated DB hits in loop (though DB might cache)
-        # For simplicity and performance, we'll just query what we need.
-        try:
-            with os.scandir(folder_path) as it:
-                for entry in it:
-                    if entry.name.startswith('.'): continue
-                    
-                    # Resolve relative path for DB lookup
-                    try:
-                        rel = os.path.relpath(entry.path, storage_root).replace('\\', '/')
-                    except: continue
-                    
-                    cfg = self.db.get_folder_config(rel) or {}
-                    # Priority: target_override > default join
-                    t_override = cfg.get('target_override')
-                    target_link = t_override or os.path.join(target_root, entry.name)
-                    
-                    # Check link status with expected source hint
-                    status = self.deployer.get_link_status(target_link, expected_source=entry.path)
-                    
-                    if status['status'] == 'linked':
-                        has_linked = True
-                    elif status['status'] == 'conflict':
-                        has_conflict = True
-                    
-                    # Phase 28: Tag Conflict Detection for Children
-                    # If child is not hard-conflicted, check if it has a Tag Conflict
-                    if not has_conflict: # Optimization: if already red, no need to check tag
-                        tag = cfg.get('conflict_tag')
-                        # Only check unlinked items for passive conflict (Red Line)
-                        # (Linked items are Green)
-                        if tag and status['status'] != 'linked':
-                             tag = tag.strip()
-                             scope = cfg.get('conflict_scope') or 'disabled'
-                             if scope != 'disabled':
-                                 # We need to check against ALL configs.
-                                 # This is potentially heavy inside a loop, but we need it.
-                                 # Optimization: Fetch all configs ONCE outside loop?
-                                 # We can't easily pass it in without changing signature, 
-                                 # but self.db.get_all_folder_configs() is cached in memory? 
-                                 # Actually the DB class does NOT cache it all in memory across calls usually.
-                                 # But for now, let's fetch here or assume caller handles perf?
-                                 # Better: We fetch all_configs at start of method.
-                                 current_category = os.path.dirname(rel).replace('\\', '/')
-                                 
-                                 # Iterate all configs to find a match
-                                 for other_path, other_cfg in folder_configs.items():
-                                     if other_path == rel: continue
-                                     
-                                     ot = other_cfg.get('conflict_tag')
-                                     if not ot or ot.strip() != tag: continue
-                                     
-                                     if scope == 'category':
-                                         oc = os.path.dirname(other_path).replace('\\', '/')
-                                         if oc != current_category: continue
-                                     
-                                     if other_cfg.get('last_known_status') == 'linked' and \
-                                        other_cfg.get('conflict_scope', 'disabled') != 'disabled':
-                                         has_conflict = True
-                                         break
-                        
-                    if has_linked and has_conflict: break
-        except Exception as e:
-            self.logger.warning(f"Status scan failed for {folder_path}: {e}")
+        # Iterate all configs to find children of this folder
+        folder_prefix = folder_rel + "/" if folder_rel else ""
+        
+        for rel_path, cfg in folder_configs.items():
+            # Check if this is a DIRECT child of folder_path
+            if not rel_path.startswith(folder_prefix):
+                continue
             
-        return has_linked, has_conflict
+            # Get the part after the prefix
+            child_part = rel_path[len(folder_prefix):]
+            
+            # Skip if not direct child (has subdirectories)
+            if "/" in child_part:
+                continue
+            
+            # Skip if it's the folder itself
+            if not child_part:
+                continue
+            
+            # Check DB status
+            status = cfg.get('last_known_status', 'none')
+            
+            if status == 'linked':
+                has_linked = True
+                # Check if partial (custom rules)
+                if cfg.get('deploy_type') == 'custom' or cfg.get('deploy_rule') == 'custom':
+                    import json
+                    try:
+                        rules_json = cfg.get('deployment_rules')
+                        if rules_json:
+                            ro = json.loads(rules_json)
+                            if ro.get('exclude') or ro.get('overrides') or ro.get('rename'):
+                                has_partial = True
+                    except: pass
+            elif status == 'conflict':
+                has_conflict = True
+                has_unlinked = True # Conflict is also unlinked in terms of "not successfully linked"
+            else:
+                has_unlinked = True # 'none' or 'misplaced' or partial? No, partial is linked.
+            
+            # Also check has_logical_conflict flag from DB
+            if cfg.get('has_logical_conflict', 0):
+                has_conflict = True
+                has_unlinked = True
+            
+            # Early exit if all found
+            if has_linked and has_conflict and has_partial and has_unlinked:
+                break
+            
+        return has_linked, has_conflict, has_partial, has_unlinked
+
 
     def _refresh_category_cards(self):
         """Refresh children status for all Category cards (updates orange borders)."""
@@ -490,14 +550,15 @@ class LMScanHandlerMixin:
         all_configs_raw = self.db.get_all_folder_configs()
         cached_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
         
-        for i in range(self.cat_layout.count()):
-            item = self.cat_layout.itemAt(i)
-            if item and item.widget():
-                card = item.widget()
-                if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
-                    # Pass cache
-                    has_linked, has_conflict = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict)
+        for layout in [self.cat_layout, self.pkg_layout]:
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if isinstance(card, ItemCard) and card.is_package is False:
+                            # Pass cache
+                            has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                            card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
         
         # Also refresh package card borders (green for linked, red for conflict)
         self._refresh_package_cards()
@@ -636,6 +697,6 @@ class LMScanHandlerMixin:
             self.logger.info("Manual rebuild complete.")
             self._update_total_link_count()
             self._refresh_current_view() # Refresh UI to show new colors
-            
         except Exception as e:
             self.logger.error(f"Manual rebuild failed: {e}")
+

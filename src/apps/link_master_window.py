@@ -9,10 +9,10 @@ import copy
 import time
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
                              QLineEdit, QPushButton, QTreeView, QSplitter, QScrollArea, QMessageBox,
-                             QTabWidget, QInputDialog, QFileDialog, QMenu, QApplication, 
+                             QTabWidget, QInputDialog, QFileDialog, QMenu, QApplication, QDialog,
                              QWidgetAction, QSlider, QFrame, QSpinBox)
-from PyQt6.QtCore import Qt, QDir
-from PyQt6.QtGui import QFileSystemModel
+from PyQt6.QtCore import Qt, QDir, QSize, QEvent
+from PyQt6.QtGui import QFileSystemModel, QPixmap, QIcon, QColor, QImage
 from src.core.lang_manager import _
 
 from src.ui.frameless_window import FramelessWindow
@@ -59,10 +59,16 @@ from src.apps.lm_file_management import LMFileManagementMixin
 from .lm_ui_factory import setup_ui
 from .lm_context_menu_factory import create_item_context_menu
 
+from PyQt6.QtWidgets import QGraphicsOpacityEffect
+from PyQt6.QtCore import QPropertyAnimation, QEasingCurve
+
+from src.ui.toast import Toast
+
 class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPortabilityMixin, LMImportMixin, LMScanHandlerMixin, LMNavigationMixin, LMDisplayMixin, LMCardSettingsMixin, LMDeploymentOpsMixin, LMFileOpsMixin, LMPresetsMixin, LMTrashMixin, LMSearchMixin, LMSelectionMixin, FramelessWindow, OptionsMixin):
     def __init__(self):
         self._init_start_t = time.perf_counter()
         super().__init__()
+        self.setObjectName("LinkMasterWindow")
         self.logger = logging.getLogger("LinkMasterWindow")
         self.logger.info(f"[Profile] super().__init__() took {time.perf_counter()-self._init_start_t:.3f}s")
         t_base = time.perf_counter()
@@ -84,7 +90,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         t_misc = time.perf_counter()
         
         # Initialize Thumbnail Manager (resource/app in Project Root)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Initialize Thumbnail Manager (resource/app in Project Root)
+        import sys
+        if getattr(sys, 'frozen', False):
+            project_root = os.path.dirname(sys.executable)
+        else:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         resource_path = os.path.join(project_root, "resource", "app")
         
         t_thumb = time.perf_counter()
@@ -165,15 +176,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         self._init_ui()
         
-        # Sub Windows with parent=self to stay on top of main window
-        t_opt = time.perf_counter()
-        self.options_window = OptionsWindow(parent_debug_window=self, db=self.db)
-        self.logger.info(f"[Profile] OptionsWindow init took {time.perf_counter()-t_opt:.3f}s")
-        self.options_window.setParent(self, self.options_window.windowFlags())
-        self.options_window.closed.connect(self._on_options_window_closed)
-        # Replace old list-based HelpWindow with dynamic StickyHelp
-        self.help_manager = StickyHelpManager(self)
-        self._register_sticky_help()
+        
+        # Sub Windows - Moved to lazy loading in toggle_options to prevent alpha stacking on startup
+        self.options_window = None
+        self.help_manager = None 
         
         # self.help_window = HelpWindow()
         # self.help_window.setParent(self, self.help_window.windowFlags())
@@ -189,6 +195,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         t_options = time.perf_counter()
         self.load_options("link_master")
+        # Fix double opacity: Reset global window opacity to 1.0
+        # We handle transparency via paintEvent (bg_opacity) and stylesheets (content_opacity)
+        self.setWindowOpacity(1.0)
+        self._load_opacity_settings()  # Load opacity without needing OptionsWindow
+        
+        self.setWindowOpacity(1.0)
+        self._load_opacity_settings()  # Load opacity without needing OptionsWindow
+        
+        # User Instruction: Print transparency values at window creation
+        # print(f"DEBUG: Window Creation - Transparency 1 (windowOpacity): {self.windowOpacity()}")
+        # print(f"DEBUG: Window Creation - Transparency 2 (bg_opacity): {getattr(self, '_bg_opacity', 'N/A')}")
+        
         self.logger.info(f"[Profile] load_options took {time.perf_counter()-t_options:.3f}s")
         
         self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.perf_counter()-self._init_start_t :.3f}s")
@@ -219,9 +237,29 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.nav_history = []
         self.nav_index = -1
         self._is_navigating_history = False
+        
+        # Optimization: QuickView Caching
+        self.quick_view_dialog = None 
+        
+        # Override btn_quick_manage behavior if it exists
+        if hasattr(self, 'btn_quick_manage'):
+            try:
+                self.btn_quick_manage.clicked.disconnect()
+            except: pass
+            self.btn_quick_manage.installEventFilter(self)
 
+    def eventFilter(self, obj, event):
+        """Handle custom events, specifically Right Click on Quick Manage button."""
+        if hasattr(self, 'btn_quick_manage') and obj == self.btn_quick_manage:
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self._open_quick_view_cached()
+                    return True
+                elif event.button() == Qt.MouseButton.RightButton:
+                    self._open_quick_view_delegate()
+                    return True
+        return super().eventFilter(obj, event)
 
-    
     def _save_card_settings(self):
         """Save card settings dictionary to Global DB as JSON.
         
@@ -311,6 +349,30 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             return data
         return None
 
+    def _load_opacity_settings(self):
+        """Load opacity settings directly from window.json without needing OptionsWindow."""
+        try:
+            import json
+            import os
+            from src.core.file_handler import FileHandler
+            
+            project_root = FileHandler().project_root
+            path = os.path.join(project_root, "config", "window.json")
+            if not os.path.exists(path):
+                return
+                
+            content = FileHandler().read_text_file(path)
+            all_config = json.loads(content)
+            settings = all_config.get('options_window', {})
+            
+            if settings:
+                bg_opacity = settings.get('bg_opacity', 90) / 100.0
+                text_opacity = settings.get('text_opacity', 100) / 100.0
+                self.set_background_opacity(bg_opacity)
+                self.set_content_opacity(text_opacity)
+        except Exception as e:
+            self.logger.warning(f"Failed to load opacity settings: {e}")
+
 
     def _load_card_settings(self):
         """Load card settings dictionary from Global DB."""
@@ -395,7 +457,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._save_ui_state()
         
         # 5. Close help (and save help data via help_manager if needed)
-        if hasattr(self, 'help_manager'):
+        if hasattr(self, 'help_manager') and self.help_manager:
             if self.help_manager.is_edit_mode:
                 self.help_manager.save_all()
             self.help_manager.hide_all()
@@ -464,30 +526,38 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             pass
 
     def _init_title_buttons(self):
-        # 1. Option Button
-        self.opt_btn = TitleBarButton("⚙", is_toggle=True)
-        self.opt_btn.setObjectName("titlebar_options_btn")
-        self.opt_btn.clicked.connect(self.toggle_options)
-        self.add_title_bar_button(self.opt_btn, index=0)
+        # 1. Deploy Mode Indicator (Symlink vs Copy)
+        self.mode_indicator = QLabel("●")
+        self.mode_indicator.setObjectName("deploy_mode_indicator")
+        self.mode_indicator.setContentsMargins(0, 0, 8, 0)
+        self.add_title_bar_widget(self.mode_indicator, index=0)
 
-        # 2. Pin Button (Leftmost custom button)
+        # Runs initial baseline test (temp dir)
+        self._update_deploy_mode_indicator(None)
+
+        # 2. Pin Button
         self.pin_btn = TitleBarButton("📌", is_toggle=True)
         self.pin_btn.setObjectName("titlebar_pin_btn")
         self.pin_btn.clicked.connect(self.toggle_pin_click)
-        self.add_title_bar_button(self.pin_btn, index=0)
+        self.add_title_bar_button(self.pin_btn, index=1)
         
-        # 3. Help Button (To the right of pin)
+        # 3. Help Button
         self.help_btn = TitleBarButton("?", is_toggle=True)
         self.help_btn.setObjectName("titlebar_help_btn")
         self.help_btn.clicked.connect(self.toggle_help)
         self.help_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.help_btn.customContextMenuRequested.connect(self._show_help_button_menu)
-        self.add_title_bar_button(self.help_btn, index=1)
+        self.add_title_bar_button(self.help_btn, index=2)
 
-        # 4. Favorite Switcher Area (Next to Title)
+        # 4. Option Button
+        self.opt_btn = TitleBarButton("⚙", is_toggle=True)
+        self.opt_btn.setObjectName("titlebar_options_btn")
+        self.opt_btn.clicked.connect(self.toggle_options)
+        self.add_title_bar_button(self.opt_btn, index=3)
+
+        # 5. Favorite Switcher Area (Next to Title)
         # We insert this after the title label in the title bar layout
         # index 0: icon_label, index 1: title_label, index 2: STRETCH
-        # Let's find index of title_label and insert after it.
         self.fav_switcher_container = QWidget()
         self.fav_switcher_container.setObjectName("fav_switcher_container")
         self.fav_switcher_layout = QHBoxLayout(self.fav_switcher_container)
@@ -500,6 +570,65 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # self.title_bar_layout.addStretch() # index 2
         # We want it between title and stretch.
         self.title_bar_layout.insertWidget(2, self.fav_switcher_container)
+
+    def _update_deploy_mode_indicator(self, target_dir: str = None):
+        """Re-test symlink capability and update UI indicator."""
+        self._symlink_available = self._test_symlink_capability(target_dir)
+        
+        if self._symlink_available:
+            self.mode_indicator.setStyleSheet("color: #27ae60; font-size: 14px;")  # Green
+            self.mode_indicator.setToolTip(_("シンボリックリンクが作成できる状態です"))
+        else:
+            self.mode_indicator.setStyleSheet("color: #888888; font-size: 14px;")  # Gray
+            msg = _("シンボリックリンクが使用できない（またはこのドライブで制限されている）ため、自動でコピーモードになります")
+            self.mode_indicator.setToolTip(msg)
+        
+        # Propagate to deployer
+        if hasattr(self, 'deployer'):
+            self.deployer.allow_symlinks = self._symlink_available
+
+    def _test_symlink_capability(self, target_dir: str = None) -> bool:
+        """
+        Test if the application can create symbolic links.
+        If target_dir is provided, tests inside it to account for filesystem constraints.
+        """
+        import os
+        import tempfile
+        import uuid
+        
+        # Determine where to test
+        base_dir = target_dir if target_dir and os.path.isdir(target_dir) else tempfile.gettempdir()
+        
+        src_path = None
+        link_path = os.path.join(base_dir, f"lm_sym_test_src_{uuid.uuid4()}")
+        link_target = os.path.join(base_dir, f"lm_sym_test_link_{uuid.uuid4()}")
+        
+        try:
+            # Step 1: Create a source file in the base dir
+            with open(link_path, 'w') as f:
+                f.write("test")
+            src_path = link_path
+            
+            try:
+                # Step 2: Try to create a symlink to it
+                os.symlink(src_path, link_target)
+                # Success! Clean up immediately
+                if os.path.exists(link_target):
+                    os.remove(link_target)
+                return True
+            except (OSError, AttributeError):
+                # Failed (e.g., privilege error or filesystem limitation like FAT32/exFAT)
+                return False
+            finally:
+                # Cleanup src
+                if src_path and os.path.exists(src_path):
+                    os.remove(src_path)
+                if os.path.exists(link_target):
+                    try: os.remove(link_target)
+                    except: pass
+        except:
+            # Probably no write permission in the target folder
+            return False
 
 
     def _restore_ui_state(self):
@@ -562,8 +691,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'btn_tools'): self.btn_tools.setToolTip(_("Special Actions"))
         
         # Nav etc
-        if hasattr(self, 'btn_filter_linked'): self.btn_filter_linked.setToolTip(_("Show linked categories/packages"))
-        if hasattr(self, 'btn_filter_unlinked'): self.btn_filter_unlinked.setToolTip(_("Show unlinked categories/packages"))
+        if hasattr(self, 'btn_filter_linked'): self.btn_filter_linked.setToolTip(_("Show linked folders"))
+        if hasattr(self, 'btn_filter_unlinked'): self.btn_filter_unlinked.setToolTip(_("Show unlinked folders"))
         if hasattr(self, 'btn_unlink_all'): self.btn_unlink_all.setToolTip(_("Unlink All"))
         if hasattr(self, 'btn_trash'): self.btn_trash.setToolTip(_("Open Trash"))
         
@@ -608,6 +737,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Update explorer panel if it exists
         if hasattr(self, 'explorer_panel'):
             self.explorer_panel.retranslate_ui()
+            
+        # Reset card settings panel if it exists so it recreates with new language
+        if hasattr(self, '_settings_panel'):
+            self._settings_panel.deleteLater()
+            delattr(self, '_settings_panel')
+            
+        # Phase 32: Force refresh of dynamic counts/labels
+        self._apply_card_filters()
 
     def _on_tag_icon_updated(self, tag_value: str, image_path: str):
         """Persist tag icon change to the database and optionally copy/resize image."""
@@ -724,15 +861,20 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             layout.addLayout(header)
             
             # Phase 25: Lock View Mode Option
-            from PyQt6.QtWidgets import QCheckBox
-            self._lock_check = QCheckBox(_("Lock Display Mode (Persist)"))
-            self._lock_check.setStyleSheet("""
-                QCheckBox { color: #ddd; padding: 5px; font-size: 11px; }
-                QCheckBox:hover { color: #fff; background-color: #3d4a59; border-radius: 4px; }
-            """)
+            from src.ui.slide_button import SlideButton
+            lock_layout = QHBoxLayout()
+            lock_layout.setSpacing(10)
+            
+            self._lock_check = SlideButton()
             self._lock_check.setChecked(self.display_mode_locked)
-            self._lock_check.toggled.connect(self._on_display_lock_toggled)
-            layout.addWidget(self._lock_check)
+            self._lock_check.clicked.connect(lambda: self._on_display_lock_toggled(self._lock_check.isChecked()))
+            lock_layout.addWidget(self._lock_check)
+            
+            lock_lbl = QLabel(_("Lock Display Mode (Persist)"))
+            lock_lbl.setStyleSheet("color: #ddd; font-size: 11px;")
+            lock_layout.addWidget(lock_lbl)
+            lock_layout.addStretch()
+            layout.addLayout(lock_layout)
 
             # Tab widget for display modes
             self._settings_tabs = QTabWidget()
@@ -775,13 +917,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 
                 # Link Button Overlay Toggle
                 tab_layout.addWidget(QLabel(_("  <font color='#888'>Link Button (🌐)</font>")))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Folder Area"), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Item Area"), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Category")), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Package")), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
                 
                 # Deploy Button Toggle
                 tab_layout.addWidget(QLabel(_("  <font color='#888'>Deploy Button (🔵)</font>")))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Category"), f'cat_{mode_icon}_show_deploy', 'category', mode_icon, 'show_deploy'))
-                tab_layout.addLayout(self._create_mode_check(_("Show in Package"), f'pkg_{mode_icon}_show_deploy', 'package', mode_icon, 'show_deploy'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Category")), f'cat_{mode_icon}_show_deploy', 'category', mode_icon, 'show_deploy'))
+                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Package")), f'pkg_{mode_icon}_show_deploy', 'package', mode_icon, 'show_deploy'))
 
 
                 
@@ -864,24 +1006,43 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     
 
+    def _get_quick_view_data(self):
+        """Prepare items data for QuickView."""
+        from src.ui.link_master.item_card import ItemCard
+        from src.core.lang_manager import _
+        import os
+        import re
+        from PyQt6.QtWidgets import QMessageBox
 
+        # Helper to traverse layout
+        def get_all_widgets(layout):
+            widgets = []
+            if not layout: return widgets
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item.widget():
+                    widgets.append(item.widget())
+                elif item.layout():
+                    widgets.extend(get_all_widgets(item.layout()))
+            return widgets
 
-    
-    def _open_quick_view_manager(self):
-        """Open the Quick View Manager for currently visible category items."""
-        from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
+        # Combine both layouts if visible
+        ui_obj = self # window itself
+        target_layouts = []
+        if hasattr(ui_obj, 'cat_layout'): target_layouts.append(ui_obj.cat_layout)
+        if hasattr(ui_obj, 'pkg_layout'): target_layouts.append(ui_obj.pkg_layout)
         
-        # 1. Collect all items in cat_layout (including hidden/filtered ones)
         items_data = []
-        for i in range(self.cat_layout.count()):
-            w = self.cat_layout.itemAt(i).widget()
-            if w:
-                # Skip items that are in trash
-                if hasattr(w, 'is_trash_view') and w.is_trash_view:
+        
+        for lay in target_layouts:
+            widgets = get_all_widgets(lay)
+            for w in widgets:
+                if not isinstance(w, ItemCard):
+                    continue
+                if not w.isVisible(): # Skip filtered out items
                     continue
                 
                 # Extract current state from card
-                # We need rel_path for DB updates
                 rel_path = None
                 if self.storage_root:
                     try:
@@ -897,23 +1058,82 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 items_data.append({
                     'rel_path': rel_path,
                     'display_name': getattr(w, 'display_name', ''),
-                    'tags': getattr(w, 'tags_raw', ''), # ItemCard should store raw tag string
+                    'tags': getattr(w, 'tags_raw', ''),
                     'image_path': getattr(w, 'image_path_raw', getattr(w, '_current_image_path', '')),
                     'is_favorite': getattr(w, 'is_favorite', False),
                     'score': getattr(w, 'score', 0)
                 })
         
+        # Sort items_data
+        def natural_sort_key(d):
+            path = d.get('rel_path', '').lower()
+            return [int(c) if c.isdigit() else c for c in re.split('([0-9]+)', path)]
+        items_data.sort(key=natural_sort_key)
+        
+        return items_data
+
+    def _open_quick_view_cached(self):
+        """Mode 1: Cached QuickView (Reuse instance)."""
+        from PyQt6.QtWidgets import QMessageBox
+        from src.core.lang_manager import _
+
+        items_data = self._get_quick_view_data()
         if not items_data:
-            from src.core.lang_manager import _
-            QMessageBox.information(self, _("Info"), _("No visible items to manage."))
+            if not hasattr(self, "_toast"):
+                self._toast = Toast(self, "", y_offset=140)
+            self._toast.show_message(_("No visible items to manage."), preset="warning")
             return
-            
-        # Get frequent tags for current app
+
+        # Get frequent tags
         frequent_tags = []
         if hasattr(self, '_load_frequent_tags'):
             frequent_tags = self._load_frequent_tags()
+
+        if self.quick_view_dialog and not self.quick_view_dialog.isHidden():
+            # Already open, just bring to front
+            self.quick_view_dialog.raise_()
+            self.quick_view_dialog.activateWindow()
+            return
             
-        dialog = QuickViewManagerDialog(
+        # Get current context (folder path)
+        current_context = getattr(self, 'current_path', None)
+
+        if self.quick_view_dialog:
+            # Reuse existing: Reload data
+            if hasattr(self.quick_view_dialog, 'reload_data'):
+                self.quick_view_dialog.reload_data(items_data, frequent_tags, context_id=current_context)
+            self.quick_view_dialog.show()
+        else:
+            # Create new
+            self._open_quick_view_manager_internal(items_data, frequent_tags, mode="cached", context_id=current_context)
+
+    def _open_quick_view_delegate(self):
+        """Mode 2: Delegate QuickView (New Class)."""
+        from src.ui.link_master.dialogs.quick_view_delegate import QuickViewDelegateDialog
+        from src.core.lang_manager import _
+        
+        items_data = self._get_quick_view_data()
+        if not items_data:
+            if not hasattr(self, "_toast"):
+                self._toast = Toast(self, "", y_offset=140)
+            self._toast.show_message(_("No visible items to manage."), preset="warning")
+            return
+
+        # Get frequent tags
+        frequent_tags = []
+        if hasattr(self, '_load_frequent_tags'):
+            frequent_tags = self._load_frequent_tags()
+        
+        # Phase 1.1.80: Reuse existing delegate dialog to prevent infinite windows
+        existing = getattr(self, 'quick_view_delegate_dialog', None)
+        if existing and not existing.isHidden():
+            # Bring existing window to front
+            existing.raise_()
+            existing.activateWindow()
+            return
+            
+        # Create new Delegate Dialog
+        dialog = QuickViewDelegateDialog(
             self, 
             items_data=items_data, 
             frequent_tags=frequent_tags,
@@ -921,12 +1141,109 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             storage_root=self.storage_root,
             show_hidden=getattr(self, 'show_hidden', True)
         )
-        if dialog.exec():
-            # If changes were made, refresh the view
-            if dialog.results:
-                # Instead of full scan, we can just update cards if we're brave, 
-                # but a re-scan is safer to ensure all Mixins/Filters pick up changes.
-                self._refresh_current_view(force=True)
+        # Modeless
+        dialog.finished.connect(self._on_quick_view_finished)
+        dialog.show()
+        
+        # Keep reference to prevent GC and enable reuse
+        self.quick_view_delegate_dialog = dialog
+
+    def _open_quick_view_manager(self):
+        """Legacy access (if any) - redirects to cached mode."""
+        self._open_quick_view_cached()
+
+    def _open_quick_view_manager_internal(self, items_data, frequent_tags, mode="cached", context_id=None):
+        """Internal launcher."""
+        from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
+        from PyQt6.QtWidgets import QDialog
+        
+        self.quick_view_dialog = QuickViewManagerDialog(
+            self, 
+            items_data=items_data, 
+            frequent_tags=frequent_tags,
+            db=self.db, 
+            storage_root=self.storage_root,
+            show_hidden=getattr(self, 'show_hidden', True)
+        )
+        # Phase 1.1.25: Initialize context ID for cache handling
+        self.quick_view_dialog._last_context_id = context_id
+        
+        self.quick_view_dialog.finished.connect(self._on_quick_view_finished)
+        self.quick_view_dialog.show()
+
+    def _on_quick_view_finished(self, result_code):
+        """Handle QuickView dialog closure/save."""
+        dialog = self.sender()
+        if not dialog: return
+        
+        # Determine if it's the cached one
+        if hasattr(self, 'quick_view_dialog') and dialog == self.quick_view_dialog:
+            # CACHED MODE: Do NOT clear reference.
+            # Just ensure it's hidden (it typically is by now).
+            # We treat 'finished' as just hiding.
+            pass
+        elif hasattr(self, 'quick_view_delegate_dialog') and dialog == self.quick_view_delegate_dialog:
+             # DELEGATE MODE: Clear reference (fresh every time)
+             self.quick_view_delegate_dialog = None
+        else:
+            # Fallback for unexpected dialogs
+            if self.quick_view_dialog == dialog:
+                self.quick_view_dialog = None
+
+        # Refresh Main Window if changes were made
+        # Check if we need to reload ANY item cards.
+        # QuickView applies changes to DB directly.
+        # We should refresh the view or at least the affected cards.
+        # Ideally, we reload all visible cards to reflect tag changes/Fav changes.
+        if result_code == QDialog.DialogCode.Accepted:
+            # Refresh current view
+            # self._refresh_current_view() # Is this method available?
+            # Or just trigger a rescan/redraw?
+            # For now, let's assume direct object update or DB reload needed.
+            if hasattr(self, '_on_refresh_triggered'):
+                self._on_refresh_triggered()
+        
+        if result_code == QDialog.DialogCode.Accepted and dialog.results:
+            # Phase 1.1.15: Optimized pinpoint update instead of full re-scan
+            # This immediately reflects changes on active cards
+            
+            # Phase 1.1.27: Handle both list (Mode 1) and dict (Mode 2) results
+            results_iter = []
+            if isinstance(dialog.results, list):
+                results_iter = dialog.results
+            elif isinstance(dialog.results, dict):
+                # Convert dict {rel_path: changes} to list of changes with rel_path included
+                for rel_path, changes in dialog.results.items():
+                    if isinstance(changes, dict):
+                        c = changes.copy()
+                        c['rel_path'] = rel_path
+                        results_iter.append(c)
+
+            for changes in results_iter:
+                rel_path = changes.get('rel_path')
+                if not rel_path or not self.storage_root: continue
+                
+                full_path = os.path.join(self.storage_root, rel_path)
+                card = self._get_active_card_by_path(full_path)
+                if card:
+                    # Update the card directly with the new data
+                    card.update_data(**changes)
+                    # Ensure visibility/filters are re-evaluated if tags or name changed
+                    self._apply_card_filters()
+            
+            # Still trigger a background re-scan just to be safe and update other Mixins
+            # but use force=False to avoid UI flicker if nothing else changed
+            self._refresh_current_view(force=False)
+            
+            from src.core.lang_manager import _
+            # Optional: Show small notification or status log
+            self.logger.info(f"QuickView updated {len(dialog.results)} items.")
+            
+            if not hasattr(self, '_toast'):
+                self._toast = Toast(self, "", y_offset=140)  # Below QuickTag bar
+            
+            msg = _("{count}件 変更しました！").format(count=len(dialog.results))
+            self._toast.show_message(msg, preset='success')
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)
@@ -934,7 +1251,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         return act
     
     def _make_slider_action(self, menu, label, min_v, max_v, value, callback):
-        slider = QSlider(Qt.Orientation.Horizontal)
+        from src.ui.custom_slider import CustomSlider
+        slider = CustomSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_v, max_v)
         slider.setValue(value)
         slider.setFixedWidth(110)
@@ -1010,7 +1328,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._update_drawer_geometry()
         if hasattr(self, '_settings_panel') and self._settings_panel.isVisible():
             self._show_settings_menu()  # Re-clamp position
-        if hasattr(self, 'options_window') and self.options_window:
+        if hasattr(self, 'options_window') and self.options_window and not self.options_window.isHidden():
             self.options_window.update_size_from_parent()
 
     def _save_last_state(self):
@@ -1141,7 +1459,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         QTimer.singleShot(100, self._restore_last_state)
 
     def _update_favorite_quick_switcher(self, fav_apps):
-        """Update the quick switch buttons immediately after the title."""
+        """Update the quick switch buttons immediately after the title!"""
         # Clear existing in fav_switcher_layout
         while self.fav_switcher_layout.count() > 0:
             item = self.fav_switcher_layout.takeAt(0)
@@ -1153,29 +1471,48 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         import os
 
         for app in fav_apps:
-            # Use initials or icon
+            app_id = app.get('id')
             app_name = app.get('name', '?')
             initials = app_name[0].upper() if app_name else '?'
+            is_active = (self.current_app_id == app_id)
             
             btn = TitleBarButton(initials, is_toggle=True)
-            btn.setToolTip(f"Switch to: {app_name}")
-            btn.setFixedSize(28, 28) # Slightly smaller for title area
-            btn.setStyleSheet(btn.styleSheet() + "QPushButton { font-size: 13px; }")
+            btn.setToolTip(app_name)
+            btn.setFixedSize(32, 32)
+            btn.setStyleSheet(btn.styleSheet() + f"QPushButton {{ font-size: 13px; border-radius: 16px; border: 1px solid #444; }}")
             
             cover_img = app.get('cover_image')
             if cover_img and os.path.exists(cover_img):
                 pixmap = QPixmap(cover_img)
                 if not pixmap.isNull():
-                    btn.setIcon(QIcon(pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
+                    scaled_pix = pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    btn.setIconSize(QSize(24, 24)) # Ensure icon size is set
+                    if not is_active:
+                        scaled_pix = self._create_grayscale_icon(scaled_pix)
+                    btn.setIcon(QIcon(scaled_pix))
                     btn.setText("")
+                    # If image exists, avoid blue background even if active to make icon prominent
+                    btn.set_colors(active="transparent")
 
             app_id = app.get('id')
             btn.clicked.connect(lambda _, aid=app_id: self._switch_to_app_by_id(aid))
             
-            if self.current_app_id == app_id:
+            if is_active:
                 btn._force_state(True)
 
             self.fav_switcher_layout.addWidget(btn)
+
+    def _create_grayscale_icon(self, pixmap):
+        """Helper to create a desaturated version of an icon."""
+        from PyQt6.QtGui import QImage, QColor, QPixmap
+        img = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        for y in range(img.height()):
+            for x in range(img.width()):
+                c = img.pixelColor(x, y)
+                if c.alpha() > 0:
+                    gray = int(c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114)
+                    img.setPixelColor(x, y, QColor(gray, gray, gray, int(c.alpha() * 0.6)))
+        return QPixmap.fromImage(img)
 
     def _switch_to_app_by_id(self, app_id):
         """Find the app in combo box and switch to it."""
@@ -1196,7 +1533,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.current_app_id = app_data.get('id')
             # Switch to App-Specific Database
             self.db = get_lm_db(app_data['name'])
-            self.options_window.db = self.db # Update sub-window reference
+            if self.options_window:
+                self.options_window.db = self.db # Update sub-window reference
             self.cat_scanner_worker.set_db(self.db)  # Phase 18.13/19.x
             self.pkg_scanner_worker.set_db(self.db)
             
@@ -1211,7 +1549,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._update_notes_path()
             if self.sidebar_tabs.currentIndex() == 1 and self.drawer_widget.isVisible() and self.notes_panel:
                 self.notes_panel.refresh()
-                
+
+            # Sync Target Buttons
+            self.btn_target_a.setChecked(self.current_target_key == "target_root")
+            self.btn_target_b.setChecked(self.current_target_key == "target_root_2")
+            self.btn_target_c.setChecked(self.current_target_key == "target_root_3")
+            
+            # Update target name label
+            target_path = app_data.get(self.current_target_key, "")
+            self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
+            self.target_name_lbl.setToolTip(target_path)
+
             self._refresh_current_view()
             
             # Display cover image next to app name and in header
@@ -1224,10 +1572,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     self.app_combo.setItemIcon(index, icon)
             
             # Enable/Disable Buttons
-            
-            # Enable/Disable Buttons
             self.edit_app_btn.setEnabled(True)
             self.btn_drawer.setEnabled(True)
+
+            # Re-test symlink capability for the new target folder
+            target_dir = app_data.get('target_root')
+            self._update_deploy_mode_indicator(target_dir)
 
             
             root_path = app_data.get('storage_root')
@@ -1391,6 +1741,21 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         except Exception as e:
             self.logger.error(f"Failed to open external note: {e}")
 
+    def _on_request_focus_library(self, lib_name):
+        """Handler for 'Jump to Library' jump from ItemCard.
+        
+        Switches to Library tab and tells the panel to focus the item.
+        """
+        if not lib_name: return
+        
+        # 1. Switch sidebar to Library tab (index 0)
+        # _toggle_sidebar_tab handles opening drawer if closed
+        self._toggle_sidebar_tab(0)
+        
+        # 2. Focus the library
+        if hasattr(self, 'library_panel') and self.library_panel:
+            self.library_panel.focus_library(lib_name)
+
     def _toggle_sidebar_tab(self, index):
         """Toggle the shared sidebar drawer and switch to the specified tab (0=Library, 1=Presets, 2=Notes, 3=Tools)."""
         is_already_open = self.drawer_widget.isVisible()
@@ -1407,7 +1772,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Replace placeholder
             old = self.sidebar_tabs.widget(0)
             self.sidebar_tabs.removeTab(0)
-            self.sidebar_tabs.insertTab(0, self.library_panel, "Libraries")
+            self.sidebar_tabs.insertTab(0, self.library_panel, _("Packages"))
             if old: old.deleteLater()
             
             # Initial state setup for new panel
@@ -1788,20 +2153,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         path_normalized = os.path.normpath(path or '').replace('\\', '/')
         is_same_path = current_normalized == path_normalized
         
+        # Prevent duplicate async scans from rapid clicks (applies to ALL paths, not just same path)
+        # Phase 33 FIX: Do NOT block scan requests. Cancelling previous is better, or just letting it complete and be ignored.
+        # if getattr(self, '_scan_in_progress', False):
+        #    self.logger.info(f"Ignoring scan request for: {path} (scan already in progress)")
+        #    return
+        
+        # Only skip if same path AND not forced - but still update breadcrumbs
         if not force and is_same_path:
             self.logger.info(f"Skipping redundant scan for: {path}")
-            self.current_path = None  
-            if hasattr(self, 'selected_paths'):
-                self.selected_paths.clear()
-            
-            # Clear packages area only
-            # Phase 28: Use pooling instead of destruction
-            self._release_all_active_cards("contents")
-            self.pkg_result_label.setText("")
-            
-            # Update breadcrumbs and card highlights
+            # Just refresh breadcrumbs, don't clear or do a scan
             self._update_breadcrumbs(path)
-            self._refresh_category_cards()
             return
 
         # Normal navigation or forced refresh
@@ -1848,7 +2210,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         storage_root = app_data['storage_root']
         target_root = app_data.get(self.current_target_key)
         
-        self.cat_scanner_worker.set_params(path, target_root, storage_root, context="view")
+        self.cat_scanner_worker.set_params(path, target_root, storage_root, context="view", 
+                                           app_data=app_data, target_key=self.current_target_key, app_id=app_data.get('id'))
+        self._scan_in_progress = True  # Prevent duplicate scans from rapid clicks
         from PyQt6.QtCore import QMetaObject, Qt
         QMetaObject.invokeMethod(self.cat_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
 
@@ -1884,6 +2248,39 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 pass
 
 
+    # --- Target Switching ---
+    
+    def _switch_target(self, target_idx):
+        """Switch current target root (0=A, 1=B, 2=C)."""
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        keys = ["target_root", "target_root_2", "target_root_3"]
+        self.current_target_key = keys[target_idx]
+        
+        # Update Button States
+        self.btn_target_a.setChecked(target_idx == 0)
+        self.btn_target_b.setChecked(target_idx == 1)
+        self.btn_target_c.setChecked(target_idx == 2)
+        
+        # Update target name label
+        target_path = app_data.get(self.current_target_key, "")
+        self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
+        self.target_name_lbl.setToolTip(target_path)
+        
+        # Re-test symlink capability for the new target
+        self._update_deploy_mode_indicator(target_path)
+        
+        # Record last target in DB
+        self.db.update_app(app_data['id'], {'last_target': self.current_target_key})
+        app_data['last_target'] = self.current_target_key # Update cache
+        
+        self.logger.info(f"Switched to Target {chr(65+target_idx)}: {target_path}")
+        
+        # Refresh visuals
+        self._refresh_current_view()
+        self._refresh_tag_visuals()
+
     def _load_package_contents(self, path):
         self.current_path = path
         # Phase 28: Save last state on every category selection for startup restoration
@@ -1901,7 +2298,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         target_root = app_data.get(self.current_target_key)
         
         # Async Scan for packages only
-        self.pkg_scanner_worker.set_params(path, target_root, storage_root, context="contents")
+        self.pkg_scanner_worker.set_params(path, target_root, storage_root, context="contents",
+                                           app_data=app_data, target_key=self.current_target_key)
         from PyQt6.QtCore import QMetaObject, Qt
         QMetaObject.invokeMethod(self.pkg_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
 
@@ -2081,6 +2479,25 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
     def toggle_options(self):
         try:
+            # Lazy Initialization
+            if self.options_window is None:
+                import time
+                t_opt = time.perf_counter()
+                from src.components.sub_windows import OptionsWindow
+                self.options_window = OptionsWindow(self, self.db)
+                self.logger.info(f"[Profile] OptionsWindow (Lazy) init took {time.perf_counter()-t_opt:.3f}s")
+                # Removed setParent to prevent darkening artifacts (Double Transparency)
+                # self.options_window.setParent(self, self.options_window.windowFlags())
+                self.options_window.closed.connect(self._on_options_window_closed)
+                
+                # Ensure it has the correct current DB if it changed since start
+                if hasattr(self, 'db'):
+                    self.options_window.db = self.db
+                
+                # Sync other states if necessary
+                if hasattr(self, '_always_on_top'):
+                    self.options_window.update_state_from_parent(self._always_on_top)
+
             self.logger.info("Toggle Options Clicked")
             is_open = self.opt_btn.toggle()
             if is_open:
@@ -2088,6 +2505,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.options_window.show()
                 self.options_window.activateWindow()
                 self.options_window.raise_()
+                
+                self.options_window.activateWindow()
+                self.options_window.raise_()
+                
                 self.logger.info(f"Options Window Geometry: {self.options_window.geometry()}, Visible: {self.options_window.isVisible()}")
             else:
                 self.options_window.hide()
@@ -2128,7 +2549,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
         # Show Dialog
         d = QDialog(self)
-        d.setWindowTitle(f"Preview: {app_data['name']}")
+        d.setWindowTitle(_("Preview: {name}").format(name=app_data['name']))
         d.setModal(True)
         layout = QVBoxLayout(d)
         
@@ -2186,6 +2607,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     break
 
     def _open_edit_dialog(self):
+        from PyQt6.QtWidgets import QMessageBox
         app_data = self.app_combo.currentData()
         if not app_data: return
         
@@ -2194,22 +2616,57 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         dialog = AppRegistrationDialog(self, app_data=app_data)
         if dialog.exec():
             data = dialog.get_data()
+            
+            # Phase 32: Handle Unregister/Delete Request
+            if data.get('is_unregister'):
+                reply = QMessageBox.warning(self, _("Final Confirmation"),
+                                          _("This will permanently delete the database for '{name}'.\n"
+                                            "Are you absolutely sure?").format(name=app_data['name']),
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.Yes:
+                    # 1. Remove from Registry
+                    self.registry.delete_app(self.current_app_id)
+                    
+                    # 2. Delete app-specific DB directory/file
+                    try:
+                        import os
+                        import shutil
+                        # Logic from database.py: resource/app/<app_name>/dyonis.db
+                        # We are at src/apps/link_master_window.py, need to find project root.
+                        # src/core/file_handler already has some path logic, but let's be robust.
+                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        app_dir = os.path.join(project_root, "resource", "app", app_data['name'])
+                        
+                        if os.path.exists(app_dir):
+                            # Ensure current self.db is closed if it matches (prevent lock)
+                            if hasattr(self, 'db') and self.db and getattr(self.db, 'app_name', None) == app_data['name']:
+                                self.logger.info("Closing current DB before deletion.")
+                                # self.db doesn't have a close(), it uses 'with get_connection()'
+                                # But we should set it to None to avoid further use.
+                                self.db = None
+
+                            shutil.rmtree(app_dir)
+                            self.logger.info(f"Deleted app directory: {app_dir}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to delete app directory: {e}")
+
+                    # 3. Reload Apps and reset
+                    self._load_apps()
+                    self.current_app_id = None
+                    if self.app_combo.count() > 0:
+                        self.app_combo.setCurrentIndex(0)
+                    else:
+                        self._refresh_current_view() # Empty view
+                    return
+                else:
+                    return # Cancelled deletion
+
             if not data['name'] or not data['storage_root']:
                 QMessageBox.warning(self, "Error", "Name and Storage Root are required.")
                 return
             
-            # Update Registry
-            self.registry.update_app(self.current_app_id, data)
-            self._load_apps()
-            
-            # Re-select to trigger refresh
-            for i in range(self.app_combo.count()):
-                item = self.app_combo.itemData(i)
-                if item and item.get('id') == self.current_app_id:
-                    self.app_combo.setCurrentIndex(i)
-                    break
-            
             try:
+                import os  # Ensure os is available in this block
                 # Handle Image Processing (Resize & Save to App Folder)
                 img_path = data.get('cover_image')
                 storage_root = data.get('storage_root')
@@ -2220,14 +2677,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     dest_path = os.path.join(storage_root, "app_icon.png")
                     
                     if os.path.normpath(img_path) != os.path.normpath(dest_path):
-                        from PIL import Image
                         try:
+                            from PIL import Image
                             with Image.open(img_path) as img:
                                 img = img.resize((80, 80), Image.Resampling.LANCZOS)
                                 img.save(dest_path, "PNG")
                             data['cover_image'] = dest_path
                         except ImportError:
-                            # Fallback if PIL not available (though it should be)
+                            # Fallback if PIL not available - just copy the file
                             import shutil
                             shutil.copy2(img_path, dest_path)
                             data['cover_image'] = dest_path
@@ -2237,6 +2694,26 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 
                 # Update DB
                 self.registry.update_app(app_data['id'], data)
+                
+                # Phase 32: Reset Root Folder Config to ensure App Settings take precedence
+                try:
+                    if self.db:
+                        # Clear root display overrides
+                        # We utilize update_folder_config with explicit None/empty to remove overrides if the DB supports it,
+                        # or simply set them to match the new app defaults.
+                        # Best approach: If we could delete keys. But update_folder_config merges.
+                        # Let's check how update_folder_config handles None.
+                        # Assuming basic implementation, we might need to rely on the display logic prioritizing app settings if root config matches default?
+                        # No, user wants FORCE precedence.
+                        # Let's try to clear them by setting them to None explicitly if the DB logic supports unsetting.
+                        # If not, setting them to empty string might work if the getter handles empty string as "not set".
+                        self.db.update_folder_config("", {
+                            'display_style': None,
+                            'display_style_package': None
+                        })
+                        self.logger.info("Cleared root folder display config to enforce App Settings.")
+                except Exception as e:
+                    self.logger.warning(f"Failed to reset root folder config: {e}")
                 
                 # Reload Apps but keep selection
                 current_id = app_data['id']
@@ -2280,6 +2757,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     def _open_path_in_explorer(self, path):
         import subprocess
         import sys
+        import os  # Ensure os is available locally
         if sys.platform == 'win32':
             subprocess.Popen(['explorer', path.replace('/', os.sep)])
 
@@ -2392,6 +2870,40 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
         self._preview_windows.append(preview_win)
         preview_win.show()
+
+    def _get_active_card_by_path(self, abs_path):
+        """Find the active ItemCard widget for the given absolute path."""
+        if not abs_path: return None
+        # Use normalized paths for comparison
+        try:
+            norm_path = os.path.normpath(abs_path).replace('\\', '/').lower()  # Case-insensitive
+        except: return None
+        
+        # Check both layouts
+        layouts = []
+        if hasattr(self, 'cat_layout'): layouts.append(self.cat_layout)
+        if hasattr(self, 'pkg_layout'): layouts.append(self.pkg_layout)
+            
+        from src.ui.link_master.item_card import ItemCard
+        
+        card_count = 0
+        for layout in layouts:
+            if not layout: continue
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if not item: continue
+                widget = item.widget()
+                try:
+                    if isinstance(widget, ItemCard):
+                        card_count += 1
+                        w_path = os.path.normpath(widget.path).replace('\\', '/').lower()  # Case-insensitive
+                        if w_path == norm_path:
+                            return widget
+                except: pass
+        
+        # Debug log if not found
+        print(f"PROFILE: _get_active_card_by_path: NOT FOUND. SearchPath={norm_path}, TotalCards={card_count}")
+        return None
 
     def _on_pinpoint_property_changed(self, update_kwargs):
         """Phase 28: Update a single card immediately when properties change."""
@@ -2532,9 +3044,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             args = exe.get('args', '')
             
             btn = QPushButton(f"▶ {name}")
-            btn.setToolTip(f"Launch: {path}\nArgs: {args}" if args else f"Launch: {path}")
+            # Phase 1.1.105: Create visible tooltip label instead of native tooltip
+            tooltip_text = path.split('\\')[-1] if path else ""  # Just filename
             
-            # Phase 28: Apply custom styling
+            # Phase 28: Apply custom styling with tighter padding
             bg_color = exe.get('btn_color', '#3498db')
             tx_color = exe.get('text_color', '#ffffff')
             
@@ -2549,11 +3062,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     background-color: {bg_color}; 
                     color: {tx_color}; 
                     border: 1px solid rgba(255, 255, 255, 0.1); 
-                    padding: 4px 12px; 
+                    padding: 2px 6px; 
                     border-radius: 4px;
                     font-size: 11px;
                     font-weight: bold;
-                    min-width: 60px;
                 }}
                 QPushButton:hover {{ 
                     background-color: {hover_q}; 
@@ -2561,8 +3073,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 }}
                 QPushButton:pressed {{ 
                     background-color: {press_q}; 
-                    padding-top: 5px;
-                    padding-left: 11px;
+                    padding-top: 3px;
+                    padding-left: 5px;
                 }}
             """)
             
@@ -2581,6 +3093,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 return launch
             
             btn.clicked.connect(make_launcher(path, args))
+            
+            # Phase 1.1.110: Apply TooltipStyles and set native tooltip
+            from src.ui.styles import TooltipStyles
+            btn.setToolTip(f"Launch: {path}\nArgs: {args}" if args else f"Launch: {path}")
+            current_style = btn.styleSheet()
+            btn.setStyleSheet(current_style + TooltipStyles.DARK)
+            
             self.title_bar_center_layout.addWidget(btn)
 
     def _open_executables_editor(self):
@@ -2679,6 +3198,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             return
         
         # Apply to all registered stickies
+        if not self.help_manager:
+            QMessageBox.information(self, "Import", "Help system not initialized. Open Help once before importing.")
+            return
+
         imported_count = 0
         for eid, sticky in self.help_manager.stickies.items():
             if eid in source_notes:
@@ -2694,6 +3217,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def toggle_help(self):
         """Toggle Sticky Help. Alt+Click triggers Edit Mode."""
+        # Lazy Initialization
+        if self.help_manager is None:
+            from src.core.link_master.help_manager import StickyHelpManager
+            self.help_manager = StickyHelpManager(self)
+            self._register_sticky_help()
+
         modifiers = QApplication.keyboardModifiers()
         is_alt = bool(modifiers & Qt.KeyboardModifier.AltModifier)
         

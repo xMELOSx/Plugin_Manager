@@ -7,36 +7,43 @@ import ctypes
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QTreeView, QHeaderView, QMessageBox, QFrame, QLineEdit,
                              QStyledItemDelegate, QCheckBox, QFileDialog, QInputDialog,
-                             QWidget)
-from PyQt6.QtCore import Qt, QDir, pyqtSignal, QSortFilterProxyModel, QByteArray
-from PyQt6.QtGui import QFileSystemModel, QColor, QFont, QPalette
+                             QWidget, QMenu, QApplication)
+from PyQt6.QtCore import Qt, QDir, pyqtSignal, QSortFilterProxyModel, QByteArray, QPoint
+from PyQt6.QtGui import QFileSystemModel, QColor, QFont, QPalette, QAction, QIcon
 
 from src.ui.window_mixins import OptionsMixin
 from src.core.lang_manager import _
 from src.ui.frameless_window import FramelessDialog
+from src.core.link_master.core_paths import get_backup_dir, get_backup_path_for_file
 
 class CheckableFileModel(QFileSystemModel):
-    """ファイルシステムモデルにチェックボックスと色分け機能を追加したもの。"""
-    def __init__(self, folder_path, rules, primary_target="", secondary_target=""):
+    """ファイルシステムモデルにチェックボックス、転送モード切替、ターゲット編集機能を追加したもの。"""
+    def __init__(self, folder_path, storage_root, rules, primary_target="", secondary_target="", tertiary_target="", app_name=""):
         super().__init__()
         self.folder_path = folder_path
+        self.storage_root = storage_root
         self.rules = rules
         self.primary_target = primary_target
         self.secondary_target = secondary_target
+        self.tertiary_target = tertiary_target
+        self.app_name = app_name
 
     def flags(self, index):
         flags = super().flags(index)
-        if index.isValid() and index.column() == 0:
+        if not index.isValid(): return flags
+        if index.column() == 0:
             flags |= Qt.ItemFlag.ItemIsUserCheckable
+        elif index.column() == 3: # Target Column
+            flags |= Qt.ItemFlag.ItemIsEditable
         return flags
 
     def columnCount(self, parent=None):
-        # We show 5 columns: Name, Backup, Target, Size, Modified
-        return 5
+        # Name(0), Backup(1), Mode(2), Target(3), Size(4), Modified(5)
+        return 6
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            headers = [_("名前"), _("バックアップ"), _("ターゲット"), _("サイズ"), _("更新日時")]
+            headers = [_("名前"), _("バックアップ"), _("モード"), _("ターゲット"), _("サイズ"), _("更新日時")]
             if 0 <= section < len(headers):
                 return headers[section]
         return super().headerData(section, orientation, role)
@@ -45,140 +52,181 @@ class CheckableFileModel(QFileSystemModel):
         if not index.isValid(): return None
         
         abs_path = self.filePath(index)
-        rel = ""
+        rel_from_folder = ""
+        rel_from_storage = ""
         try:
-            rel = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
+            rel_from_folder = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
+            rel_from_storage = os.path.relpath(abs_path, self.storage_root).replace('\\', '/')
         except: pass
 
         # 1. チェックボックス (除外設定)
         if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0:
-            if rel == ".": return None
-            return Qt.CheckState.Checked if rel not in self.rules.get("exclude", []) else Qt.CheckState.Unchecked
+            if rel_from_folder == ".": return None
+            return Qt.CheckState.Checked if rel_from_folder not in self.rules.get("exclude", []) else Qt.CheckState.Unchecked
         
         # 2. 背景色 (状態の視覚化)
         if role == Qt.ItemDataRole.BackgroundRole:
-            if rel in self.rules.get("exclude", []):
-                return QColor("#5d2a2a") # Dark Red (Excluded)
-            if rel in self.rules.get("overrides", {}):
-                return QColor("#2a3b5d") # Dark Blue (Redirected)
+            if rel_from_folder in self.rules.get("exclude", []):
+                return QColor("#5d2a2a") # Dark Red (Disabled/Excluded) - Reverted from Gray
 
-        # 3. フォント (視認性向上)
+            
+            # Check for override
+            if rel_from_folder in self.rules.get("overrides", {}):
+                # Only show blue if it's NOT pointing to primary target (default)
+                target = self.rules["overrides"][rel_from_folder]
+                is_default_loc = False
+                if self.primary_target and target:
+                     expected_default = os.path.join(self.primary_target, rel_from_folder).replace('\\', '/')
+                     if target == expected_default:
+                         is_default_loc = True
+                
+                if not is_default_loc:
+                    return QColor("#2a3b5d") # Dark Blue (Redirected - Non Default)
+
+
+        # 3. フォント
         if role == Qt.ItemDataRole.FontRole:
             font = QFont()
             font.setPointSize(10)
-            if index.column() == 0:
-                font.setBold(True)
+            if index.column() == 0: font.setBold(True)
             return font
             
-        # 4. Column Remapping
-        if role == Qt.ItemDataRole.DisplayRole:
-            if index.column() == 1: # Backup Status
-                # Phase 28: Detect backup on disk and show actual timestamp
-                backup_path = os.path.join(self.folder_path, "_Backup", rel)
-                if os.path.exists(backup_path) and not os.path.isdir(backup_path):
-                    import datetime
-                    mtime = os.path.getmtime(backup_path)
-                    backup_time = datetime.datetime.fromtimestamp(mtime).strftime("%Y/%m/%d %H:%M:%S")
-                    return f"[{backup_time}]"
+        # 4. 内容の出し分け
+        if role in [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]:
+            if index.column() == 1: # Backup
+                b_path = get_backup_path_for_file(self.app_name, rel_from_storage) if self.app_name else ""
+                if b_path and os.path.exists(b_path) and not os.path.isdir(b_path):
+                    mtime = os.path.getmtime(b_path)
+                    return datetime.datetime.fromtimestamp(mtime).strftime("%Y/%m/%d %H:%M")
                 return ""
             
-            if index.column() == 2: # Target Path
-                target_path = ""
+            if index.column() == 2: # Mode (Symbolic/Copy/Default)
+                overrides = self.rules.get("transfer_overrides", {})
+                return overrides.get(rel_from_folder, "Default")
+            
+            if index.column() == 3: # Target
                 overrides = self.rules.get("overrides", {})
-                if rel in overrides:
-                    target_path = overrides[rel]
+                if rel_from_folder in overrides:
+                    return overrides[rel_from_folder]
                 else:
+                    # Inherit from parent redirect if exists
                     sorted_keys = sorted(overrides.keys(), key=len, reverse=True)
                     for old in sorted_keys:
                         new = overrides[old]
-                        if rel.startswith(old + "/"):
-                            target_path = rel.replace(old, new, 1)
-                            break
-                    else:
-                        if self.primary_target:
-                            target_path = os.path.join(self.primary_target, rel).replace('\\', '/')
-                return f"-> {target_path}" if target_path else ""
+                        if rel_from_folder.startswith(old + "/"):
+                            return rel_from_folder.replace(old, new, 1)
+                    
+                    # App Default (Primary)
+                    if self.primary_target:
+                        return os.path.join(self.primary_target, rel_from_folder).replace('\\', '/')
+                return ""
             
-            if index.column() == 3: # Size (Standard Column 1)
+            if index.column() == 4: # Size
                 return super().data(self.index(index.row(), 1, index.parent()), role)
             
-            if index.column() == 4: # Date Modified (Standard Column 3)
+            if index.column() == 5: # Modified
                 return super().data(self.index(index.row(), 3, index.parent()), role)
+                
+        # White text for readability (Requirement: 白文字)
+        if role == Qt.ItemDataRole.ForegroundRole:
+            return QColor("#ffffff")
 
         return super().data(index, role)
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
+        if not index.isValid(): return False
+        
+        abs_path = self.filePath(index)
+        try:
+            rel = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
+        except: return False
+
         if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0:
-            abs_path = self.filePath(index)
-            try:
-                rel = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
-                excludes = self.rules.get("exclude", [])
-                if value == Qt.CheckState.Checked or value == Qt.CheckState.Checked.value:
-                    if rel in excludes: excludes.remove(rel)
-                else:
-                    if rel not in excludes: excludes.append(rel)
-                self.rules["exclude"] = excludes
-                self.dataChanged.emit(self.index(index.row(), 0), 
-                                      self.index(index.row(), self.columnCount()-1))
-                return True
-            except: pass
+            excludes = self.rules.get("exclude", [])
+            # PyQt6 safe check state comparison
+            is_checked = False
+            if isinstance(value, Qt.CheckState):
+                is_checked = (value == Qt.CheckState.Checked)
+            else:
+                try:
+                    # Handle int or str values
+                    v_int = int(value)
+                    is_checked = (v_int == Qt.CheckState.Checked.value)
+                except (ValueError, TypeError):
+                    # Fallback for unexpected types
+                    is_checked = (str(value) == str(Qt.CheckState.Checked.value))
+
+            if is_checked:
+                if rel in excludes: excludes.remove(rel)
+            else:
+                if rel not in excludes: excludes.append(rel)
+            self.rules["exclude"] = excludes
+            self.dataChanged.emit(index, self.index(index.row(), self.columnCount()-1))
+            return True
+
+            
+        if role == Qt.ItemDataRole.EditRole and index.column() == 2: # Mode Edit
+            if "transfer_overrides" not in self.rules: self.rules["transfer_overrides"] = {}
+            if value == "Default":
+                if rel in self.rules["transfer_overrides"]: del self.rules["transfer_overrides"][rel]
+            else:
+                self.rules["transfer_overrides"][rel] = value
+            self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), self.columnCount()-1))
+            return True
+
+        if role == Qt.ItemDataRole.EditRole and index.column() == 3: # Target Edit
+            if "overrides" not in self.rules: self.rules["overrides"] = {}
+            if value:
+                self.rules["overrides"][rel] = value.replace('\\', '/')
+            else:
+                if rel in self.rules["overrides"]: del self.rules["overrides"][rel]
+            self.dataChanged.emit(self.index(index.row(), 0), self.index(index.row(), self.columnCount()-1))
+            return True
+            
         return super().setData(index, value, role)
 
 class BackupFilterProxyModel(QSortFilterProxyModel):
-    """_Backup フォルダを非表示にするためのプロキシモデル。"""
+    """_Backup フォルダやシステムファイルを非表示にするためのプロキシモデル。"""
     def filterAcceptsRow(self, source_row, source_parent):
         source_index = self.sourceModel().index(source_row, 0, source_parent)
         if not source_index.isValid():
             return True
         file_name = self.sourceModel().data(source_index, Qt.ItemDataRole.DisplayRole)
-        if file_name == "_Backup":
+        # 以前の _Backup フォルダやシステムファイルを隠す
+        if file_name in ["_Backup", ".lm_deploy_info.json", "desktop.ini"]:
             return False
         return True
 
 class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
-    個別のファイル単位での除外（チェックボックス）、場所変更（P/S/Browse）、
-    バックアップ/リストアを管理するダイアログ。
+    ファイル単位の高度な構成（ターゲットパス編集、シンボリック切替、バックアップ）を行うダイアログ。
     """
-    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target=""):
+    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root=""):
         super().__init__(parent)
         self.folder_path = folder_path
+        self.storage_root = storage_root or folder_path
         self.primary_target = primary_target
         self.secondary_target = secondary_target
+        self.tertiary_target = tertiary_target
+        self.app_name = app_name
         self.logger = logging.getLogger("FileManagementDialog")
         
-        # Parse current rules
+        # Rules Parsing
         self.rules = {}
         if current_rules_json:
             try:
                 self.rules = json.loads(current_rules_json)
             except: pass
-        
         if "exclude" not in self.rules: self.rules["exclude"] = []
         if "overrides" not in self.rules: self.rules["overrides"] = self.rules.get("rename", {})
-        if "backups" not in self.rules: self.rules["backups"] = {}
+        if "transfer_overrides" not in self.rules: self.rules["transfer_overrides"] = {}
         
         self.setWindowTitle(_("File Management: {name}").format(name=os.path.basename(folder_path)))
-        self.resize(1100, 750)
-        self.load_options("file_management_dialog") # Restore geometry
+        self.resize(1150, 800)
+        self.load_options("file_management_dialog")
         
-        # FramelessDialog handled dark mode/palette
         self._apply_theme()
         self._init_ui()
-
-    def done(self, r):
-        # Save geometry and column widths before closing
-        self.save_options("file_management_dialog")
-        header_state = self.tree.header().saveState().toHex().data().decode()
-        self.save_options("file_management_dialog_tree_widths", {"header": header_state})
-        return super().done(r)
-
-    def keyPressEvent(self, event):
-        """Handle Alt+Enter for saving."""
-        if event.key() in [Qt.Key.Key_Return, Qt.Key.Key_Enter] and event.modifiers() & Qt.KeyboardModifier.AltModifier:
-            self.accept()
-            return
-        super().keyPressEvent(event)
 
     def _apply_theme(self):
         self.setStyleSheet("""
@@ -187,219 +235,492 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QFrame { background-color: #2b2b2b; border: 1px solid #444; border-radius: 4px; }
             QPushButton { 
                 background-color: #3c3c3c; color: #eee; border: 1px solid #555; 
-                padding: 6px 12px; border-radius: 4px; min-width: 80px;
+                padding: 6px 12px; border-radius: 4px; min-width: 60px;
             }
             QPushButton:hover { background-color: #4a4a4a; border: 1px solid #666; }
             QPushButton:pressed { background-color: #2d2d2d; }
+            QPushButton#ActionBtn { background-color: #3498db; font-weight: bold; }
+            QPushButton#ActionBtn:hover { background-color: #2980b9; }
+            
             QTreeView { 
-                background-color: #252526; color: #eee; border: 1px solid #333; 
-                gridline-color: #333;
+                background-color: #1a1a1a; 
+                color: #ffffff; border: 1px solid #333; 
             }
-            QTreeView::item:hover { background-color: #2a2d2e; }
-            QTreeView::item:selected { background-color: #094771; color: #fff; }
+            QTreeView::item:hover { background-color: #333; }
+            /* Semi-transparent bright blue selection to keep original background visible */
+            QTreeView::item:selected { background-color: rgba(52, 152, 219, 130); color: #ffffff; outline: none; }
+            QTreeView::item:selected:active { background-color: rgba(52, 152, 219, 160); color: #ffffff; }
+
             QHeaderView::section { 
-                background-color: #252526; color: #ccc; border: 1px solid #333; 
-                padding: 4px; font-weight: bold;
+                background-color: #333; color: #ffffff; border: 1px solid #222; 
+                padding: 6px; font-weight: bold;
             }
-            QCheckBox { color: #eee; }
-            QCheckBox::indicator { width: 18px; height: 18px; }
-            QInputDialog, QMessageBox { background-color: #1e1e1e; color: #eee; }
-            QLineEdit { background-color: #3c3c3c; color: #eee; border: 1px solid #555; padding: 4px; }
+            QHeaderView { background-color: #333; color: #ffffff; }
+            QLineEdit { background-color: #2d2d2d; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px; }
+            QCheckBox { color: #ccc; font-size: 10pt; }
+            
+            /* Tooltip styling for visibility */
+            QToolTip { 
+                background-color: #f0f0f0; 
+                color: #000000; 
+                border: 1px solid #666; 
+                padding: 4px;
+                font-size: 9pt;
+            }
+            
+            QMessageBox { background-color: #2b2b2b; }
+            QMessageBox QLabel { color: #ffffff !important; font-size: 11pt; min-width: 300px; padding: 10px; }
+            QMessageBox QPushButton { background-color: #444; color: #fff; border: 1px solid #666; padding: 8px 20px; min-width: 80px; }
+            QMessageBox QPushButton:hover { background-color: #555; }
         """)
 
     def _init_ui(self):
-        content_widget = QWidget()
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
+        content = QWidget()
+        main_layout = QVBoxLayout(content)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(12)
         
-        # Define draggable area (header section) - handled by FramelessDialog
-        # We can also add a title bar or just let user drag blank areas
+        # Header
+        header = QHBoxLayout()
+        # Clickable Folder Icon + Title
+        title_container = QWidget()
+        title_h = QHBoxLayout(title_container)
+        title_h.setContentsMargins(0,0,0,0)
         
-        # Header Info
-        header_title = QLabel(f"<b>📂 {os.path.basename(self.folder_path)}</b>")
-        header_title.setText(_("<b>📂 {name}</b>").format(name=os.path.basename(self.folder_path)))
-        header_title.setStyleSheet("font-size: 14pt; color: #3498db;")
-        layout.addWidget(header_title)
+        icon_btn = QPushButton("📂")
+        icon_btn.setFixedSize(30, 30)
+        icon_btn.setStyleSheet("""
+            QPushButton { background: transparent; border: none; font-size: 18pt; }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+        """)
+        icon_btn.setToolTip(_("ソースフォルダを開く"))
+        icon_btn.clicked.connect(lambda: os.startfile(os.path.normpath(self.folder_path)))
+        title_h.addWidget(icon_btn)
         
-        header_path = QLabel(_("パス: {path}").format(path=self.folder_path))
-        header_path.setStyleSheet("color: #888; font-size: 9pt;")
-        layout.addWidget(header_path)
+        title = QLabel(f"<span style='font-size: 16pt; color: #ffffff; font-weight: bold;'>{os.path.basename(self.folder_path)}</span>")
+        title_h.addWidget(title)
+        header.addWidget(title_container)
         
-        # Legend / Guide
-        legend = QHBoxLayout()
-        legend.addWidget(self._create_legend_dot("#5d2a2a", _("除外")))
-        legend.addWidget(self._create_legend_dot("#2a3b5d", _("リダイレクト")))
-        legend.addStretch()
-        layout.addLayout(legend)
+        header.addStretch()
+        main_layout.addLayout(header)
+        
+        path_info = QLabel(_("Source: {path}").format(path=self.folder_path))
+        path_info.setOpenExternalLinks(True)
+        path_info.setStyleSheet("color: #888; font-family: 'Consolas'; font-size: 9pt;")
+        main_layout.addWidget(path_info)
 
-        # TreeView Setup with Custom Model
-        self.model = CheckableFileModel(self.folder_path, self.rules, self.primary_target, self.secondary_target)
+        # Legend (Below Source, Simplified)
+        legend_layout = QHBoxLayout()
+        legend_layout.addWidget(self._create_legend_dot("#2a3b5d", _("リダイレクト済み (青)")))
+        legend_layout.addSpacing(15)
+        legend_layout.addWidget(self._create_legend_dot("#5d2a2a", _("無効 (赤)"))) # Reverted to Red
+        legend_layout.addStretch()
+        main_layout.addLayout(legend_layout)
+
+        # Main Tree
+        self.model = CheckableFileModel(self.folder_path, self.storage_root, self.rules, 
+                                        self.primary_target, self.secondary_target, self.tertiary_target, self.app_name)
         self.model.setRootPath(self.folder_path)
-        self.model.setFilter(QDir.Filter.NoDotAndDotDot | QDir.Filter.AllEntries)
         
-        # Filter Proxy to hide _Backup
         self.proxy = BackupFilterProxyModel()
         self.proxy.setSourceModel(self.model)
         
         self.tree = QTreeView()
         self.tree.setModel(self.proxy)
         self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.folder_path)))
-        
-        # Style TreeView with dark alternating rows
-        self.tree.setStyleSheet("""
-            QTreeView { 
-                background-color: #2b2b2b; 
-                alternate-background-color: #333333;
-                color: #eee; 
-                border: 1px solid #444; 
-            }
-            QTreeView::item:hover { background-color: #3d3d3d; }
-            QTreeView::item:selected { background-color: #3498db; color: white; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; font-weight: bold; }
-            
-            QPushButton#BackupBtn {
-                background-color: #d35400; color: white; font-weight: bold; border-radius: 4px;
-            }
-            QPushButton#BackupBtn:hover { background-color: #e67e22; }
-            QPushButton#BackupBtn:pressed { background-color: #a04000; }
-            
-            QPushButton#RestoreBtn {
-                background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px;
-            }
-            QPushButton#RestoreBtn:hover { background-color: #2ecc71; }
-            QPushButton#RestoreBtn:pressed { background-color: #1e8449; }
-            QPushButton#RestoreBtn:disabled { background-color: #2c3e50; color: #7f8c8d; }
-        """)
-        
-        
-        # Restore column widths or set defaults
-        data = self.load_options("file_management_dialog_tree_widths")
-        if data and 'header' in data:
-            header_state = data['header']
-            self.tree.header().restoreState(QByteArray.fromHex(header_state.encode()))
-        else:
-            self.tree.setColumnWidth(0, 300) # 名前
-            self.tree.setColumnWidth(1, 160) # バックアップ
-            self.tree.setColumnWidth(2, 300) # ターゲット
-            self.tree.setColumnWidth(3, 100) # サイズ
-            self.tree.setColumnWidth(4, 160) # 最終更新
-
-        self.tree.setIndentation(12)  # Reduced for compactness per user request
         self.tree.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
         self.tree.setAlternatingRowColors(True)
-        # Connect basic signals (Signals that don't depend on later-created buttons)
-        self.model.dataChanged.connect(self._on_model_data_changed)
-        self.tree.doubleClicked.connect(self._on_tree_double_clicked)
+        self.tree.setStyleSheet("""
+            QTreeView {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #444;
+                selection-background-color: #3d3d3d;
+                alternate-background-color: #2d2d2d; 
+            }
+            QTreeView::item {
+                padding: 4px;
+            }
+            QTreeView::item:selected {
+                background-color: #4d4d4d;
+                border: 1px solid #666;
+            }
+            QLineEdit {
+                background-color: #252525;
+                color: #ffffff;
+                border: 1px solid #555;
+                selection-background-color: #3498db;
+            }
+            /* Header styling - MUST be inside tree stylesheet */
+            QHeaderView::section {
+                background-color: #333;
+                color: #ffffff;
+                border: 1px solid #222;
+                padding: 6px;
+                font-weight: bold;
+            }
+            QHeaderView {
+                background-color: #333;
+                color: #ffffff;
+            }
+        """)
+        self.tree.setEditTriggers(QTreeView.EditTrigger.DoubleClicked | QTreeView.EditTrigger.SelectedClicked | QTreeView.EditTrigger.EditKeyPressed)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
+        self.tree.header().setMinimumSectionSize(60) # Prevent total narrowing
+        self.tree.header().setStretchLastSection(True)
         
-        layout.addWidget(self.tree)
+        # Restore Column Widths
+        data = self.load_options("file_management_dialog_tree_widths")
+        if data and 'header' in data:
+            self.tree.header().restoreState(QByteArray.fromHex(data['header'].encode()))
+        else:
+            self.tree.setColumnWidth(0, 320) # Name
+            self.tree.setColumnWidth(1, 130) # Backup
+            self.tree.setColumnWidth(2, 90)  # Mode
+            self.tree.setColumnWidth(3, 350) # Target
+            self.tree.setColumnWidth(4, 80)  # Size
+        
+        main_layout.addWidget(self.tree)
 
-        # Actions Panel (Selection-based)
-        action_frame = QFrame()
-        action_frame.setStyleSheet("background-color: #333; border-radius: 6px; border: 1px solid #444;")
-        action_layout = QHBoxLayout(action_frame)
-        action_layout.setContentsMargins(10, 10, 10, 10)
+        # Toolbar / Quick Actions - Reorganized per user request
+        tools_frame = QFrame(self)
+        tools_layout = QVBoxLayout(tools_frame)
+        tools_layout.setSpacing(12)
         
-        # Section 1: Redirection
-        redir_box = QVBoxLayout()
-        redir_label = QLabel(_("<b>リダイレクト / ターゲットパス</b>"))
-        redir_label.setStyleSheet("color: #eee;")
-        redir_box.addWidget(redir_label)
+        # Section Header: 一括設定 - Positioned above the rows with some spacing
+        batch_header_layout = QHBoxLayout()
+        batch_header = QLabel(_("<b>一括設定</b>"))
+        batch_header.setStyleSheet("color: #ffffff; font-size: 11pt; padding: 2px 0;")
+        batch_header_layout.addWidget(batch_header)
+        batch_header_layout.addStretch()
+        tools_layout.addLayout(batch_header_layout)
         
-        redir_btns = QHBoxLayout()
-        self.btn_p = QPushButton(_("P (プライマリ)"))
-        self.btn_p.setToolTip(_("プライマリターゲットに設定: {target}").format(target=self.primary_target))
-        self.btn_p.clicked.connect(lambda: self._set_quick_location(self.primary_target))
-        self.btn_p.setStyleSheet("""
-            QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
-            QPushButton:hover { background-color: #4a4a4a; border: 1px solid #666; }
-            QPushButton:pressed { background-color: #2b2b2b; }
+        tools_layout.addSpacing(4) # Full-width small space after header
+
+        LABEL_WIDTH = 110 # For alignment
+
+        def create_aligned_label(text):
+            lbl = QLabel(text)
+            lbl.setFixedWidth(LABEL_WIDTH)
+            lbl.setStyleSheet("color: #ffffff; font-weight: bold;")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return lbl
+
+        # Row 1: モード (Mode) - デフォルト | シンボリック | コピー
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(create_aligned_label(_("モード:")))
+        mode_row.addSpacing(12)
+        
+        # Mode buttons: デフォルト(枠のみ), シンボリック(青), コピー(深青)
+        mode_configs = [
+            (_("デフォルト"), "Default", "#444", "#666"),    # (label, value, bg_color, border_color)
+            (_("シンボリック"), "symlink", "#2980b9", "#2980b9"),
+            (_("コピー"), "copy", "#0e4b7b", "#0e4b7b"), # Deep Blue
+        ]
+        for m_lbl, m_val, m_bg, m_border in mode_configs:
+            btn = QPushButton(m_lbl)
+            btn.setStyleSheet(f"""
+                QPushButton {{ 
+                    background-color: {m_bg}; color: white; font-weight: bold; 
+                    min-width: 100px; padding: 6px 12px; border: 2px solid {m_border}; border-radius: 4px;
+                }}
+                QPushButton:hover {{ background-color: #555; border: 2px solid #888; }}
+                QPushButton:pressed {{ background-color: #333; }}
+            """)
+            btn.clicked.connect(lambda _, m=m_val: self._apply_mode_batch(m))
+            mode_row.addWidget(btn)
+        
+        mode_row.addStretch()
+        tools_layout.addLayout(mode_row)
+        
+        # Row 2: ファイル操作 (File Operations) - 有効化 | 無効化 | バックアップ | 復元
+        file_ops_row = QHBoxLayout()
+        file_ops_row.addWidget(create_aligned_label(_("ファイル操作:")))
+        file_ops_row.addSpacing(12)
+        
+        # 有効化 (Enable) - gray border
+        btn_enable = QPushButton(_("有効化"))
+        btn_enable.setStyleSheet("""
+            QPushButton { 
+                background-color: #444; color: white; font-weight: bold; 
+                min-width: 100px; padding: 6px 12px; border: 2px solid #666; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #555; border: 2px solid #888; }
+            QPushButton:pressed { background-color: #333; }
         """)
+        btn_enable.clicked.connect(lambda: self._set_enabled_batch(True))
+        file_ops_row.addWidget(btn_enable)
         
-        self.btn_s = QPushButton(_("S (セカンダリ)"))
-        self.btn_s.setToolTip(_("セカンダリターゲットに設定: {target}").format(target=self.secondary_target))
-        self.btn_s.clicked.connect(lambda: self._set_quick_location(self.secondary_target))
-        self.btn_s.setStyleSheet("""
-            QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; }
-            QPushButton:hover { background-color: #4a4a4a; border: 1px solid #666; }
-            QPushButton:pressed { background-color: #2b2b2b; }
+        # 無効化 (Disable) - Red
+        btn_disable = QPushButton(_("無効化"))
+        btn_disable.setStyleSheet("""
+            QPushButton { 
+                background-color: #a93226; color: white; font-weight: bold; 
+                min-width: 100px; padding: 6px 12px; border: 2px solid #a93226; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #c0392b; border: 2px solid #e74c3c; }
+            QPushButton:pressed { background-color: #7b241c; }
         """)
+        btn_disable.clicked.connect(lambda: self._set_enabled_batch(False))
+        file_ops_row.addWidget(btn_disable)
         
-        self.btn_browse = QPushButton(_("📁 参照..."))
-        self.btn_browse.clicked.connect(self._browse_location)
-        self.btn_browse.setStyleSheet("""
-            QPushButton { background-color: #3c3c3c; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; }
-            QPushButton:hover { background-color: #4a4a4a; border: 1px solid #666; }
-            QPushButton:pressed { background-color: #2b2b2b; }
-        """)
+        file_ops_row.addSpacing(15)
         
-        redir_btns.addWidget(self.btn_p)
-        redir_btns.addWidget(self.btn_s)
-        redir_btns.addWidget(self.btn_browse)
-        redir_box.addLayout(redir_btns)
-        action_layout.addLayout(redir_box)
-        
-        action_layout.addSpacing(20)
-        
-        # Section 2: Backup Ops
-        backup_box = QVBoxLayout()
-        backup_label = QLabel(_("<b>バックアップ操作</b>"))
-        backup_label.setStyleSheet("color: #eee;")
-        backup_box.addWidget(backup_label)
-        
-        backup_btns = QHBoxLayout()
-        self.btn_backup = QPushButton(_("バックアップにコピー"))
-        self.btn_backup.setToolTip(_("ファイルを _Backup フォルダにコピーします。"))
-        self.btn_backup.clicked.connect(self._backup_item)
-        self.btn_backup.setFixedHeight(35)
+        # バックアップ (Backup) - orange
+        self.btn_backup = QPushButton(_("バックアップ"))
         self.btn_backup.setStyleSheet("""
-            QPushButton { background-color: #3498db; color: white; font-weight: bold; border-radius: 4px; }
-            QPushButton:hover { background-color: #2980b9; }
+            QPushButton {
+                background-color: #e67e22; color: white; font-weight: bold;
+                min-width: 120px; padding: 6px 12px; border: 2px solid #e67e22; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #d35400; border: 2px solid #e67e22; }
+            QPushButton:pressed { background-color: #b94500; }
+        """)
+        self.btn_backup.clicked.connect(self._backup_item)
+        file_ops_row.addWidget(self.btn_backup)
+        
+        # 復元 (Restore) - green
+        self.btn_restore = QPushButton(_("復元"))
+        self.btn_restore.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60; color: white; font-weight: bold;
+                min-width: 100px; padding: 6px 12px; border: 2px solid #27ae60; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #219a52; border: 2px solid #27ae60; }
+            QPushButton:pressed { background-color: #1a7a40; }
+        """)
+        self.btn_restore.clicked.connect(self._restore_item)
+        file_ops_row.addWidget(self.btn_restore)
+        
+        file_ops_row.addStretch()
+        tools_layout.addLayout(file_ops_row)
+        
+        # Row 3: ターゲット (Target) - プライマリ | セカンダリ | ターシャリ
+        target_row = QHBoxLayout()
+        target_row.addWidget(create_aligned_label(_("ターゲット:")))
+        target_row.addSpacing(12)
+        
+        # Target buttons: プライマリ(グレー), セカンダリ(青), ターシャリ(紫)
+        target_configs = [
+            (_("プライマリ"), self.primary_target, "#555", "#666"),
+            (_("セカンダリ"), self.secondary_target, "#2980b9", "#2980b9"),
+            (_("ターシャリ"), self.tertiary_target, "#8e44ad", "#8e44ad"),
+        ]
+        for t_lbl, t_val, t_bg, t_border in target_configs:
+            btn = QPushButton(t_lbl)
+            btn.setStyleSheet(f"""
+                QPushButton {{ 
+                    background-color: {t_bg}; color: white; font-weight: bold; 
+                    min-width: 100px; padding: 6px 12px; border: 2px solid {t_border}; border-radius: 4px;
+                }}
+                QPushButton:hover {{ background-color: #666; border: 2px solid #888; }}
+                QPushButton:pressed {{ background-color: #333; }}
+                QPushButton:disabled {{ background-color: #333; color: #666; border: 2px solid #444; }}
+            """)
+            btn.setToolTip(t_val or _("未設定"))
+            if not t_val: btn.setEnabled(False)
+            btn.clicked.connect(lambda _, v=t_val: self._apply_target_batch(v))
+            target_row.addWidget(btn)
+        
+        target_row.addStretch()
+        tools_layout.addLayout(target_row)
+        
+        # Row 4: 任意パス (Manual Path) - Input + Folder Icon + 適用
+        manual_row = QHBoxLayout()
+        manual_row.addWidget(create_aligned_label(_("任意パス:")))
+        manual_row.addSpacing(12)
+        
+        self.target_edit = QLineEdit()
+        self.target_edit.setPlaceholderText(_("任意パス"))
+        self.target_edit.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555; padding: 5px; border-radius: 4px;")
+        self.target_edit.setText(self.primary_target)
+        manual_row.addWidget(self.target_edit, 1)
+        
+        btn_browse_target = QPushButton("📁")
+        btn_browse_target.setFixedWidth(35)
+        btn_browse_target.setStyleSheet("""
+            QPushButton {
+                background-color: #e67e22; color: white; font-size: 14pt;
+                border: none; border-radius: 4px; padding: 4px;
+            }
+            QPushButton:hover { background-color: #d35400; }
+        """)
+        btn_browse_target.setToolTip(_("フォルダを選択"))
+        btn_browse_target.clicked.connect(self._browse_manual_target)
+        manual_row.addWidget(btn_browse_target)
+        
+        self.btn_apply_redir = QPushButton(_("適用"))
+        self.btn_apply_redir.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9; color: white; font-weight: bold;
+                min-width: 80px; padding: 6px 12px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #3498db; }
             QPushButton:pressed { background-color: #1a5276; }
         """)
+        self.btn_apply_redir.clicked.connect(self._apply_manual_redirect)
+        manual_row.addWidget(self.btn_apply_redir)
         
-        self.btn_restore = QPushButton(_("バックアップから復元"))
-        self.btn_restore.setToolTip(_("バックアップからファイルを復元（上書き）します。"))
-        self.btn_restore.clicked.connect(self._restore_item)
-        self.btn_restore.setFixedHeight(35)
-        self.btn_restore.setEnabled(False) # Default disabled
-        self.btn_restore.setStyleSheet("""
-            QPushButton { background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; }
-            QPushButton:hover { background-color: #2ecc71; }
-            QPushButton:pressed { background-color: #1e8449; }
-            QPushButton:disabled { background-color: #555; color: #888; }
-        """)
-        
-        backup_btns.addWidget(self.btn_backup)
-        backup_btns.addWidget(self.btn_restore)
-        backup_box.addLayout(backup_btns)
-        action_layout.addLayout(backup_box)
-        
-        layout.addWidget(action_frame)
+        tools_layout.addLayout(manual_row)
+        main_layout.addWidget(tools_frame)
 
-        # Bottom Buttons
-        btns = QHBoxLayout()
-        btns.addStretch()
+
+
+
+        # Footer
+        footer = QHBoxLayout()
+        footer.addStretch()
         
         btn_cancel = QPushButton(_("キャンセル"))
-        btn_cancel.setFixedSize(100, 35)
-        btn_cancel.setStyleSheet("""
-            QPushButton { background-color: #555; color: #eee; border: 1px solid #666; border-radius: 4px; }
-            QPushButton:hover { background-color: #666; }
-            QPushButton:pressed { background-color: #444; }
-        """)
+        btn_cancel.setFixedWidth(160)
+        btn_cancel.setFixedHeight(35)
+        # Force visible style for cancel button
+        btn_cancel.setStyleSheet("background-color: #444; color: white; border: 1px solid #555; border-radius: 4px;")
         btn_cancel.clicked.connect(self.reject)
-        btns.addWidget(btn_cancel)
+        footer.addWidget(btn_cancel)
         
-        btn_save = QPushButton(_("変更を保存 (Alt + Enter)"))
-        btn_save.setFixedSize(220, 35)
-        btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; font-size: 11pt;")
+        btn_save = QPushButton(_("変更を反映して閉じる (Alt+Enter)"))
+        btn_save.setFixedWidth(200) # Slightly wider text
+        btn_save.setFixedHeight(35)
+        btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; border-radius: 4px;")
         btn_save.clicked.connect(self.accept)
-        btns.addWidget(btn_save)
+        footer.addWidget(btn_save)
+        main_layout.addLayout(footer)
         
-        layout.addLayout(btns)
+
         
-        self.set_content_widget(content_widget)
+        self.set_content_widget(content)
+        
+        # Double click on Tree
+        self.tree.doubleClicked.connect(self._on_tree_double_clicked)
+
+    def _apply_target_batch(self, target_root):
+        """Apply a target root preset (P, S, or T) to selected items."""
+        selected = self.get_selected_items()
+        if not selected: return
+        
+        for rel, s_idx in selected:
+            if target_root:
+                # Calculate new path: root + relative path from original folder
+                new_path = os.path.join(target_root, rel).replace('\\', '/')
+                self.model.setData(s_idx.siblingAtColumn(3), new_path, Qt.ItemDataRole.EditRole)
+            else:
+                # Clear override
+                self.model.setData(s_idx.siblingAtColumn(3), "", Qt.ItemDataRole.EditRole)
+        
+        # Force refresh to show changes immediately
+        self.tree.viewport().update()
+
+    def _apply_mode_batch(self, mode):
+        """Apply a transfer mode (Default, symlink, copy) to selected items."""
+        selected = self.get_selected_items()
+        if not selected: return
+        
+        for rel, s_idx in selected:
+            self.model.setData(s_idx.siblingAtColumn(2), mode, Qt.ItemDataRole.EditRole)
+        
+        # Force refresh to show changes immediately
+        self.tree.viewport().update()
+
+    def _set_enabled_batch(self, enabled: bool):
+        """Set enabled/disabled state for selected items (add/remove from exclude list)."""
+        selected = self.get_selected_items()
+        if not selected: return
+        
+        for rel, s_idx in selected:
+            if rel == ".": continue
+            # Use CheckStateRole to toggle exclude state
+            new_state = Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
+            self.model.setData(s_idx.siblingAtColumn(0), new_state, Qt.ItemDataRole.CheckStateRole)
+        
+        # Force refresh to show changes immediately
+        self.tree.viewport().update()
+
+    def _show_context_menu(self, pos):
+        """Show context menu based on which column was clicked."""
+        from PyQt6.QtGui import QAction
+        idx = self.tree.indexAt(pos)
+        if not idx.isValid(): return
+        
+        # Get the column that was clicked
+        column = idx.column()
+        
+        menu = QMenu(self)
+        
+        if column == 0:  # Name column -> Source folder
+            action = QAction(_("エクスプローラーで開く (ソース)"), self)
+            action.triggered.connect(lambda: self._open_in_explorer(idx, mode='source'))
+            menu.addAction(action)
+            
+        elif column == 1:  # Backup column -> Backup folder
+            action = QAction(_("エクスプローラーで開く (バックアップ)"), self)
+            action.triggered.connect(lambda: self._open_in_explorer(idx, mode='backup'))
+            menu.addAction(action)
+            
+        elif column == 3:  # Target column -> Target folder
+            action = QAction(_("エクスプローラーで開く (ターゲット)"), self)
+            action.triggered.connect(lambda: self._open_in_explorer(idx, mode='target'))
+            menu.addAction(action)
+            
+        else:  # Other columns: default to source
+            action = QAction(_("エクスプローラーで開く (ソース)"), self)
+            action.triggered.connect(lambda: self._open_in_explorer(idx, mode='source'))
+            menu.addAction(action)
+        
+        menu.exec(self.tree.mapToGlobal(pos))
+
+    def _open_in_explorer(self, p_idx, mode='source'):
+        """Open source, backup, or target in Windows explorer.
+        
+        Args:
+            p_idx: Proxy model index
+            mode: 'source', 'backup', or 'target'
+        """
+        import subprocess
+        s_idx = self.proxy.mapToSource(p_idx)
+        path = None
+        
+        if mode == 'source':
+            path = self.model.filePath(s_idx)
+        elif mode == 'backup':
+            # Get relative path for backup lookup
+            abs_path = self.model.filePath(s_idx)
+            try:
+                rel_from_storage = os.path.relpath(abs_path, self.storage_root).replace('\\', '/')
+            except:
+                rel_from_storage = None
+            
+            if rel_from_storage and self.app_name:
+                path = get_backup_path_for_file(self.app_name, rel_from_storage)
+        elif mode == 'target':
+            path = self.model.data(s_idx.siblingAtColumn(3), Qt.ItemDataRole.DisplayRole)
+        
+        if not path:
+            QMessageBox.warning(self, _("エラー"), _("パスが見つかりません。"))
+            return
+            
+        norm_path = os.path.normpath(path)
+        
+        # If path doesn't exist, find the closest existing parent
+        if not os.path.exists(norm_path):
+            original_path = norm_path
+            while norm_path and not os.path.exists(norm_path):
+                parent = os.path.dirname(norm_path)
+                if parent == norm_path:  # Reached root
+                    break
+                norm_path = parent
+            
+            if not os.path.exists(norm_path):
+                QMessageBox.warning(self, _("エラー"), 
+                    _("パスが存在しません: {path}").format(path=original_path))
+                return
+        
+        # Open in explorer
+        if os.path.isfile(norm_path):
+            subprocess.Popen(['explorer', '/select,', norm_path])
+        else:
+            subprocess.Popen(['explorer', norm_path])
 
         self.btn_backup.setObjectName("BackupBtn")
         self.btn_restore.setObjectName("RestoreBtn")
@@ -409,6 +730,16 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         # Initial check
         self._update_button_states()
 
+    def _update_button_states(self):
+        selected = self.get_selected_items()
+        has_selection = len(selected) > 0
+        
+        # Enable actions only if something is selected
+        if hasattr(self, 'btn_backup'): self.btn_backup.setEnabled(has_selection)
+        if hasattr(self, 'btn_restore'): self.btn_restore.setEnabled(has_selection)
+        if hasattr(self, 'btn_apply_redir'): self.btn_apply_redir.setEnabled(has_selection)
+        if hasattr(self, 'btn_toggle_mode'): self.btn_toggle_mode.setEnabled(has_selection)
+
     def _create_legend_dot(self, color, text):
         container = QWidget()
         l = QHBoxLayout(container)
@@ -417,224 +748,147 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         dot.setFixedSize(12, 12)
         dot.setStyleSheet(f"background-color: {color}; border-radius: 6px;")
         l.addWidget(dot)
-        text_lbl = QLabel(text)
-        text_lbl.setStyleSheet("color: #eee;")
+        # Use HTML for guaranteed white text (bypasses CSS cascade issues)
+        text_lbl = QLabel(f"<span style='color: #ffffff;'>{text}</span>")
         l.addWidget(text_lbl)
         return container
 
-    def get_selected_rel_paths(self):
-        """Returns a list of relative paths for all selected items."""
-        selected_indices = self.tree.selectionModel().selectedRows(0)
-        if not selected_indices: return []
-        
-        rels = []
-        for proxy_index in selected_indices:
-            index = self.proxy.mapToSource(proxy_index)
-            abs_path = self.model.filePath(index)
+    def get_selected_items(self):
+        idxs = self.tree.selectionModel().selectedRows(0)
+        items = []
+        for p_idx in idxs:
+            s_idx = self.proxy.mapToSource(p_idx)
+            abs_p = self.model.filePath(s_idx)
             try:
-                rel = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
-                rels.append((rel, index))
-            except:
-                pass
-        return rels
+                rel = os.path.relpath(abs_p, self.folder_path).replace('\\', '/')
+                items.append((rel, s_idx))
+            except: pass
+        return items
 
-    def get_selected_rel_path(self):
-        # Legacy support for single selection methods
-        res = self.get_selected_rel_paths()
-        return res[0][0] if res else None
-
-    def _set_quick_location(self, target_base):
-        selected = self.get_selected_rel_paths()
-        if not selected: return
+    def _apply_manual_redirect(self):
+        """Apply manual target path to selected items. Always appends filename to folder targets."""
+        target = self.target_edit.text().strip().replace('\\', '/')
+        if not target: return
         
-        for rel, index in selected:
-            # If target_base is the Primary target, REMOVE the override
-            # to restore default deployment behavior (folder link, etc.)
-            if target_base == self.primary_target:
-                # Remove this item's override to use default deployment
-                if rel in self.rules.get("overrides", {}):
-                    del self.rules["overrides"][rel]
-                    self.logger.info(f"Removed target override for {rel} (restored to default)")
-            elif target_base:
-                # target_base already includes the mod's target folder name (from LMFileManagementMixin)
-                new_path = os.path.join(target_base, rel).replace('\\', '/')
-                self.rules["overrides"][rel] = new_path
-                self.logger.info(f"Set target override for {rel} -> {new_path}")
+        selected = self.get_selected_items()
+        if not selected:
+            return
+
+        for rel, s_idx in selected:
+            if rel == ".": continue
             
-            self._refresh_model_row(index)
+            # Always append filename - this is the core safety fix.
+            # User wants folder paths to always get file appended.
+            base_name = os.path.basename(rel)
+            
+            # If target does NOT end with the filename, append it.
+            if not target.rstrip('/').lower().endswith(base_name.lower()):
+                resolved_target = os.path.join(target, base_name).replace('\\', '/')
+            else:
+                resolved_target = target
+            
+            if resolved_target == self.primary_target:
+                if rel in self.rules.get("overrides", {}): del self.rules["overrides"][rel]
+            else:
+                self.rules["overrides"][rel] = resolved_target
+            
+            self._refresh_row(s_idx)
 
-    def _browse_location(self):
-        selected = self.get_selected_rel_paths()
-        if not selected: return
-        
-        new_dir = QFileDialog.getExistingDirectory(self, _("ターゲットフォルダを選択"))
-        if not new_dir: return
-        
-        for rel, index in selected:
-            self.rules["overrides"][rel] = new_dir.replace('\\', '/')
-            self._refresh_model_row(index)
+    def _browse_manual_target(self):
+        path = QFileDialog.getExistingDirectory(self, _("ターゲットフォルダを選択"))
+        if path:
+            self.target_edit.setText(path.replace('\\', '/'))
+
+    def _apply_mode_override(self):
+        mode = "symlink" if self.cb_symbolic.isChecked() else "copy"
+        selected = self.get_selected_items()
+        for rel, s_idx in selected:
+            if rel == ".": continue
+            self.rules["transfer_overrides"][rel] = mode
+            self._refresh_row(s_idx)
 
     def _backup_item(self):
-        selected = self.get_selected_rel_paths()
+        selected = self.get_selected_items()
         if not selected: return
         
-        confirm = QMessageBox.question(self, _("バックアップの確認"), 
-                                     _("{count} 件のアイテムを _Backup フォルダにコピー（上書き保存）しますか？").format(count=len(selected)))
-        if confirm != QMessageBox.StandardButton.Yes: return
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("バックアップの確認"))
+        msg.setText(_("{count} 件のアイテムをバックアップしますか？\n（既存のバックアップは上書きされます）").format(count=len(selected)))
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setIcon(QMessageBox.Icon.Question)
+        if msg.exec() != QMessageBox.StandardButton.Yes: return
 
-        backup_root = os.path.join(self.folder_path, "_Backup")
-        success_count = 0
-        
-        for rel, index in selected:
-            abs_path = self.model.filePath(index)
-            if rel == "." or os.path.isdir(abs_path): continue 
+        backup_root = get_backup_dir(self.app_name) if self.app_name else ""
+        if not backup_root: return
 
-            dest_path = os.path.join(backup_root, rel)
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        count = 0
+        for rel, s_idx in selected:
+            abs_p = self.model.filePath(s_idx)
+            if rel == "." or os.path.isdir(abs_p): continue
             
             try:
-                shutil.copy2(abs_path, dest_path)
-                # Phase 28: Stop recording in JSON rules (detected from disk now)
-                success_count += 1
-                self._refresh_model_row(index)
+                rel_from_storage = os.path.relpath(abs_p, self.storage_root).replace('\\', '/')
+            except: rel_from_storage = rel
+            
+            dest = os.path.join(backup_root, rel_from_storage)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            try:
+                shutil.copy2(abs_p, dest)
+                count += 1
+                self._refresh_row(s_idx)
             except Exception as e:
-                self.logger.error(f"Failed to backup {rel}: {e}")
-
-        if success_count > 0:
-            self.logger.info(f"Backed up {success_count} item(s)")
-            # Phase 28: Immediate update to enable Restore button
-            self._update_button_states()
+                self.logger.error(f"Backup failed for {rel}: {e}")
+                
+        if count > 0:
+            QMessageBox.information(self, _("完了"), _("{n} 件のバックアップを完了しました。").format(n=count))
 
     def _restore_item(self):
-        selected = self.get_selected_rel_paths()
+        selected = self.get_selected_items()
         if not selected: return
         
-        confirm = QMessageBox.question(self, _("復元の確認"), 
-                                     _("{count} 件のアイテムをバックアップから復元（上書き）しますか？").format(count=len(selected)))
-        if confirm != QMessageBox.StandardButton.Yes: return
-        
-        backup_root = os.path.join(self.folder_path, "_Backup")
-        success_count = 0
-        
-        for rel, index in selected:
-            abs_path = self.model.filePath(index) 
-            src_path = os.path.join(backup_root, rel)
-            
-            if not os.path.exists(src_path):
-                continue
-                
-            try:
-                shutil.copy2(src_path, abs_path)
-                success_count += 1
-                self._refresh_model_row(index)
-            except Exception as e:
-                self.logger.error(f"Failed to restore {rel}: {e}")
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("復元の確認"))
+        msg.setText(_("{count} 件のアイテムをバックアップから復元しますか？\n（現在のファイルは上書きされます）").format(count=len(selected)))
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        if msg.exec() != QMessageBox.StandardButton.Yes: return
 
-        if success_count > 0:
-            self.logger.info(f"Restored {success_count} item(s)")
-            QMessageBox.information(self, _("完了"), _("{count} 件のアイテムを復元しました。").format(count=success_count))
+        backup_root = get_backup_dir(self.app_name) if self.app_name else ""
+        count = 0
+        for rel, s_idx in selected:
+            abs_p = self.model.filePath(s_idx)
+            try:
+                rel_from_storage = os.path.relpath(abs_p, self.storage_root).replace('\\', '/')
+            except: rel_from_storage = rel
+            
+            src = os.path.join(backup_root, rel_from_storage)
+            if os.path.exists(src):
+                try:
+                    shutil.copy2(src, abs_p)
+                    count += 1
+                    self._refresh_row(s_idx)
+                except Exception as e:
+                    self.logger.error(f"Restore failed: {e}")
+                    
+        if count > 0:
+            QMessageBox.information(self, _("完了"), _("{n} 件の復元が完了しました。").format(n=count))
+
+    def _refresh_row(self, s_idx):
+        if not s_idx.isValid(): return
+        self.model.dataChanged.emit(self.model.index(s_idx.row(), 0, s_idx.parent()),
+                                    self.model.index(s_idx.row(), self.model.columnCount()-1, s_idx.parent()))
+
+    def _on_tree_double_clicked(self, p_idx):
+        if QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier:
+            self._open_in_explorer(p_idx)
+            return
+        pass
 
     def get_rules_json(self):
-        # Phase 28: Remove backups from saved info
-        clean_rules = self.rules.copy()
-        if "backups" in clean_rules:
-            del clean_rules["backups"]
-        return json.dumps(clean_rules, indent=2)
+        return json.dumps(self.rules, indent=2)
 
-    def _update_button_states(self):
-        """Enable/Disable restore button based on selection backup status."""
-        if not hasattr(self, 'btn_restore') or not self.btn_restore:
-            return
-            
-        indexes = self.tree.selectionModel().selectedRows()
-        can_restore = False
-        
-        for idx in indexes:
-            # Check backup column (1)
-            backup_idx = self.proxy.mapToSource(idx) # Map proxy index back to source model
-            backup_status = self.model.data(self.model.index(backup_idx.row(), 1, backup_idx.parent()), Qt.ItemDataRole.DisplayRole)
-            if backup_status not in ["---", None, ""]:
-                can_restore = True
-                break
-        
-        self.btn_restore.setEnabled(can_restore)
-
-    def _on_tree_double_clicked(self, proxy_index):
-        """Open paths in explorer based on column."""
-        index = self.proxy.mapToSource(proxy_index)
-        abs_path = self.model.filePath(index)
-        col = proxy_index.column()
-        
-        import subprocess
-        import sys
-        if sys.platform != 'win32': return
-        
-        if col == 0: # Name column -> Open containing folder (File only per requirement)
-            if os.path.exists(abs_path) and os.path.isfile(abs_path):
-                subprocess.Popen(['explorer', '/select,', abs_path.replace('/', '\\')])
-                
-        elif col == 1: # Backup column -> Open _Backup folder
-            rel = ""
-            try:
-                rel = os.path.relpath(abs_path, self.folder_path).replace('\\', '/')
-            except: pass
-            
-            backup_folder = os.path.join(self.folder_path, "_Backup")
-            backup_file = os.path.join(backup_folder, rel)
-            
-            if os.path.exists(backup_file):
-                subprocess.Popen(['explorer', '/select,', backup_file.replace('/', '\\')])
-            elif os.path.exists(backup_folder):
-                subprocess.Popen(['explorer', backup_folder.replace('/', '\\')])
-
-        elif col == 2: # Target column
-            target_path_str = self.model.data(index, Qt.ItemDataRole.DisplayRole)
-            if "->" in target_path_str:
-                path = target_path_str.split("->")[-1].strip()
-                if path and os.path.exists(path):
-                    if os.path.isfile(path):
-                        subprocess.Popen(['explorer', '/select,', path.replace('/', '\\')])
-                    else:
-                        subprocess.Popen(['explorer', path.replace('/', '\\')])
-
-    def _on_model_data_changed(self, topLeft, bottomRight, roles):
-        """Synchronizes checkbox states across multiple selections."""
-        if Qt.ItemDataRole.CheckStateRole in roles:
-            # Avoid infinite recursion
-            self.model.blockSignals(True)
-            try:
-                new_state = topLeft.data(Qt.ItemDataRole.CheckStateRole)
-                selected = self.get_selected_rel_paths()
-                
-                # If the changed item is among the selected ones, apply to all selected
-                source_paths = [s[0] for s in selected]
-                changed_index = topLeft
-                changed_abs = self.model.filePath(changed_index)
-                try:
-                    changed_rel = os.path.relpath(changed_abs, self.folder_path).replace('\\', '/')
-                    if changed_rel in source_paths:
-                        excludes = self.rules.get("exclude", [])
-                        for rel, idx in selected:
-                            if rel == ".": continue
-                            if new_state == Qt.CheckState.Checked or new_state == Qt.CheckState.Checked.value:
-                                if rel in excludes: excludes.remove(rel)
-                            else:
-                                if rel not in excludes: excludes.append(rel)
-                            # Refresh visually
-                            self._refresh_model_row(idx)
-                        self.rules["exclude"] = excludes
-                except: pass
-            finally:
-                self.model.blockSignals(False)
-
-    def _refresh_model_row(self, source_index):
-        """Emits dataChanged for the entire row to force UI update."""
-        if not source_index.isValid(): return
-        row = source_index.row()
-        parent = source_index.parent()
-        # QFileSystemModel uses indices for columnCount too
-        col_count = self.model.columnCount(parent)
-        self.model.dataChanged.emit(
-            self.model.index(row, 0, parent),
-            self.model.index(row, col_count - 1, parent)
-        )
+    def done(self, r):
+        self.save_options("file_management_dialog")
+        header_state = self.tree.header().saveState().toHex().data().decode()
+        self.save_options("file_management_dialog_tree_widths", {"header": header_state})
+        return super().done(r)

@@ -45,13 +45,20 @@ class LMDisplayMixin:
                     'image_text': self.btn_pkg_image_text
                 }
             
-            # Reset all
+            # Reset all using component methods when available
             for btn in btns.values():
-                btn.setStyleSheet(self.btn_normal_style)
+                if hasattr(btn, '_force_state'):
+                    btn._force_state(False)
+                else:
+                    btn.setStyleSheet(self.btn_normal_style)
             
             # Highlight active
             if override and override in btns:
-                btns[override].setStyleSheet(self.btn_selected_style)
+                target = btns[override]
+                if hasattr(target, '_force_state'):
+                    target._force_state(True)
+                else:
+                    target.setStyleSheet(self.btn_selected_style)
     
     def _toggle_cat_display_mode(self, mode, force=False):
         """Toggle category display mode button - click again to deselect and return to default."""
@@ -76,9 +83,9 @@ class LMDisplayMixin:
                 pass
 
         # Reset all to normal
-        self.btn_cat_text.setStyleSheet(self.btn_normal_style)
-        self.btn_cat_image.setStyleSheet(self.btn_normal_style)
-        self.btn_cat_both.setStyleSheet(self.btn_normal_style)
+        for btn in [self.btn_cat_text, self.btn_cat_image, self.btn_cat_both]:
+            if hasattr(btn, '_force_state'): btn._force_state(False)
+            else: btn.setStyleSheet(self.btn_normal_style)
         
         mapping = {'image': 'mini_image', 'text': 'text_list'}
         if self.cat_display_override is not None:
@@ -88,17 +95,22 @@ class LMDisplayMixin:
                 'mini_image': self.btn_cat_image,
                 'image_text': self.btn_cat_both
             }.get(self.cat_display_override)
-            if target: target.setStyleSheet(self.btn_selected_style)
+            if target:
+                if hasattr(target, '_force_state'): target._force_state(True, is_override=True)
+                else: target.setStyleSheet(self.btn_selected_style)
             apply_mode = self.cat_display_override
         else:
             # Blue for Default
-            folder_mode = mapping.get(view_config.get('display_style'), view_config.get('display_style') or 'mini_image')
+            app_cat_default = app_data.get('default_category_style', 'image')
+            folder_mode = mapping.get(view_config.get('display_style'), view_config.get('display_style') or mapping.get(app_cat_default, app_cat_default))
             target = {
                 'text_list': self.btn_cat_text,
                 'mini_image': self.btn_cat_image,
                 'image_text': self.btn_cat_both
             }.get(folder_mode)
-            if target: target.setStyleSheet(self.btn_no_override_style)
+            if target:
+                if hasattr(target, '_force_state'): target._force_state(True, is_override=False)
+                else: target.setStyleSheet(self.btn_no_override_style)
             apply_mode = folder_mode
 
         # Update existing cards
@@ -159,9 +171,9 @@ class LMDisplayMixin:
             except: 
                 pass
 
-        self.btn_pkg_text.setStyleSheet(self.btn_normal_style)
-        self.btn_pkg_image.setStyleSheet(self.btn_normal_style)
-        self.btn_pkg_image_text.setStyleSheet(self.btn_normal_style)
+        for btn in [self.btn_pkg_text, self.btn_pkg_image, self.btn_pkg_image_text]:
+            if hasattr(btn, '_force_state'): btn._force_state(False)
+            else: btn.setStyleSheet(self.btn_normal_style)
         
         mapping = {'image': 'mini_image', 'text': 'text_list'}
         if self.pkg_display_override is not None:
@@ -170,17 +182,23 @@ class LMDisplayMixin:
                 'mini_image': self.btn_pkg_image,
                 'image_text': self.btn_pkg_image_text
             }.get(self.pkg_display_override)
-            if target: target.setStyleSheet(self.btn_selected_style)
+            if target:
+                if hasattr(target, '_force_state'): target._force_state(True, is_override=True)
+                else: target.setStyleSheet(self.btn_selected_style)
             apply_mode = self.pkg_display_override
         else:
-            folder_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style', 'mini_image')
+            # Blue for Default
+            app_pkg_default = app_data.get('default_package_style', 'image')
+            folder_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style') or mapping.get(app_pkg_default, app_pkg_default)
             folder_pkg_mode = mapping.get(folder_pkg_mode, folder_pkg_mode)
             target = {
                 'text_list': self.btn_pkg_text,
                 'mini_image': self.btn_pkg_image,
                 'image_text': self.btn_pkg_image_text
             }.get(folder_pkg_mode)
-            if target: target.setStyleSheet(self.btn_no_override_style)
+            if target:
+                if hasattr(target, '_force_state'): target._force_state(True, is_override=False)
+                else: target.setStyleSheet(self.btn_no_override_style)
             apply_mode = folder_pkg_mode
 
         # Update existing cards
@@ -215,11 +233,11 @@ class LMDisplayMixin:
         self.show_hidden = not self.show_hidden
         if self.show_hidden:
             self.btn_show_hidden.setText("👁")
-            self.btn_show_hidden.setToolTip(_("Showing hidden folders (click to hide)"))
+            self.btn_show_hidden.setToolTip(_("Showing hidden Categories/Packages (click to hide)"))
             self.btn_show_hidden.setStyleSheet(self.btn_selected_style)
         else:
             self.btn_show_hidden.setText("=")
-            self.btn_show_hidden.setToolTip(_("Show hidden folders"))
+            self.btn_show_hidden.setToolTip(_("Show hidden Categories/Packages"))
             self.btn_show_hidden.setStyleSheet(self.btn_normal_style)
         self._apply_card_filters()
 
@@ -269,8 +287,8 @@ class LMDisplayMixin:
         """Phase 28: Fast in-memory filter applying without re-scan."""
         from src.ui.link_master.item_card import ItemCard
         
-        # Process Category cards
         if hasattr(self, 'cat_layout'):
+            visible_cat_count = 0
             for i in range(self.cat_layout.count()):
                 item = self.cat_layout.itemAt(i)
                 if not item: continue
@@ -279,6 +297,12 @@ class LMDisplayMixin:
                 
                 visible = self._should_card_be_visible(card)
                 card.setVisible(visible)
+                if visible:
+                    visible_cat_count += 1
+            
+            # Update counts
+            if hasattr(self, 'cat_result_label'):
+                self.cat_result_label.setText(_("Category Count: {count}").format(count=visible_cat_count))
         
         # Process Package cards
         if hasattr(self, 'pkg_layout'):
@@ -352,13 +376,22 @@ class LMDisplayMixin:
         # 5. Check link filter
         link_mode = getattr(self, 'link_filter_mode', None)
         if link_mode == 'linked':
-            if card.link_status not in ['linked', 'partial'] and not getattr(card, 'has_linked', False):
+            # Show if: item is linked/partial OR category has linked children
+            if card.link_status not in ['linked', 'partial'] and not getattr(card, 'has_linked_children', False):
                 return False
         elif link_mode == 'unlinked':
-            # Fix: Hide ONLY if completely linked/deployed. 
-            # If it's partial or unlinked, keep it visible so user can see what's missing.
-            if card.link_status == 'linked':
-                return False
+            # Packages: show if NOT fully linked (none, conflict, partial?)
+            # User request: "Non-linked". Usually implies anything that isn't green (linked).
+            # Partial has distinct status, Conflict has distinct status.
+            # Assuming we show everything except 'linked'.
+            if getattr(card, 'is_package', False):
+                if card.link_status == 'linked':
+                    return False
+            else:
+                # Categories: only show if they contain unlinked packages
+                # This depends on set_children_status being called correctly.
+                if not getattr(card, 'has_unlinked_children', False):
+                    return False
         
         # 6. Check favorite filter
         if getattr(self, 'favorite_filter_mode', False):

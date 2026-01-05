@@ -18,6 +18,9 @@ import os
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt
 
+from src.core.link_master.core_paths import get_trash_dir
+from src.core.lang_manager import _
+
 
 class LMNavigationMixin:
     """パンくずリストとパスナビゲーションを担当するMixin。"""
@@ -81,6 +84,25 @@ class LMNavigationMixin:
                 self.breadcrumb_layout.addStretch()
                 return
         else:
+            # Check if path is the Trash folder - show simplified "Root > Trash"
+            path_norm = path.replace('\\', '/')
+            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
+            if app_data:
+                trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
+                if path_norm == trash_path or path_norm.startswith(trash_path + '/'):
+                    # Simplified breadcrumb for Trash
+                    sep_lbl = QLabel(">", self)
+                    sep_lbl.setStyleSheet("color: #888; font-size: 13px;")
+                    self.breadcrumb_layout.addWidget(sep_lbl)
+                    
+                    trash_lbl = ClickableLabel(_("ごみ箱"), parent=self)
+                    trash_lbl.setStyleSheet("color: #3498db; font-weight: bold; font-size: 13px; text-decoration: underline;")
+                    # Capture trash_path with default argument to avoid late binding issue
+                    trash_lbl.clicked.connect(lambda checked=False, tp=trash_path: self._load_items_for_path(tp, force=True))
+                    self.breadcrumb_layout.addWidget(trash_lbl)
+                    self.breadcrumb_layout.addStretch()
+                    return
+            
             try:
                 trail_rel = os.path.relpath(path, self.storage_root).replace('\\', '/')
                 if trail_rel == ".": trail_rel = ""

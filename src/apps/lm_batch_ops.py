@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QMessageBox
 from src.ui.link_master.item_card import ItemCard
 from PyQt6.QtCore import QThread
 from .lm_batch_ops_worker import TagConflictWorker
+from src.core.link_master.core_paths import get_trash_dir
 
 
 class LMBatchOpsMixin:
@@ -22,8 +23,8 @@ class LMBatchOpsMixin:
                 if isinstance(w, ItemCard) and w.path in paths:
                     w.update_link_status()  # Re-check and update border
                     
-        # Also update parent category cards if any child links changed
-        self._update_parent_category_status()
+        # Note: Removed _update_parent_category_status() for performance
+        # self._update_parent_category_status()
         
         # Phase 28 RE-FIX: Always trigger a full tag/library refresh after status change
         self._refresh_tag_visuals()
@@ -273,8 +274,8 @@ class LMBatchOpsMixin:
             thumbnail_manager=self.thumbnail_manager,
             app_deploy_default=app_data.get('deployment_type', 'folder'),
             app_conflict_default=app_data.get('conflict_policy', 'backup'),
-            app_cat_style_default=app_data.get('default_category_style', 'image'),
-            app_pkg_style_default=app_data.get('default_package_style', 'image')
+            app_cat_style_default=app_data.get('default_category_style', 'image_text'),
+            app_pkg_style_default=app_data.get('default_package_style', 'image_text')
         )
         if dialog.exec():
             data = dialog.get_data()
@@ -386,7 +387,8 @@ class LMBatchOpsMixin:
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image')
+                app_pkg_style_default=app_data.get('default_package_style', 'image'),
+                app_skip_levels_default=app_data.get('default_skip_levels', 0)
 
             )
             if dialog.exec():
@@ -402,8 +404,16 @@ class LMBatchOpsMixin:
                 self.db.update_folder_display_config(rel, **data)
                 
                 # Targeted UI + Auto-Sync
-                abs_norm = path.replace('\\', '/')
+                abs_norm = os.path.normpath(path).replace('\\', '/')
                 card = self._get_active_card_by_path(abs_norm)
+                
+                # Handling Profiling Log
+                self.logger.info(f"PROFILE: Property Edit Return. Path={abs_norm}")
+                self.logger.info(f"PROFILE: Dialog Data Keys: {list(data.keys())}")
+                if 'image_path' in data:
+                    self.logger.info(f"PROFILE: New image_path: {data['image_path']}")
+                self.logger.info(f"PROFILE: Card found? {card is not None}")
+
                 if card:
                     card.update_data(**data)
                     # Phase 3.5: Auto-sync if currently linked AND link properties changed
@@ -428,7 +438,8 @@ class LMBatchOpsMixin:
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image')
+                app_pkg_style_default=app_data.get('default_package_style', 'image'),
+                app_skip_levels_default=app_data.get('default_skip_levels', 0)
 
             )
             
@@ -446,7 +457,7 @@ class LMBatchOpsMixin:
                         self.db.update_folder_display_config(rel, **batch_updates)
                         
                         # Phase 3.5: Batch Auto-sync
-                        abs_norm = path.replace('\\', '/')
+                        abs_norm = os.path.normpath(path).replace('\\', '/')
                         card = self._get_active_card_by_path(abs_norm)
                         if card:
                             card.update_data(**batch_updates)
@@ -516,9 +527,8 @@ class LMBatchOpsMixin:
         app_data = self.app_combo.currentData()
         if not app_data: return False
         
-        trash_root = os.path.join(app_data['storage_root'], "_Trash")
-        if not os.path.exists(trash_root):
-            os.makedirs(trash_root)
+        # Use new resource/app/{app}/Trash path
+        trash_root = get_trash_dir(app_data['name'])
             
         name = os.path.basename(abs_path)
         dest = os.path.join(trash_root, name)
@@ -760,8 +770,8 @@ class LMBatchOpsMixin:
                 card = item.widget()
                 if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
                     # Pass cache
-                    has_linked, has_conflict = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict)
+                    has_linked, has_conflict, has_partial = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial)
 
     # Phase 28: Tag Conflict Logic
     def _check_tag_conflict(self, rel_path, config, app_data, cached_configs=None):
@@ -830,14 +840,55 @@ class LMBatchOpsMixin:
         # to ensure old redirections/rules are cleared from the disk.
         self._unlink_single(rel_path, update_ui=False)
         
-        config = self.db.get_folder_config(rel_path) or {}
-        folder_name = os.path.basename(rel_path)
-        target_link = config.get('target_override') or os.path.join(target_root, folder_name)
+        # Phase 5: Resolve Deployment Rule and Transfer Mode
+        deploy_rule = config.get('deploy_rule')
         
-        # Use app defaults if not in folder config
-        rules = config.get('deployment_rules')
-        d_type = config.get('deploy_type') or app_data.get('deployment_type', 'folder')
+        # Determine App-Default based on selected target
+        app_rule_key = 'deployment_rule'
+        if self.current_target_key == 'target_root_2': app_rule_key = 'deployment_rule_b'
+        elif self.current_target_key == 'target_root_3': app_rule_key = 'deployment_rule_c'
+        
+        app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
+        
+        if not deploy_rule or deploy_rule in ("default", "inherit"):
+            deploy_rule = app_default_rule
+        
+        if deploy_rule == 'flatten': deploy_rule = 'files' # Legacy compat
+            
+        transfer_mode = config.get('transfer_mode')
+        if not transfer_mode or transfer_mode == "default":
+            transfer_mode = app_data.get('transfer_mode', 'symlink')
+
         c_policy = config.get('conflict_policy') or app_data.get('conflict_policy', 'backup')
+        if c_policy == "default":
+             c_policy = app_data.get('conflict_policy', 'backup')
+
+        # Determine Target Link Path
+        target_link = config.get('target_override')
+        if not target_link:
+            if deploy_rule == 'files':
+                target_link = target_root
+            elif deploy_rule == 'tree':
+                # Reconstruct hierarchy from storage root (Phase 7 fix)
+                import json
+                rules_json = config.get('deployment_rules')
+                skip_val = 0
+                if rules_json:
+                    try:
+                        rules_obj = json.loads(rules_json)
+                        skip_val = int(rules_obj.get('skip_levels', 0))
+                    except: pass
+                
+                parts = rel_path.replace('\\', '/').split('/')
+                if len(parts) > skip_val:
+                    mirrored = "/".join(parts[skip_val:])
+                    target_link = os.path.join(target_root, mirrored)
+                else:
+                    target_link = target_root # Fallback to root if all levels skipped
+            else:
+                target_link = os.path.join(target_root, folder_name)
+
+        rules = config.get('deployment_rules')
 
         # Phase X: Library Version Conflict Check
         if config.get('is_library', 0):
@@ -906,7 +957,8 @@ class LMBatchOpsMixin:
 
         success = self.deployer.deploy_with_rules(
             full_src, target_link, rules, 
-            deploy_type=d_type, conflict_policy=c_policy
+            deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
+            conflict_policy=c_policy
         )
         
         if success:
@@ -937,10 +989,11 @@ class LMBatchOpsMixin:
         app_data = self.app_combo.currentData()
         if not app_data: return False
         
-        # Sweep all potential target roots for this app
+        # Sweep all potential target roots for this app (Sweep ALL to ensure absolute cleanup)
         search_roots = []
         if 'target_root' in app_data: search_roots.append(app_data['target_root'])
         if 'target_root_2' in app_data: search_roots.append(app_data['target_root_2'])
+        if 'target_root_3' in app_data: search_roots.append(app_data['target_root_3'])
         
         # Also include any specifically overridden top-level targets for this mod
         config = self.db.get_folder_config(rel_path) or {}
@@ -1039,8 +1092,8 @@ class LMBatchOpsMixin:
                             w.update_link_status()
                             return
         self.logger.warning(f"[UIUpdate] MISS: No card found for {target_path}")
-        # Also update parent category status
-        self._update_parent_category_status()
+        # Note: Removed _update_parent_category_status() for performance
+        # self._update_parent_category_status()
 
     # ===== Batch Wrappers (use single-item methods) =====
     

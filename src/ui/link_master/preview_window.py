@@ -90,7 +90,7 @@ class PreviewWindow(QWidget):
     
     def _show_no_preview(self):
         """プレビューがない場合のメッセージを表示。"""
-        self.image_label.setText("プレビューが設定されていません")
+        self.image_label.setText(_("No preview set"))
         self.index_label.setText("0/0")
         self.filename_label.setText("")
     
@@ -302,9 +302,10 @@ class PreviewWindow(QWidget):
         
         # Mouse events
         self.image_label.mousePressEvent = self._on_image_click
-        self.image_label.mouseDoubleClickEvent = self._on_image_double_click
+        # Double-click disabled to avoid interfering with slideshow click navigation
+        # self.image_label.mouseDoubleClickEvent = self._on_image_double_click
         self.video_widget.mousePressEvent = self._on_image_click
-        self.video_widget.mouseDoubleClickEvent = self._on_image_double_click
+        # self.video_widget.mouseDoubleClickEvent = self._on_image_double_click
         
         # Context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -333,26 +334,21 @@ class PreviewWindow(QWidget):
         status_layout.addStretch()
         prop_layout.addLayout(status_layout)
         
-        # Row 2: Favorite & Score (Centered)
+        # Row 2: Favorite & Score (Left Aligned)
         fav_score_layout = QHBoxLayout()
-        fav_score_layout.addStretch()
         
         is_fav = bool(self.folder_config.get('is_favorite', False))
-        self.favorite_btn = QPushButton(_("★Favorite") if is_fav else _("☆Favorite"), self)
+        self.favorite_btn = QPushButton(_("★ Favorite") if is_fav else _("☆ Favorite"), self)
         self.favorite_btn.setCheckable(True)
         self.favorite_btn.setChecked(is_fav)
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; color: #ccc; border: none; outline: none;
-                text-align: center; padding: 2px 5px; min-width: 100px;
+                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; min-width: 80px;
+                text-align: center;
             }
-            QPushButton:hover {
-                background-color: #444;
-            }
-            QPushButton:checked { 
-                background-color: transparent; color: #f1c40f; font-weight: bold; border: none; outline: none;
-            }
+            QPushButton:hover { background-color: #444; }
+            QPushButton:checked { color: #f1c40f; font-weight: bold; border-color: #f1c40f; }
         """)
         self.favorite_btn.toggled.connect(self._on_favorite_ui_update)
         fav_score_layout.addWidget(self.favorite_btn)
@@ -695,7 +691,7 @@ class PreviewWindow(QWidget):
         self.favorite_btn.blockSignals(True)
         is_fav = bool(cfg.get('is_favorite'))
         self.favorite_btn.setChecked(is_fav)
-        self.favorite_btn.setText(_("★Favorite") if is_fav else _("☆Favorite"))
+        self.favorite_btn.setText(_("★ Favorite") if is_fav else _("☆ Favorite"))
         self.favorite_btn.blockSignals(False)
         
         self.score_dial.blockSignals(True)
@@ -766,7 +762,7 @@ class PreviewWindow(QWidget):
     
     def _on_favorite_ui_update(self, checked):
         """Update favorite button text only (actual save on save button)."""
-        self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite"))
+        self.favorite_btn.setText(_("★ Favorite") if checked else _("☆ Favorite"))
 
     def _on_score_changed(self, value):
         """スコア値変更時の処理。"""
@@ -1142,18 +1138,18 @@ class PreviewWindow(QWidget):
             QMenu::item:selected { background-color: #5d5d5d; }
         """)
         
-        open_playback_act = menu.addAction("🎬 専用ウィンドウで再生")
+        open_playback_act = menu.addAction(_("🎬 Play in dedicated window"))
         open_playback_act.triggered.connect(self._on_image_double_click) # Connect to the new _on_image_double_click logic
         
         menu.addSeparator()
         
-        open_folder_act = menu.addAction("📁 フォルダを開く")
+        open_folder_act = menu.addAction(_("📁 Open folder"))
         open_folder_act.triggered.connect(self._open_in_explorer) # Assuming _open_folder should map to _open_in_explorer
         
-        menu.addAction("🚀 外部アプリで開く").triggered.connect(self._open_external)
-        menu.addAction("📂 エクスプローラーで開く").triggered.connect(self._open_in_explorer)
+        menu.addAction(_("🚀 Open with external app")).triggered.connect(self._open_external)
+        menu.addAction(_("📂 Open in Explorer")).triggered.connect(self._open_in_explorer)
         menu.addSeparator()
-        menu.addAction("❌ リストから削除").triggered.connect(self._remove_current)
+        menu.addAction(_("❌ Remove from list")).triggered.connect(self._remove_current)
         
         menu.exec(self.mapToGlobal(pos))
     
@@ -1202,16 +1198,17 @@ class PreviewWindow(QWidget):
         try:
             parent = self.parent()
             if parent and hasattr(parent, 'registry'):
-                # Restore window size
-                width = int(parent.registry.get_global('preview_window_width', 1000))
-                height = int(parent.registry.get_global('preview_window_height', 600))
+                # Restore window size with unified keys
+                width = int(parent.registry.get_global('preview_prop_window_width', 1000))
+                height = int(parent.registry.get_global('preview_prop_window_height', 600))
                 self.resize(width, height)
                 
                 # Restore splitter sizes
-                left = int(parent.registry.get_global('preview_splitter_left', 700))
-                right = int(parent.registry.get_global('preview_splitter_right', 300))
+                left = int(parent.registry.get_global('preview_prop_splitter_left', 700))
+                right = int(parent.registry.get_global('preview_prop_splitter_right', 300))
                 self.splitter.setSizes([left, right])
             else:
+                # Fallback default
                 self.resize(1000, 600)
         except Exception as e:
             print(f"[Warning] _restore_window_size: {e}")
@@ -1222,12 +1219,12 @@ class PreviewWindow(QWidget):
         try:
             parent = self.parent()
             if parent and hasattr(parent, 'registry'):
-                parent.registry.set_global('preview_window_width', str(self.width()))
-                parent.registry.set_global('preview_window_height', str(self.height()))
+                parent.registry.set_global('preview_prop_window_width', str(self.width()))
+                parent.registry.set_global('preview_prop_window_height', str(self.height()))
                 sizes = self.splitter.sizes()
                 if len(sizes) >= 2:
-                    parent.registry.set_global('preview_splitter_left', str(sizes[0]))
-                    parent.registry.set_global('preview_splitter_right', str(sizes[1]))
+                    parent.registry.set_global('preview_prop_splitter_left', str(sizes[0]))
+                    parent.registry.set_global('preview_prop_splitter_right', str(sizes[1]))
         except Exception as e:
             print(f"[Warning] _save_window_size: {e}")
     
@@ -1248,6 +1245,69 @@ class PreviewWindow(QWidget):
             return
             
         super().keyPressEvent(event)
+
+    def _sync_icon_from_preview(self, path):
+        """Callback from icon cropping/selection to set the icon."""
+        if not self.folder_path or not self.db:
+            return
+            
+        try:
+            import os
+            import shutil
+            import time
+            
+            rel_path = os.path.relpath(self.folder_path, self.storage_root).replace('\\', '/')
+            if rel_path == '.': rel_path = ''
+            
+            # Prepare target path with timestamp to force refresh
+            parent = self.parent()
+            tm = getattr(parent, 'thumbnail_manager', None)
+            app_name = getattr(parent, 'app_name', 'LinkMaster')
+            
+            target_dir = None
+            if tm:
+                # Use ThumbnailManager's directory structure
+                # Hack: get_thumbnail_path returns full path "dir/name.jpg"
+                base_thumb_path = tm.get_thumbnail_path(app_name, rel_path)
+                target_dir = os.path.dirname(base_thumb_path)
+            else:
+                # Fallback: Local .thumbnails folder
+                target_dir = os.path.join(self.folder_path, '.thumbnails')
+                
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir, exist_ok=True)
+            
+            # Create unique filename
+            # Use safe item name
+            item_name = os.path.basename(self.folder_path)
+            safe_name = "".join([c for c in item_name if c.isalnum() or c in (' ', '_', '-')]).strip()
+            if not safe_name: safe_name = "icon"
+            
+            ext = os.path.splitext(path)[1]
+            if not ext: ext = ".png"
+            
+            new_filename = f"{safe_name}_icon_{int(time.time())}{ext}"
+            new_path = os.path.join(target_dir, new_filename)
+            
+            # Copy file
+            shutil.copy2(path, new_path)
+            
+            # Update DB with new path
+            self.db.update_folder_display_config(rel_path, image_path=new_path)
+            
+            # Update local config cache if needed
+            if hasattr(self, 'folder_config') and self.folder_config:
+                self.folder_config['image_path'] = new_path
+                
+            # Signal change
+            self.property_changed.emit({'image_path': new_path})
+            
+            QMessageBox.information(self, _("Icon Set"), _("Icon has been updated."))
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            QMessageBox.warning(self, "Error", f"Failed to set icon: {e}")
 
 # Alias for backwards compatibility
 VideoPreviewWindow = PreviewWindow

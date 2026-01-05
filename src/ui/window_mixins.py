@@ -220,7 +220,7 @@ class OptionsMixin:
         options = {
             'geometry': [rect.x(), rect.y(), rect.width(), rect.height()],
             'is_maximized': self.isMaximized(),
-            'opacity': self.windowOpacity() if hasattr(self, 'windowOpacity') else 1.0,
+            'opacity': 1.0, # Force save opaque, we handle transparency internally via paintEvent
             'always_on_top': getattr(self, '_always_on_top', False)
         }
         
@@ -264,8 +264,12 @@ class OptionsMixin:
                     self.showMaximized()
             
             # Restore opacity
-            if 'opacity' in data and hasattr(self, 'setWindowOpacity'):
-                self.setWindowOpacity(data['opacity'])
+            # Restore opacity - DISABLED to prevent artifacting with paintEvent transparency
+            # Opacity is now handled via _bg_opacity and paintEvent
+            if hasattr(self, 'setWindowOpacity'):
+                 self.setWindowOpacity(1.0) # Force opaque to ensure visibility
+            # if 'opacity' in data and hasattr(self, 'setWindowOpacity'):
+            #     self.setWindowOpacity(data['opacity'])
             
             # Restore always_on_top
             if 'always_on_top' in data and hasattr(self, 'set_always_on_top'):

@@ -43,12 +43,16 @@ class ScannerWorker(QObject):
         """Update database reference when app changes."""
         self.db = db
 
-    def set_params(self, path, target_root, storage_root, search_config=None, context="view"):
+    def set_params(self, path, target_root, storage_root, search_config=None, context="view", app_data=None, target_key=None, app_id=None):
         self.current_path = path
         self.target_root = target_root
         self.storage_root = storage_root
         self.search_config = search_config
         self.context = context
+        self.app_data = app_data
+        self.target_key = target_key
+        # Phase 33: Store App ID to prevent results from different apps bleeding in
+        self.app_id = app_id or (app_data or {}).get('id') or ""
 
     @pyqtSlot()
     def run(self):
@@ -263,7 +267,8 @@ class ScannerWorker(QObject):
 
     def _detect_logical_conflicts(self, results, folder_configs):
         """
-        Detects duplicate display names (local to results) and duplicate deployment targets (global).
+        Detects duplicate deployment targets (global).
+        NOTE: Name conflict detection has been REMOVED as it was not desired functionality.
         """
         # 1. Global Target Map
         # Map: NormalizedTargetPath -> [RelPath]
@@ -278,21 +283,8 @@ class ScannerWorker(QObject):
                     target_map[norm_t].append(rel_path)
                 except: continue
 
-        # 2. Local Name Groups (Case-insensitive)
-        name_groups = {}
+        # 2. Mark Results with Target Conflict only
         for r in results:
-            d_name = (r['config'].get('display_name') or r['item']['name']).lower()
-            if d_name not in name_groups: name_groups[d_name] = []
-            name_groups[d_name].append(r)
-
-        # 3. Mark Results
-        for r in results:
-            # Name Conflict check
-            d_name = (r['config'].get('display_name') or r['item']['name']).lower()
-            if len(name_groups.get(d_name, [])) > 1:
-                r['has_name_conflict'] = True
-                r['has_conflict'] = True # Ensure inherited conflict flag is set
-                
             # Global Target Conflict check
             t_override = r['config'].get('target_override')
             if t_override:
