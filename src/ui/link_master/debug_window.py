@@ -44,7 +44,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
             self.opt_btn.setChecked(True)
 
     def init_ui(self):
-        container = QWidget()
+        container = QWidget(self)
         layout = QVBoxLayout(container)
         
         self.security_lbl = QLabel(_("<h2>Debug: Core Security Check</h2>"))
@@ -120,6 +120,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.show_outlines_cb = QCheckBox(_("全ウィジェットに枠線を表示 (Global Outlines)"))
         self.show_outlines_cb.toggled.connect(self._on_global_outlines_toggled)
         layout.addWidget(self.show_outlines_cb)
+        
+        # Window Count Debug Button
+        self.btn_window_count = QPushButton(_("🔍 Show Top-Level Widget Count"))
+        self.btn_window_count.clicked.connect(self._show_window_count)
+        layout.addWidget(self.btn_window_count)
         
         # Language Settings Section
         layout.addSpacing(20)
@@ -207,6 +212,28 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
                  # LinkMasterWindow doesn't have a single apply_theme but it sets stylesheet on main_widget.
                  # QApplication stylesheet is global.
                  pass
+
+    def _show_window_count(self):
+        """Show count and details of all top-level widgets."""
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if not app: return
+        
+        widgets = app.topLevelWidgets()
+        details = []
+        for i, w in enumerate(widgets):
+            class_name = w.__class__.__name__
+            obj_name = w.objectName() or "(no name)"
+            is_visible = "V" if w.isVisible() else "H"
+            size = f"{w.width()}x{w.height()}"
+            parent = w.parent().__class__.__name__ if w.parent() else "None"
+            details.append(f"[{i}] {class_name} ({obj_name}) | {is_visible} | {size} | Parent: {parent}")
+        
+        msg = f"Top-Level Widgets Count: {len(widgets)}\n\n" + "\n".join(details)
+        QMessageBox.information(self, "Window Count Debug", msg)
+        print(f"\n=== TOP LEVEL WIDGETS: {len(widgets)} ===")
+        for d in details:
+            print(f"  {d}")
 
     def _on_language_changed(self, index):
         """Handle language selection change."""

@@ -384,8 +384,17 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.control_layout.insertWidget(index, widget)
 
     def set_content_widget(self, widget: QWidget):
-        if self.content_area.layout():
-            QWidget().setLayout(self.content_area.layout())
+        # Clear old layout properly without creating orphan widgets
+        old_layout = self.content_area.layout()
+        if old_layout:
+            # Delete all widgets in old layout
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            # Delete the old layout itself
+            old_layout.deleteLater()
+        
         layout = QVBoxLayout(self.content_area)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.addWidget(widget)
@@ -550,12 +559,12 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         
         # 0. Preparation for "No White Flash"
         self.setWindowOpacity(0.0) # Hide immediately
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        # self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent) # Removed to prevent opacity accumulation
+        # WA_NoSystemBackground removed - causes transparency issues on some systems
         
-        # 1. Base UI Props
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        # 1. Base UI Props - Use Window instead of Dialog to prevent layering transparency bugs
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)  # Auto-delete on close to prevent ghost windows
         
         # 2. Force Dark Palette immediately
         palette = self.palette()
@@ -598,9 +607,7 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         # Main container
         self.container = QWidget(self)
         # self.container.setWindowFlags(Qt.WindowType.Widget) 
-        self.container.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        # Fix: Prevent double-translucency by treating container as opaque
-        self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        # WA_NoSystemBackground removed - causes transparency issues on some systems
         self.container.setObjectName("FramelessContainer")
         self.container.installEventFilter(self)
         
@@ -669,33 +676,39 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         self.update()
 
     def paintEvent(self, event):
-        # Allow Windows to handle transparency properly without artifacts
+        """Paint background directly using CompositionMode_Source to prevent transparency accumulation."""
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # 1. Clear existing content first to prevent accumulation
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
-        
-        # 2. Draw Background once
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        # Use Source to REPLACE pixels to exact opacity. 
+        # Prevents both accumulation (darker) and flicker (clearing).
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         
         # Calculate color with opacity
-        bg_color = QColor(43, 43, 43)
-        bg_color.setAlphaF(self._bg_opacity)
-        
-        # DEBUG: Log opacity (Removed)
+        bg_alpha = int(self._bg_opacity * 255)
+        bg_alpha = max(0, min(255, bg_alpha))
+        bg_color = QColor(43, 43, 43, bg_alpha)
         
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         rect = self.rect()
-        radius = self.border_radius
+        radius = self.border_radius if not self.isMaximized() else 0
         
         if self.isMaximized():
-             painter.drawRect(rect)
+            painter.drawRect(rect)
         else:
-             painter.drawRoundedRect(rect, radius, radius)
+            painter.drawRoundedRect(rect, radius, radius)
+        
+        # Draw border (SourceOver to blend ON TOP of background)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        border_alpha = int(self._bg_opacity * 255)
+        if radius > 0:
+            from PyQt6.QtGui import QPen
+            painter.setPen(QPen(QColor(68, 68, 68, border_alpha), 1))
+            painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), radius, radius)
+            
+        painter.end()
 
     def _update_stylesheet(self):
         # Ensure the Main Window (Dialog) is fully transparent so only our container is seen

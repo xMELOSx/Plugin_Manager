@@ -6,11 +6,12 @@ set "SOURCE_DIR=src"
 set "BACKUP_ROOT=backups"
 set "VERSION_FILE=VERSION.txt"
 
-:: Read current version (default 0.2.0)
+:: Read current version from VERSION.txt
 if exist "%VERSION_FILE%" (
-    set /p CURRENT_VERSION=<"%VERSION_FILE%"
+    for /f "delims=" %%v in (%VERSION_FILE%) do set "CURRENT_VERSION=%%v"
 ) else (
-    set "CURRENT_VERSION=0.2.0"
+    set "CURRENT_VERSION=0.9.100"
+    echo %CURRENT_VERSION%>"%VERSION_FILE%"
 )
 
 :: Parse version parts (MAJOR.MINOR.PATCH)

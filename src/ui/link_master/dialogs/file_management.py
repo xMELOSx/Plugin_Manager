@@ -203,6 +203,9 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
     def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root=""):
         super().__init__(parent)
+        # Tool flag: Don't show in taskbar, stay above main window (like DebugWindow/OptionsWindow)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
+        
         self.folder_path = folder_path
         self.storage_root = storage_root or folder_path
         self.primary_target = primary_target
@@ -231,8 +234,9 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
     def _apply_theme(self):
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #eee; }
-            QLabel { color: #eee; }
-            QFrame { background-color: #2b2b2b; border: 1px solid #444; border-radius: 4px; }
+            QLabel { color: #eee; border: none; background: transparent; }
+            /* Only apply border to content frames, not label containers */
+            QFrame#ToolsFrame { background-color: transparent; border: none; }
             QPushButton { 
                 background-color: #3c3c3c; color: #eee; border: 1px solid #555; 
                 padding: 6px 12px; border-radius: 4px; min-width: 60px;
@@ -246,10 +250,11 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
                 background-color: #1a1a1a; 
                 color: #ffffff; border: 1px solid #333; 
             }
-            QTreeView::item:hover { background-color: #333; }
-            /* Semi-transparent bright blue selection to keep original background visible */
-            QTreeView::item:selected { background-color: rgba(52, 152, 219, 130); color: #ffffff; outline: none; }
-            QTreeView::item:selected:active { background-color: rgba(52, 152, 219, 160); color: #ffffff; }
+            /* Very subtle hover - just slightly brighter, keeps background visible */
+            QTreeView::item:hover { background-color: rgba(255, 255, 255, 0.08); }
+            /* Selection with white border and minimal overlay - background color (blue/red/black) stays visible */
+            QTreeView::item:selected { background-color: rgba(255, 255, 255, 0.12); color: #ffffff; outline: 1px solid rgba(255, 255, 255, 0.5); }
+            QTreeView::item:selected:active { background-color: rgba(255, 255, 255, 0.15); color: #ffffff; outline: 1px solid rgba(255, 255, 255, 0.6); }
 
             QHeaderView::section { 
                 background-color: #333; color: #ffffff; border: 1px solid #222; 
@@ -275,7 +280,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         """)
 
     def _init_ui(self):
-        content = QWidget()
+        content = QWidget(self)
         main_layout = QVBoxLayout(content)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(12)
@@ -283,7 +288,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         # Header
         header = QHBoxLayout()
         # Clickable Folder Icon + Title
-        title_container = QWidget()
+        title_container = QWidget(self)
         title_h = QHBoxLayout(title_container)
         title_h.setContentsMargins(0,0,0,0)
         
@@ -385,11 +390,15 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
 
         # Toolbar / Quick Actions - Reorganized per user request
         tools_frame = QFrame(self)
+        tools_frame.setObjectName("ToolsFrame")  # For CSS #ToolsFrame selector
         tools_layout = QVBoxLayout(tools_frame)
         tools_layout.setSpacing(12)
         
-        # Section Header: 一括設定 - Positioned above the rows with some spacing
+        LABEL_WIDTH = 110 # For alignment - defined here for batch header
+
+        # Section Header: 一括設定 - Aligned with デフォルト button left edge
         batch_header_layout = QHBoxLayout()
+        batch_header_layout.addSpacing(LABEL_WIDTH + 12)  # Match モード label width + spacing
         batch_header = QLabel(_("<b>一括設定</b>"))
         batch_header.setStyleSheet("color: #ffffff; font-size: 11pt; padding: 2px 0;")
         batch_header_layout.addWidget(batch_header)
@@ -741,7 +750,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         if hasattr(self, 'btn_toggle_mode'): self.btn_toggle_mode.setEnabled(has_selection)
 
     def _create_legend_dot(self, color, text):
-        container = QWidget()
+        container = QWidget(self)
         l = QHBoxLayout(container)
         l.setContentsMargins(0,0,0,0)
         dot = QLabel()

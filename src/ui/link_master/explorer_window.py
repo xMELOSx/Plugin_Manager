@@ -276,7 +276,7 @@ class ExplorerPanel(QWidget):
         
         from src.ui.link_master.dialogs import FolderPropertiesDialog
         
-        menu = QMenu()
+        menu = QMenu(self)
         menu.addAction(_("Batch Edit ({count} folders)").format(count=len(rel_paths))).setEnabled(False)
         menu.addSeparator()
         
@@ -328,7 +328,7 @@ class ExplorerPanel(QWidget):
         current_type = config.get('folder_type', default_type) if config else default_type
         current_style = config.get('display_style', 'image') if config else 'image'
         
-        menu = QMenu()
+        menu = QMenu(self)
         label_text = _("Root Folder") if is_root else _("Folder: {name}").format(name=os.path.basename(rel_path))
         menu.addAction(label_text).setEnabled(False)
         menu.addSeparator()

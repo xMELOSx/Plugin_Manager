@@ -10,9 +10,8 @@ class OptionsWindow(FramelessWindow):
     closed = pyqtSignal()  # Signal emitted when window is closed via X button
     
     def __init__(self, parent=None, db=None):
-        # Pass None as parent to prevent "Double Transparency" artifacts
-        # But we'll set transient parent for stacking (stays above parent, below other apps)
-        super().__init__(None)
+        # Pass parent properly - double transparency bug now fixed in paintEvent
+        super().__init__(parent)
         self.setObjectName("OptionsWindow")
 
         # Sync opacity from parent link_master window if available

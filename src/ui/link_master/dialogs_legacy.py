@@ -14,13 +14,15 @@ from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.link_master.utils import format_size
+from src.ui.slide_button import SlideButton
 from src.core.lang_manager import _
 from src.ui.window_mixins import OptionsMixin
+from src.ui.common_widgets import StyledLineEdit, StyledComboBox, StyledSpinBox
 import os
 import subprocess
 import shutil
 
-class TagIconLineEdit(QLineEdit):
+class TagIconLineEdit(StyledLineEdit):
     """QLineEdit that accepts image drag and drop."""
     file_dropped = pyqtSignal(str)
 
@@ -90,17 +92,6 @@ class AppRegistrationDialog(QDialog):
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLabel { color: #cccccc; }
-            QLineEdit, QComboBox { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; padding: 4px; border-radius: 4px;
-            }
-            QComboBox:hover { border-color: #3498db; background-color: #444; }
-            QComboBox::drop-down { border: none; }
-            QComboBox QAbstractItemView { 
-                background-color: #3b3b3b; color: #ffffff; 
-                selection-background-color: #2980b9; selection-color: #ffffff; 
-                border: 1px solid #555; 
-            }
             QPushButton {
                 background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
             }
@@ -116,12 +107,12 @@ class AppRegistrationDialog(QDialog):
         form = QFormLayout()
         
         # Name
-        self.name_edit = QLineEdit()
+        self.name_edit = StyledLineEdit()
         self.name_edit.setPlaceholderText(_("e.g. Minecraft"))
         form.addRow(_("App Name:"), self.name_edit)
         
         # Storage Root
-        self.storage_edit = QLineEdit()
+        self.storage_edit = StyledLineEdit()
         self.storage_btn = QPushButton(_(" Browse "))
         self.storage_btn.clicked.connect(self._browse_storage)
         storage_layout = QHBoxLayout()
@@ -132,13 +123,13 @@ class AppRegistrationDialog(QDialog):
         # Helper to create target row with rule combo
         def create_target_row(label, edit_attr, btn_attr, rule_combo_attr, browse_slot, default_rule='folder'):
             layout = QHBoxLayout()
-            edit = QLineEdit()
+            edit = StyledLineEdit()
             setattr(self, edit_attr, edit)
             btn = QPushButton(_(" Browse "))
             setattr(self, btn_attr, btn)
             btn.clicked.connect(browse_slot)
             
-            rule_combo = QComboBox()
+            rule_combo = StyledComboBox()
             rule_combo.addItem(_("whole folder"), "folder")
             rule_combo.addItem(_("all files"), "files")
             rule_combo.addItem(_("tree"), "tree")
@@ -165,38 +156,38 @@ class AppRegistrationDialog(QDialog):
         defaults_group.setStyleSheet("QGroupBox { border: 1px solid #444; margin-top: 10px; padding-top: 10px; color: #aaa; }")
         defaults_form = QFormLayout()
         
+        # Default Tree Skip (Relocated to top of group)
+        self.default_skip_levels_spin = StyledSpinBox()
+        self.default_skip_levels_spin.setRange(0, 5)
+        self.default_skip_levels_spin.setSuffix(_(" levels"))
+        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
+
         # Transfer Mode
-        self.transfer_mode_combo = QComboBox()
+        self.transfer_mode_combo = StyledComboBox()
         self.transfer_mode_combo.addItem(_("Symbolic Link (recommended)"), "symlink")
         self.transfer_mode_combo.addItem(_("Physical Copy (slower)"), "copy")
         defaults_form.addRow(_("Default Transfer Mode:"), self.transfer_mode_combo)
 
         # Conflict Policy
-        self.conflict_combo = QComboBox()
+        self.conflict_combo = StyledComboBox()
         self.conflict_combo.addItems(["backup", "skip", "overwrite"])
         defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
-        self.cat_style_combo = QComboBox()
+        self.cat_style_combo = StyledComboBox()
         self.cat_style_combo.addItems(["image", "text", "image_text"])
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
-        self.pkg_style_combo = QComboBox()
+        self.pkg_style_combo = StyledComboBox()
         self.pkg_style_combo.addItems(["image", "text", "image_text"])
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
-
-        # Default Tree Skip
-        self.default_skip_levels_spin = QSpinBox()
-        self.default_skip_levels_spin.setRange(0, 5)
-        self.default_skip_levels_spin.setSuffix(_(" levels"))
-        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
         
         defaults_group.setLayout(defaults_form)
         form.addRow(defaults_group)
 
         
         # Cover Image with Edit Region support
-        self.cover_edit = QLineEdit()
+        self.cover_edit = StyledLineEdit()
         self.cover_edit.setPlaceholderText(_("Optional: Select cover image for app"))
         self.cover_btn = QPushButton(_(" Browse "))
         self.cover_btn.clicked.connect(self._browse_cover)
@@ -580,7 +571,6 @@ class ExecutablesManagerDialog(QDialog):
             QTableWidget { background-color: #2d2d2d; color: #e0e0e0; gridline-color: #3d3d3d; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; }
             QPushButton:hover { background-color: #5d5d5d; }
-            QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         self.executables = list(executables) if executables else []
@@ -595,12 +585,12 @@ class ExecutablesManagerDialog(QDialog):
         form_group.setStyleSheet("QGroupBox { color: #aaa; font-weight: bold; }")
         form_layout = QFormLayout(form_group)
         
-        self.name_edit = QLineEdit()
+        self.name_edit = StyledLineEdit()
         self.name_edit.setPlaceholderText(_("Display Name (e.g. 'Launch Game')"))
         form_layout.addRow(_("Name:"), self.name_edit)
         
         path_layout = QHBoxLayout()
-        self.path_edit = QLineEdit()
+        self.path_edit = StyledLineEdit()
         self.path_edit.setPlaceholderText(_("Executable path (.exe)"))
         path_layout.addWidget(self.path_edit)
         browse_btn = QPushButton(_("Browse"))
@@ -608,7 +598,7 @@ class ExecutablesManagerDialog(QDialog):
         path_layout.addWidget(browse_btn)
         form_layout.addRow(_("Path:"), path_layout)
         
-        self.args_edit = QLineEdit()
+        self.args_edit = StyledLineEdit()
         self.args_edit.setPlaceholderText(_("Command line arguments (optional)"))
         form_layout.addRow(_("Args:"), self.args_edit)
         
@@ -799,7 +789,6 @@ class LibraryDependencyDialog(QDialog):
             QListWidget::item:selected { background-color: #3d5a80; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
             QPushButton:hover { background-color: #5d5d5d; }
-            QComboBox, QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         import json
@@ -819,16 +808,14 @@ class LibraryDependencyDialog(QDialog):
         # Add form
         add_form = QHBoxLayout()
         
-        self.lib_combo = QComboBox()
+        self.lib_combo = StyledComboBox()
         self.lib_combo.setMinimumWidth(150)
-        self.lib_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         self._load_available_libraries()
         add_form.addWidget(self.lib_combo)
         
-        self.ver_combo = QComboBox()
+        self.ver_combo = StyledComboBox()
         self.ver_combo.addItem(_("Preferred"), None)
         self.ver_combo.setMinimumWidth(100)
-        self.ver_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         add_form.addWidget(self.ver_combo)
         
         self.lib_combo.currentIndexChanged.connect(self._on_lib_selected)
@@ -1606,14 +1593,13 @@ class URLListDialog(QDialog):
             QListWidget::item:selected { background-color: #3d5a80; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
             QPushButton:hover { background-color: #5d5d5d; }
-            QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px; }
             QLabel { color: #e0e0e0; }
             QCheckBox { color: #e0e0e0; }
         """)
         
         # URL Input
         input_layout = QHBoxLayout()
-        self.url_input = QLineEdit()
+        self.url_input = StyledLineEdit()
         self.url_input.setPlaceholderText(_("Enter URL (https://...)"))
         self.url_input.returnPressed.connect(self._add_url)
         input_layout.addWidget(self.url_input)
@@ -1679,10 +1665,15 @@ class URLListDialog(QDialog):
         # Toolbar
         btns = QHBoxLayout()
         
-        self.auto_mark_chk = QCheckBox(_("Automatically mark the last accessed one (🔗)"))
+        auto_mark_layout = QHBoxLayout()
+        auto_mark_label = QLabel(_("Auto-mark last accessed URL (🔗):"))
+        auto_mark_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        self.auto_mark_chk = SlideButton()
         self.auto_mark_chk.setChecked(self.auto_mark)
-        self.auto_mark_chk.setStyleSheet("color: #aaa; font-size: 11px;")
-        layout.addWidget(self.auto_mark_chk)
+        auto_mark_layout.addWidget(auto_mark_label)
+        auto_mark_layout.addWidget(self.auto_mark_chk)
+        auto_mark_layout.addStretch()
+        layout.addLayout(auto_mark_layout)
 
         test_all_btn = QPushButton(_("🔍 Test All && Open First Working"))
         test_all_btn.clicked.connect(self._test_and_open_first)
@@ -2138,11 +2129,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLabel { color: #cccccc; }
-            QLineEdit, QComboBox, QSpinBox { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; padding: 4px; border-radius: 4px;
-            }
-            QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }
             QCheckBox { color: #cccccc; }
             QPushButton {
                 background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
@@ -2281,7 +2267,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             display_form.addRow(_("Package Size:"), size_label)
         
         # Display Name (Alias)
-        self.name_edit = QLineEdit()
+        self.name_edit = StyledLineEdit()
         self.name_edit.setPlaceholderText(_("Leave empty to use folder name"))
         if self.batch_mode:
              self.name_edit.setPlaceholderText(_("Leave empty to keep original names"))
@@ -2322,12 +2308,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.manage_previews_btn = QPushButton(_("📂 Manage Full Previews..."))
         self.manage_previews_btn.clicked.connect(self._open_multi_preview_browser)
         
-        self.full_preview_edit = QLineEdit()
+        self.full_preview_edit = StyledLineEdit()
         self.full_preview_edit.setText(self.current_config.get('manual_preview_path', '') or '')
         display_form.addRow(_("Multi-Preview:"), self.manage_previews_btn)
 
         # Icon Path Widgets
-        self.image_edit = QLineEdit()
+        self.image_edit = StyledLineEdit()
         self.image_edit.setPlaceholderText(_("Path to icon image (200x200)"))
         self.image_edit.setText(self.current_config.get('image_path') or '')
         
@@ -2371,10 +2357,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         """)
         display_form.addRow(_("Description:"), self.description_edit)
 
-        self.author_edit = QLineEdit()
+        self.author_edit = StyledLineEdit()
         self.author_edit.setPlaceholderText(_("Author / Creator"))
         self.author_edit.setText(self.current_config.get('author', '') or '')
-        self.author_edit.setStyleSheet("background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 3px 6px; border-radius: 4px;")
         display_form.addRow(_("Author:"), self.author_edit)
 
         # URL List Management (replaces single URL field)
@@ -2392,7 +2377,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         url_layout.addWidget(self.url_btn)
         
         # Hidden field to store structured JSON
-        self.url_list_edit = QLineEdit()
+        self.url_list_edit = StyledLineEdit()
         self.url_list_edit.setVisible(False)
         self.url_list_edit.setText(self.current_config.get('url_list') or '[]')
         
@@ -2413,10 +2398,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         attr_form = QFormLayout(attr_group)
         
         # Folder Type
-        self.type_combo = QComboBox()
-        self.type_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.type_combo = StyledComboBox()
         if self.batch_mode:
-            self.type_combo.addItem(_("--- No Change ---"), None)
+            self.type_combo.addItem(_("--- No Change ---"), "KEEP")
             
         self.type_combo.addItem(_("Auto (Detect)"), "auto")
         self.type_combo.addItem(_("Category"), "category")
@@ -2440,10 +2424,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         
         # Display Style
-        self.style_combo = QComboBox()
-        self.style_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.style_combo = StyledComboBox()
         if self.batch_mode:
-            self.style_combo.addItem(_("--- No Change ---"), None)
+            self.style_combo.addItem(_("--- No Change ---"), "KEEP")
             
         self.style_combo.addItem(_("App Default ({default})").format(default=self.app_cat_style_default), None)
         self.style_combo.addItem(_("Image Only"), "image")
@@ -2461,10 +2444,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         attr_form.addRow(_("Category Style:"), self.style_combo)
         
         # Package Display Style (separate from category)
-        self.style_combo_pkg = QComboBox()
-        self.style_combo_pkg.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.style_combo_pkg = StyledComboBox()
         if self.batch_mode:
-            self.style_combo_pkg.addItem(_("--- No Change ---"), None)
+            self.style_combo_pkg.addItem(_("--- No Change ---"), "KEEP")
             
         self.style_combo_pkg.addItem(_("App Default ({default})").format(default=self.app_pkg_style_default), None)
         self.style_combo_pkg.addItem(_("Image Only"), "image")
@@ -2492,10 +2474,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Terminal Flag Removed (Phase 12)
         
         # Phase 18.14: Hide Flag (is_visible)
-        self.hide_checkbox = QCheckBox(_("Hide this folder from normal view"))
+        self.hide_checkbox = SlideButton()
         is_visible = self.current_config.get('is_visible', 1)
         self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
-        attr_form.addRow(_("Visibility:"), self.hide_checkbox)
+        attr_form.addRow(_("Hide from view:"), self.hide_checkbox)
         
         # Quick Tag Selector (Top Position - Phase 18 Swap)
         self.tag_panel = QWidget()
@@ -2565,7 +2547,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # Tags (comma-separated) (Bottom Position) - Only MANUAL tags shown here
         # Quick Tags are stored in buttons and merged at save time
-        self.tags_edit = QLineEdit()
+        self.tags_edit = StyledLineEdit()
         self.tags_edit.setPlaceholderText(_("Additional custom tags (e.g. my_custom, special)"))
         
         # Filter out quick tags from the text area on load
@@ -2578,10 +2560,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         attr_form.addRow(_("Additional Tags:"), self.tags_edit)
         
         # Inherit Tags Toggle (Phase 18.8)
-        self.inherit_tags_chk = QCheckBox(_("Inherit tags to subfolders"))
+        self.inherit_tags_chk = SlideButton()
         self.inherit_tags_chk.setChecked(bool(self.current_config.get('inherit_tags', 1)))
         self.inherit_tags_chk.setToolTip(_("If unchecked, tags from parent folders will NOT be applied to this item and its children."))
-        attr_form.addRow(_("Inheritance:"), self.inherit_tags_chk)
+        attr_form.addRow(_("Inherit tags to subfolders:"), self.inherit_tags_chk)
         
         # No sync needed since Quick Tags are independent
         # self.tags_edit.textChanged.connect(self._sync_tag_buttons)
@@ -2601,9 +2583,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         target_layout.setContentsMargins(0, 0, 0, 0)
         target_layout.setSpacing(10)
         
-        self.target_combo = QComboBox()
+        self.target_combo = StyledComboBox()
         self.target_combo.setMinimumWidth(200)
-        self.target_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
         
         # 1. Inherit (App Default)
         last_target_key = self.current_app_data.get('last_target', 'target_root')
@@ -2631,7 +2612,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.manual_path_container = QWidget()
         manual_layout = QHBoxLayout(self.manual_path_container)
         manual_layout.setContentsMargins(0, 0, 0, 0)
-        self.target_override_edit = QLineEdit()
+        self.target_override_edit = StyledLineEdit()
         self.target_override_edit.setPlaceholderText(_("Override path..."))
         self.target_override_edit.setText(self.current_config.get('target_override') or '')
         self.target_override_btn = QPushButton(_("Browse"))
@@ -2666,8 +2647,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         adv_form.addRow(_("Target Destination:"), target_container)
 
         # Phase 2: Deploy/Conflict Overrides (Rule & Mode)
-        self.deploy_rule_override_combo = QComboBox()
-        self.deploy_rule_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.deploy_rule_override_combo = StyledComboBox()
         if self.batch_mode:
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
@@ -2694,7 +2674,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
 
         # Skip Levels for TREE mode (Moved below Deploy Rule)
-        self.skip_levels_spin = QSpinBox()
+        self.skip_levels_spin = StyledSpinBox()
         self.skip_levels_spin.setRange(0, 5)
         self.skip_levels_spin.setSuffix(_(" levels"))
         
@@ -2717,8 +2697,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         QTimer.singleShot(0, self._update_tree_skip_visibility)
 
         # Transfer Mode Override
-        self.transfer_mode_override_combo = QComboBox()
-        self.transfer_mode_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.transfer_mode_override_combo = StyledComboBox()
         if self.batch_mode:
             self.transfer_mode_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
@@ -2737,8 +2716,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # Tree Skip moved above
 
-        self.conflict_override_combo = QComboBox()
-        self.conflict_override_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
+        self.conflict_override_combo = StyledComboBox()
         if self.batch_mode:
             self.conflict_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
@@ -2785,22 +2763,16 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             conflict_tag_layout = QHBoxLayout()
             
             # Tag input field (FIRST)
-            self.conflict_tag_edit = QLineEdit()
+            self.conflict_tag_edit = StyledLineEdit()
             self.conflict_tag_edit.setPlaceholderText(_("Tag to search..."))
-            self.conflict_tag_edit.setStyleSheet("background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 3px 6px; border-radius: 4px;")
             self.conflict_tag_edit.setText(self.current_config.get('conflict_tag', '') or '')
             conflict_tag_layout.addWidget(self.conflict_tag_edit, 2)  # stretch=2
             
             # Dropdown for scope selection (SECOND)
-            self.conflict_scope_combo = QComboBox()
+            self.conflict_scope_combo = StyledComboBox()
             self.conflict_scope_combo.addItem(_("Disabled"), "disabled")
             self.conflict_scope_combo.addItem(_("Category"), "category")
             self.conflict_scope_combo.addItem(_("Global"), "global")
-            self.conflict_scope_combo.setStyleSheet("""
-                QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 3px 6px; }
-                QComboBox::drop-down { border: none; background: #444; }
-                QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }
-            """)
             # Load initial scope value
             current_scope = self.current_config.get('conflict_scope', 'disabled')
             scope_idx = self.conflict_scope_combo.findData(current_scope)
@@ -3541,10 +3513,10 @@ class TagManagerDialog(QDialog):
         emoji_h.addStretch()
         form.addRow(_("Symbol (Display):"), emoji_h)
 
-        self.inheritable_check = QCheckBox(_("Inherit tags to subfolders"))
+        self.inheritable_check = SlideButton()
         self.inheritable_check.setChecked(True)
-        self.inheritable_check.stateChanged.connect(self._on_data_changed)
-        form.addRow(_("Inheritance:"), self.inheritable_check)
+        self.inheritable_check.toggled.connect(self._on_data_changed)
+        form.addRow(_("Inherit to children:"), self.inheritable_check)
         
         self.icon_edit = TagIconLineEdit()
         self.icon_edit.file_dropped.connect(self._on_icon_dropped_to_edit)
@@ -3946,13 +3918,13 @@ class TagCreationDialog(QDialog):
         form.addRow(_("Icon:"), h)
         
         # Inheritance (Phase 18.9 compatibility)
-        self.inheritable_check = QCheckBox(_("Inherit tags to subfolders"))
+        self.inheritable_check = SlideButton()
         self.inheritable_check.setChecked(True)
-        form.addRow(_("Inheritance:"), self.inheritable_check)
+        form.addRow(_("Inherit to children:"), self.inheritable_check)
         
-        self.is_sep_check = QCheckBox(_("Is Separator (|)"))
+        self.is_sep_check = SlideButton()
         self.is_sep_check.toggled.connect(self._on_sep_toggled)
-        form.addRow("", self.is_sep_check)
+        form.addRow(_("Is Separator (|):"), self.is_sep_check)
         
         layout.addLayout(form)
         
