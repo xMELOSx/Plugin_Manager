@@ -56,11 +56,18 @@ class LMScanHandlerMixin:
         # 4. Prepare layouts (Clear, release cards, batch mode)
         self._prepare_layouts_for_redraw(context, app_data, view_config)
         
-        # 5. Populate layouts with cards
-        counts = self._populate_cards(results, context, storage_root, folder_configs, configs)
-        
-        # 6. Finalize UI (Labels, margins, styles)
-        self._finalize_scan_ui(counts, context, original_path, start_t)
+        # Phase 33: Apply setUpdatesEnabled to the ENTIRE WINDOW to prevent layout recalculations
+        # during the 145+ card update loop. This is the key optimization.
+        self.setUpdatesEnabled(False)
+        try:
+            # 5. Populate layouts with cards
+            counts = self._populate_cards(results, context, storage_root, folder_configs, configs)
+            
+            # 6. Finalize UI (Labels, margins, styles)
+            self._finalize_scan_ui(counts, context, original_path, start_t)
+        finally:
+            self.setUpdatesEnabled(True)
+
 
     def _validate_scan_context(self, original_path, context, app_id=None):
         """Phase 28: Scan version tracking and context validation to prevent stale results."""
@@ -185,25 +192,17 @@ class LMScanHandlerMixin:
         self._update_cat_button_styles(view_config, cat_level_def)
         self._update_pkg_button_styles(view_config, pkg_level_def)
         
+        # Phase 33: Cancel any pending image load requests from previous folder
+        # This prevents stale images from appearing and focuses resources on current folder
+        if hasattr(self, 'image_loader') and hasattr(self.image_loader, 'cancel_pending'):
+            self.image_loader.cancel_pending()
+        
         self._release_all_active_cards(context)
+
         
-        # Phase 32: Extra Safety - Ensure layouts are physically empty to prevent alpha stacking
-        # even if some non-pooled widgets were left behind.
-        if context in ["all", "category", "cat", "view"]:
-            if hasattr(self, 'cat_layout'):
-                while self.cat_layout.count():
-                    item = self.cat_layout.takeAt(0)
-                    if item.widget():
-                        item.widget().hide() 
-                        item.widget().setParent(None)
-        
-        if context in ["all", "package", "pkg", "contents"]:
-            if hasattr(self, 'pkg_layout'):
-                while self.pkg_layout.count():
-                    item = self.pkg_layout.takeAt(0)
-                    if item.widget():
-                        item.widget().hide()
-                        item.widget().setParent(None)
+        # Phase 33: Removed redundant "Phase 32 Extra Safety" loops here.
+        # _release_all_active_cards already handles removeWidget and hide().
+        # The duplicate loop was causing 2x layout traversal overhead.
 
         if hasattr(self, 'pkg_container'): self.pkg_container.setUpdatesEnabled(False)
         if hasattr(self, 'cat_container'): self.cat_container.setUpdatesEnabled(False)
@@ -376,9 +375,12 @@ class LMScanHandlerMixin:
         
         # Note: _refresh_category_cards removed from hot path for performance.
         # Category status is updated via deploy_changed signal from individual cards.
-        # Phase 7: Schedule delayed refresh to ensure borders (red frames) appear on init
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(200, self._refresh_category_cards)
+        # Phase 33: DISABLED - Scanner already calculates link_status for all items.
+        # The 200ms delayed _refresh_category_cards was causing a 1-2 second GUI lock
+        # by re-checking link status for all 41+ cards via filesystem access.
+        # from PyQt6.QtCore import QTimer
+        # QTimer.singleShot(200, self._refresh_category_cards)
+
         
         duration = time.perf_counter() - start_t
         self.logger.info(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
@@ -541,6 +543,9 @@ class LMScanHandlerMixin:
 
     def _refresh_category_cards(self):
         """Refresh children status for all Category cards (updates orange borders)."""
+        import time
+        t_start = time.perf_counter()
+        
         app_data = self.app_combo.currentData()
         if not app_data: return
         target_root = app_data.get(self.current_target_key)
@@ -550,29 +555,45 @@ class LMScanHandlerMixin:
         all_configs_raw = self.db.get_all_folder_configs()
         cached_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
         
+        cat_count = 0
         for layout in [self.cat_layout, self.pkg_layout]:
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
                     card = item.widget()
                     if isinstance(card, ItemCard) and card.is_package is False:
+                            cat_count += 1
                             # Pass cache
                             has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
                             card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
         
+        t_cat_end = time.perf_counter()
+        self.logger.info(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
+        
         # Also refresh package card borders (green for linked, red for conflict)
         self._refresh_package_cards()
+        
+        t_total_end = time.perf_counter()
+        self.logger.info(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
 
     def _refresh_package_cards(self):
         """Refresh link status for all Package cards (updates green/conflict borders)."""
+        import time
+        t_start = time.perf_counter()
+        
         from src.ui.link_master.item_card import ItemCard
+        pkg_count = 0
         for i in range(self.pkg_layout.count()):
             item = self.pkg_layout.itemAt(i)
             if item and item.widget():
                 card = item.widget()
                 if isinstance(card, ItemCard) and hasattr(card, '_check_link_status'):
+                    pkg_count += 1
                     card._check_link_status()
                     card._update_style()
+        
+        t_end = time.perf_counter()
+        self.logger.info(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
 
     def _set_cat_display_mode(self, mode):
         """Change display mode for all category cards."""

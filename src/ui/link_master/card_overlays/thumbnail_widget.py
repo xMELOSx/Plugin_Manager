@@ -3,6 +3,8 @@ from PyQt6.QtCore import Qt, QSize, QThreadPool
 from PyQt6.QtGui import QPixmap
 from src.core.lang_manager import _
 from ..item_card_utils import AsyncScaler
+import time
+import logging
 
 
 class ThumbnailWidget(QLabel):
@@ -31,9 +33,24 @@ class ThumbnailWidget(QLabel):
             self._requestScale()
     
     def setImage(self, pixmap: QPixmap):
-        """Set the source image and trigger async scaling."""
+        """Set the source image and trigger async scaling if needed."""
         if pixmap and not pixmap.isNull():
-            # Optimization: If the same pixmap and size, skip scaling
+            # Phase 33: Skip scaling if image is already close to target size
+            # Images from ImageLoader are pre-scaled to 256x256, so often no rescaling needed
+            pix_size = pixmap.size()
+            target = self._target_size
+            
+            # If image is within reasonable range of target, just use it directly
+            # This avoids the async scaling cycle entirely for cached images
+            if (abs(pix_size.width() - target.width()) < 50 and 
+                abs(pix_size.height() - target.height()) < 50):
+                self._original_pixmap = pixmap
+                self._last_scaled_size = target
+                self.setPixmap(pixmap)
+                self.setText("")
+                return
+            
+            # Optimization: If the same pixmap object and size, skip scaling
             if self._original_pixmap is pixmap and self._last_scaled_size == self._target_size:
                 return
             self._original_pixmap = pixmap
@@ -45,6 +62,7 @@ class ThumbnailWidget(QLabel):
             self._last_scaled_size = QSize(0, 0)
             self.setPixmap(QPixmap())
             self.setText(_("No Image"))
+
     
     def loadFromPath(self, path: str, loader=None, size: QSize = None):
         """Load image from path using provided loader."""
@@ -76,6 +94,7 @@ class ThumbnailWidget(QLabel):
     
     def _onScaleFinished(self, pixmap: QPixmap, request_id: int):
         """Handle completion of async scaling."""
+        t_start = time.perf_counter()
         if request_id != self._current_request_id:
             return  # Stale request
         
@@ -89,6 +108,10 @@ class ThumbnailWidget(QLabel):
                 self.parent().update()
         else:
             self.setText(_("No Image"))
+        
+        t_end = time.perf_counter()
+        if (t_end - t_start) > 0.01:  # Log if > 10ms
+            logging.getLogger("ThumbnailWidget").warning(f"[SlowScale] _onScaleFinished took {(t_end-t_start)*1000:.1f}ms")
     
     def clear(self):
         """Clear the thumbnail."""

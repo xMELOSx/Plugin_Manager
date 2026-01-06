@@ -188,55 +188,73 @@ class LMCardPoolMixin:
         return card
 
     def _release_all_active_cards(self, context="all"):
-        """Returns active cards to their respective pools."""
+        """Returns active cards to their respective pools with optimized layout operations."""
+        # Phase 33: Batch mode optimization - disable updates during mass removal
+        cat_layout = getattr(self, 'cat_layout', None)
+        pkg_layout = getattr(self, 'pkg_layout', None)
+        
         # 1. Categories
         if context in ["all", "category", "cat", "view"]:
-            while self._active_cat_cards:
-                card = self._active_cat_cards.pop()
-                if sip.isdeleted(card):
-                    continue
+            if cat_layout:
+                # Batch removal - collect all cards first, then remove
+                cards_to_release = list(self._active_cat_cards)
+                self._active_cat_cards.clear()
                 
-                try:
-                    if hasattr(self, 'cat_layout'):
-                        self.cat_layout.removeWidget(card)
-                    
-                    if not isinstance(card, ItemCard):
-                        card.deleteLater()
+                for card in cards_to_release:
+                    if sip.isdeleted(card):
                         continue
-
-                    card.hide()
-                    if len(self._cat_pool) < self.max_pool_size:
-                        self._cat_pool.append(card)
-                    else:
-                        card.setParent(None)
-                        card.deleteLater()
-                except (RuntimeError, AttributeError):
-                    # Widget already deleted or invalid
-                    continue
+                    try:
+                        if not isinstance(card, ItemCard):
+                            card.hide()
+                            card.setParent(None)
+                            card.deleteLater()
+                            continue
+                        
+                        # Phase 33: Just hide, don't removeWidget yet
+                        # The layout will be cleared in batch below
+                        card.hide()
+                        
+                        if len(self._cat_pool) < self.max_pool_size:
+                            self._cat_pool.append(card)
+                        else:
+                            card.setParent(None)
+                            card.deleteLater()
+                    except (RuntimeError, AttributeError):
+                        continue
+                
+                # Phase 33: Clear layout in one batch operation
+                while cat_layout.count():
+                    item = cat_layout.takeAt(0)
+                    # Widget already hidden, no need to hide again
 
         # 2. Packages
         if context in ["all", "package", "pkg", "contents"]:
-            while self._active_pkg_cards:
-                card = self._active_pkg_cards.pop()
-                if sip.isdeleted(card):
-                    continue
-
-                try:
-                    if hasattr(self, 'pkg_layout'):
-                        self.pkg_layout.removeWidget(card)
-                    
-                    if not isinstance(card, ItemCard):
-                        card.deleteLater()
+            if pkg_layout:
+                cards_to_release = list(self._active_pkg_cards)
+                self._active_pkg_cards.clear()
+                
+                for card in cards_to_release:
+                    if sip.isdeleted(card):
                         continue
-
-                    card.hide()
-                    if len(self._pkg_pool) < self.max_pool_size:
-                        self._pkg_pool.append(card)
-                    else:
-                        card.setParent(None)
-                        card.deleteLater()
-                except (RuntimeError, AttributeError):
-                    continue
+                    try:
+                        if not isinstance(card, ItemCard):
+                            card.hide()
+                            card.setParent(None)
+                            card.deleteLater()
+                            continue
+                        
+                        card.hide()
+                        
+                        if len(self._pkg_pool) < self.max_pool_size:
+                            self._pkg_pool.append(card)
+                        else:
+                            card.setParent(None)
+                            card.deleteLater()
+                    except (RuntimeError, AttributeError):
+                        continue
+                
+                while pkg_layout.count():
+                    item = pkg_layout.takeAt(0)
 
     def _release_card(self, card: ItemCard):
         """Releases a single card back to its pool."""

@@ -259,11 +259,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     Bulk edit dialog for currently visible items in the category/package area.
     Supports editing: Icon (Emoji/Image), Display Name, and Tags (via Toggles).
     """
-    def __init__(self, parent=None, items_data: list = None, frequent_tags=None, db=None, storage_root=None, thumbnail_loader=None, show_hidden=True):
+    def __init__(self, parent=None, items_data: list = None, frequent_tags=None, 
+                 db=None, storage_root=None, thumbnail_loader=None, show_hidden=True,
+                 scope="category"):
         # Pass None as parent to prevent composition artifacts (darkening of main window)
         super().__init__(None)
         self.setObjectName("QuickViewManagerDialog")
-        self._base_title = _("Quick View Manager (Mode 1: Cached)")
+        self.scope = scope
+        self._base_title = _("Category QuickView Manager") if scope == "category" else _("Package QuickView Manager")
         self.setWindowTitle(self._base_title)
         
         # 1. State Initialization
@@ -283,6 +286,9 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._tag_cache = {} 
         self._icon_cache = {}
         self._prepare_tag_cache()
+        
+        # Phase 1.1.260: Initialize original markers for change detection
+        self._init_original_markers(self.items_data)
         
         self.current_load_row = 0
         self.load_batch_size = 100 
@@ -310,47 +316,56 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         
         # Ensure global window opacity is 1.0 (Opaque) to rely solely on paintEvent for transparency
         self.setWindowOpacity(0.0) # Start hidden (0.0) unlike default
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) 
-        # FramelessDialog handles opacity and styling (default 0.95 opacity, matching main window style)
+        # Phase 1.1.200: Disable WA_DeleteOnClose to allow persistence of the dialog instance.
+        # This keeps the _widget_map alive across hiding/showing, enabling recycling across opens.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
         
         self.resize(1000, 700) # Initial size
         self.center_on_screen()
 
         # 3. UI Setup
+        self._pool_widget = QWidget() # Hidden container to preserve recycled widgets
+        self._pool_widget.hide()
+        
         self._init_ui()
-        # Phase 1.1.60: Initialize original state markers for change detection
-        for item in self.items_data:
-            item['_orig_fav'] = item.get('is_favorite', False)
-            item['_orig_score'] = int(item.get('score', 0))
-            item['_orig_name'] = item.get('display_name') or ""
-            # CRITICAL: Always use the SAME normalization for original markers
-            item['_orig_tags'] = _normalize_tags(item.get('tags', ''), lowercase=True)
-
+        self._init_original_markers(self.items_data)
         self._load_table_data()
 
-    def reload_data(self, items_data, frequent_tags, context_id=None):
-        """Reload data for Cached Mode."""
-        items_data_copy = copy.deepcopy(items_data or [])
-        
-        for item in items_data_copy:
-            # Phase 1.1.120: FORCE overwrite original state markers on fresh data
-            # This ensures that even if card data has persistent 'wrong' markers,
-            # we align them to the actual current values on every fresh load.
+    def _init_original_markers(self, data):
+        """Initialize markers for detecting changes (Mode 1 and Mode 2)."""
+        for item in data:
             item['_orig_fav'] = item.get('is_favorite', False)
             item['_orig_score'] = int(item.get('score', 0))
             item['_orig_name'] = item.get('display_name') or ""
-            # Marker comparison base is ALWAYS lowercase for reliable change detection
             item['_orig_tags'] = _normalize_tags(item.get('tags', ''), lowercase=True)
 
+    def _update_window_title(self):
+        """Update window title to reflect 'Unsaved' state using real change detection."""
+        from src.core.lang_manager import _
+        has_changes = self._has_real_changes()
+        title = self._base_title
+        if has_changes:
+            title += f" - {_('未保存')}"
+        
+        if self.windowTitle() != title:
+            self.setWindowTitle(title)
+        
+        if hasattr(self, 'title_label'):
+             self.title_label.setText(title)
+
+    def reload_data(self, items_data, frequent_tags, context_id=None, scope="category"):
+        """Reload data for Cached Mode. scope=('category'|'package')"""
+        items_data_copy = copy.deepcopy(items_data or [])
+        self.scope = scope
+        self._base_title = _("Category QuickView Manager") if scope == "category" else _("Package QuickView Manager")
+        
         last_items = getattr(self, '_last_items_data', None)
         last_tags = getattr(self, '_last_frequent_tags', None)
         last_context = getattr(self, '_last_context_id', None)
-        
+        last_scope = getattr(self, '_last_scope', None)
+
         # Cache Hit Check (Structural Equality)
-        # Phase 1.1.150: Allow Tag/Value changes to stay cached.
-        # We only reload if the items count or paths have changed.
-        # Value updates (Fav/Score/Name/Tags) are handled by _reset_ui_to_data fast-sync.
         items_match = (last_items is not None and len(last_items) == len(items_data_copy))
         if items_match:
             for i in range(len(items_data_copy)):
@@ -358,24 +373,13 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                     items_match = False
                     break
                     
-        tags_match = False
-        if last_tags == frequent_tags:
-            tags_match = True
-            if last_tags and frequent_tags:
-                for t1, t2 in zip(last_tags, frequent_tags):
-                    if t1.get('display_mode') != t2.get('display_mode'):
-                        logging.info(f"[QuickViewAudit] Miss! Display settings changed for tag '{t1.get('name')}'")
-                        tags_match = False
-                        break
-
+        tags_match = (last_tags == frequent_tags)
+        scope_match = (last_scope == scope)
         context_match = (last_context == context_id)
-        if not items_match: logging.debug("[QuickViewAudit] Items mismatch.")
-        if not tags_match: logging.debug("[QuickViewAudit] Tags/Settings mismatch.")
-        if not context_match: logging.debug("[QuickViewAudit] Context mismatch.")
         
-        is_cache_hit = items_match and tags_match and context_match
+        is_cache_hit = items_match and tags_match and context_match and scope_match
         
-        # Phase 1.1.152: Always prepare tag metadata and cache BEFORE UI sync/load
+        # Always prepare tag metadata and cache BEFORE UI sync/load
         self.frequent_tags = frequent_tags or []
         self.active_tags = self.frequent_tags
         self._prepare_tag_cache()
@@ -383,8 +387,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if is_cache_hit:
              logging.info("[QuickViewCache] Hit! Ensuring UI is exhaustively synced.")
              self.items_data = items_data_copy 
+             self._init_original_markers(self.items_data)
              self._pending_tag_changes.clear()
              self._reset_ui_to_data()
+             self._update_window_title()
              self.setWindowOpacity(1.0)
              self.show()
              return
@@ -395,15 +401,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._last_items_data = self.items_data
         self._last_frequent_tags = frequent_tags
         self._last_context_id = context_id
-        
-        self.frequent_tags = frequent_tags or []
-        self.active_tags = self.frequent_tags
-        
+        self._last_scope = scope
+        self._init_original_markers(self.items_data)
+        self._update_window_title()
         self._pending_tag_changes.clear()
         
         # 1. Update Columns
         self.table.setSortingEnabled(False)
-        self._widget_map.clear() # Phase 1.1.45: Clear direct pointers
+        self._widget_map.clear()
         
         # Build tag columns
         self._display_tags = []
@@ -418,49 +423,82 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 self._display_tags.append(t)
                 display_idx += 1
                 
-        # Tag Headers
+        # Tag Headers (Rich support)
         fixed_headers = [_("No."), _("Icon"), _("Fav"), _("Score"), _("Folder Name"), _("Display Name")]
-        headers = fixed_headers + [col['tag_info'].get('name', '|') for col in self._all_tag_columns]
-        self.table.setColumnCount(len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
         
-        # Re-apply styles/widths
-        self.table.setColumnWidth(0, 40) # No.
-        self.table.setColumnWidth(1, 40) # Icon
-        self.table.setColumnWidth(2, 40) # Fav
-        self.table.setColumnWidth(3, 60) # Score
-        self.table.setColumnWidth(4, 150) # Folder
+        tag_headers = []
+        tag_header_icons = {} # {col_idx: QIcon}
         
         for i, col_info in enumerate(self._all_tag_columns):
             col_idx = 6 + i
             if col_info['type'] == 'sep':
-                self.table.setColumnWidth(col_idx, 4)
+                tag_headers.append("|")
+            else:
+                t = col_info['tag_info']
+                mode = t.get('display_mode', 'text')
+                emoji = t.get('emoji', '')
+                name = t.get('display', t.get('name', ''))
+                icon_path = t.get('icon', '')
+                
+                header_text = name
+                if mode in ['icon', 'image'] and icon_path and os.path.exists(icon_path):
+                    if icon_path not in self._icon_cache:
+                        self._icon_cache[icon_path] = QIcon(icon_path)
+                    tag_header_icons[col_idx] = self._icon_cache[icon_path]
+                    header_text = ""
+                elif mode in ['symbol', 'text_symbol'] and emoji:
+                    header_text = emoji
+                else:
+                    header_text = name[:3] if len(name) > 3 else name
+                tag_headers.append(header_text)
+                
+        headers = fixed_headers + tag_headers
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
+        
+        # Apply icons to headers
+        for col_idx, icon in tag_header_icons.items():
+            item = self.table.horizontalHeaderItem(col_idx)
+            if item: item.setIcon(icon)
+        
+        # Re-apply widths
+        self.table.setColumnWidth(0, 40)
+        self.table.setColumnWidth(1, 40)
+        self.table.setColumnWidth(2, 40)
+        self.table.setColumnWidth(3, 60)
+        self.table.setColumnWidth(4, 150)
+        
+        for i, col_info in enumerate(self._all_tag_columns):
+            col_idx = 6 + i
+            if col_info['type'] == 'sep':
+                self.table.setColumnWidth(col_idx, 2)
             else:
                 self.table.setColumnWidth(col_idx, 32)
         
-        # 2. Reset and Load
-        self.table.clearContents()
-        self.table.setRowCount(0)
+        # 2. Reset and Load rows
+        new_row_count = len(self.items_data)
         
-        self._tag_cache = {} 
-        self._icon_cache = {}
-        self._prepare_tag_cache()
-        
+        if not tags_match:
+            self.table.clearContents()
+            self.table.setRowCount(0)
+            logging.info("[QuickViewCache] Tags changed, full reset.")
+        else:
+            # Recycle
+            for row in range(self.table.rowCount()):
+                for col in range(self.table.columnCount()):
+                    w = self.table.cellWidget(row, col)
+                    if w: w.setParent(self._pool_widget)
+            self.table.setRowCount(new_row_count)
+            self.table.clearContents()
+
         self.current_load_row = 0
-        self._pending_tag_changes = {}
         self.results = []
-        
-        # Profiling stats reset
         self._profile_start_time = time.perf_counter()
-        self._last_chunk_end_time = 0.0
-        self._total_gap_time = 0.0
-        
-        # Trigger load
-        self.table.setRowCount(len(self.items_data))
         self._load_next_chunk()
 
 
     def _update_tag_btn_style(self, btn, is_active):
+        """Unified tag button styling."""
         if is_active:
             btn.setStyleSheet("""
                 QPushButton {
@@ -486,64 +524,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 }
             """)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        # Phase 1.1.14: Set app icon for title bar (same as main window)
-        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
-        if os.path.exists(icon_path):
-            pixmap = QPixmap(icon_path).scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            # Create rounded mask for transparency
-            from PyQt6.QtGui import QPainter, QPainterPath
-            rounded = QPixmap(pixmap.size())
-            rounded.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(rounded)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            path = QPainterPath()
-            path.addRoundedRect(0, 0, 24, 24, 4, 4)
-            painter.setClipPath(path)
-            painter.drawPixmap(0, 0, pixmap)
-            painter.end()
-            self.icon_label.setPixmap(rounded)
-            self.icon_label.setVisible(True)
-            self.setWindowIcon(QIcon(rounded))
-        else:
-            self.set_default_icon()
-            
-        # Sync background opacity with main window
-        if self.parent() and hasattr(self.parent(), '_bg_opacity'):
-            self._bg_opacity = self.parent()._bg_opacity
-            self._update_stylesheet()
-            
-        # Fix click-through: Reset global window opacity to 1.0
-        self.setWindowOpacity(1.0)
-            
-        QTimer.singleShot(0, self._load_table_data)
     
-    def _update_tag_btn_style(self, btn, is_active):
-        if is_active:
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3498db; 
-                    border: none; 
-                    border-radius: 10px;
-                    padding: 0px;
-                }
-                QPushButton:hover {
-                    background-color: #5dade2;
-                }
-            """)
-        else:
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #555; 
-                    border: none; 
-                    border-radius: 10px;
-                    padding: 0px;
-                }
-                QPushButton:hover {
-                    background-color: #777;
-                }
-            """)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def _on_tag_toggled(self, row, tag_name, checked, btn):
         # Deprecated
@@ -604,15 +585,6 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 'lower_name': lower
             }
 
-    def _update_window_title(self):
-        """Update window title to show unsaved status if changes exist."""
-        has_changes = self._has_real_changes()
-        title = self._base_title
-        if has_changes:
-            title += f" - {_('未保存')}"
-        
-        if self.windowTitle() != title:
-            self.setWindowTitle(title)
 
     def _draw_star_icon(self, is_active: bool, size: int = 24) -> QIcon:
         """Generate a star icon programmatically to ensure visibility."""
@@ -734,6 +706,30 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             }
             QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
+        
+        # Phase 1.1.210: Set window icon (moved from styling method to avoid redundancy)
+        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
+        if os.path.exists(icon_path):
+            pixmap = QPixmap(icon_path).scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            rounded = QPixmap(pixmap.size())
+            rounded.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(rounded)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            path = QPainterPath()
+            path.addRoundedRect(0, 0, 24, 24, 4, 4)
+            painter.setClipPath(path)
+            painter.drawPixmap(0, 0, pixmap)
+            painter.end()
+            self.icon_label.setPixmap(rounded)
+            self.icon_label.setVisible(True)
+            self.setWindowIcon(QIcon(rounded))
+        else:
+            self.set_default_icon()
+
+        # Phase 1.1.211: Initial opacity sync
+        if self.parent() and hasattr(self.parent(), '_bg_opacity'):
+             self._bg_opacity = self.parent()._bg_opacity
+             self._update_stylesheet()
 
         # Create a container widget for content
         content_widget = QWidget()
@@ -869,6 +865,13 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         hh_palette.setColor(QPalette.ColorRole.Base, QColor(51, 51, 51))
         hh_palette.setColor(QPalette.ColorRole.Button, QColor(51, 51, 51))
         hh.setPalette(hh_palette)
+        hh.installEventFilter(self)
+        hh.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        
+        self.table.installEventFilter(self)
+        self.table.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.table.viewport().installEventFilter(self)
+        self.table.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover)
         
         layout.addWidget(self.table)
         
@@ -882,9 +885,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self.cancel_btn.setMinimumWidth(100)
         self.cancel_btn.setStyleSheet("background-color: #666666; color: white; border-radius: 4px; padding: 6px;")
         
+        self.cancel_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.cancel_btn.installEventFilter(self)
+        
         self.save_btn = QPushButton(_("Save All (Alt + Enter)"))
         self.save_btn.clicked.connect(self._on_save_clicked)
         self.save_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; width: 220px; border-radius: 4px; padding: 6px;")
+        self.save_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.save_btn.installEventFilter(self)
         
         btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.save_btn)
@@ -1024,65 +1032,38 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         super().keyPressEvent(event)
 
     def _has_real_changes(self):
-        """Directly probe widgets for changes against original state (Immune to sorting)."""
-        if not self._widget_map: 
-            logging.debug("[QuickViewAudit] No widget map, assuming no changes.")
+        """Data-centric change detection (Immune to sorting/recycling lag)."""
+        if not hasattr(self, 'items_data') or not self.items_data:
             return False
-        
-        # Create a fast lookup for original data by rel_path
-        item_map = {i['rel_path']: i for i in self.items_data}
-        
-        for rel_path, widgets in self._widget_map.items():
-            item = item_map.get(rel_path)
-            if not item: continue
             
+        for item in self.items_data:
             # 1. Fav
-            fav_cb = widgets.get('fav')
-            if fav_cb:
-                cur_fav = fav_cb.isChecked()
-                orig_fav = item.get('_orig_fav', False)
-                if cur_fav != orig_fav:
-                    logging.info(f"[QuickViewAudit] Change detected in Fav: {rel_path} ({orig_fav} -> {cur_fav})")
-                    return True
-            
+            if bool(item.get('is_favorite', False)) != bool(item.get('_orig_fav', False)):
+                return True
             # 2. Score
-            score_spin = widgets.get('score')
-            if score_spin:
-                cur_score = score_spin.value()
-                orig_score = item.get('_orig_score', 0)
-                if cur_score != orig_score:
-                    logging.info(f"[QuickViewAudit] Change detected in Score: {rel_path} ({orig_score} -> {cur_score})")
-                    return True
-            
-            # 3. Name (Mode 1 uses internal edits)
-            name_edit = widgets.get('name')
-            if name_edit:
-                cur_name = name_edit.text()
-                orig_name = (item.get('_orig_name') or "")
-                if cur_name != orig_name:
-                    logging.info(f"[QuickViewAudit] Change detected in Name: {rel_path} ('{orig_name}' -> '{cur_name}')")
-                    return True
-            
-            # 4. Tags (Incorporate pending changes)
-            original_tags_norm = item.get('_orig_tags', "")
-            
-            # Construct final state by applying pending changes to item['tags']
-            current_tags_set = {t.strip().lower() for t in (item.get('tags') or "").split(",") if t.strip()}
-            if rel_path in self._pending_tag_changes:
-                for tag, state in self._pending_tag_changes[rel_path].items():
-                    if state: current_tags_set.add(tag.lower())
-                    else: current_tags_set.discard(tag.lower())
-            
-            final_tags_norm = ",".join(sorted(list(current_tags_set)))
-            if final_tags_norm != original_tags_norm:
-                logging.info(f"[QuickViewAudit] Change detected in Tags: {rel_path} ('{original_tags_norm}' -> '{final_tags_norm}')")
+            if int(item.get('score', 0)) != int(item.get('_orig_score', 0)):
+                return True
+            # 3. Name
+            if item.get('display_name', '') != item.get('_orig_name', ''):
+                return True
+            # 4. Tags
+            cur_tags = _normalize_tags(item.get('tags', ''), lowercase=True)
+            orig_tags = item.get('_orig_tags', "")
+            if cur_tags != orig_tags:
                 return True
                 
         return False
 
-    def reject(self):
-        """Handle Close button or Esc: Prompt if changes exist."""
-        if self._has_real_changes():
+    def _check_unsaved_changes(self):
+        """Returns True if it's safe to close (saved or discarded), False to stay open."""
+        # Unify Mode 1 and Mode 2 change detection
+        has_changes = False
+        if hasattr(self, '_has_changes') and self._has_changes: # Mode 2
+            has_changes = True
+        elif self._has_real_changes(): # Mode 1
+            has_changes = True
+            
+        if has_changes:
             from src.core.lang_manager import _
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle(_("Save Changes"))
@@ -1092,15 +1073,21 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                                        QMessageBox.StandardButton.Cancel)
             msg_box.setDefaultButton(QMessageBox.StandardButton.Save)
             
-            # Translate buttons if needed (already handled by system usually, but consistent style)
             ret = msg_box.exec()
             
             if ret == QMessageBox.StandardButton.Save:
                 self._on_save_clicked() # This calls _perform_save and accept()
-                return
+                return True
             elif ret == QMessageBox.StandardButton.Cancel:
-                return # Stay in dialog
+                return False # Stay in dialog
             # If Discard, proceed to restore data and close
+            
+        return True
+
+    def reject(self):
+        """Handle Close button or Esc: Prompt if changes exist."""
+        if not self._check_unsaved_changes():
+            return
 
         self.save_options("quick_view_manager")
         # Restore original data to ensure the cache stays clean
@@ -1112,12 +1099,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             self._pending_tag_changes.clear()
         if hasattr(self, '_pending_changes'): # Mode 2
             self._pending_changes.clear()
-        self._has_changes = False
+        if hasattr(self, '_has_changes'):
+            self._has_changes = False
         
         self._last_items_data = copy.deepcopy(self.items_data)
-        # Phase 1.1.40 REMOVAL: Do NOT invalidate context_id.
-        # This preserves column settings/structure while _reset_ui_to_data handles visual sync.
-        
         super().reject()
 
     def accept(self):
@@ -1126,7 +1111,11 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         super().accept()
         
     def closeEvent(self, event):
-        """Save window geometry on close."""
+        """Handle Change check and Save window geometry on close."""
+        if not self._check_unsaved_changes():
+            event.ignore()
+            return
+            
         self.save_options("quick_view_manager")
         super().closeEvent(event)
 
@@ -1163,181 +1152,198 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             for row in range(start, end):
                 t_row_start = time.perf_counter()
                 item = self.items_data[row]
-                # Map widget initialization
                 rel_path = item['rel_path']
-                if rel_path not in self._widget_map:
-                    self._widget_map[rel_path] = {'tags': {}, 'tag_sort_items': {}}
                 
-                # 0. No. Cell - Black BG, White Text
-                no_item = NaturalSortTableWidgetItem(row + 1)
-                no_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                no_item.setBackground(QColor("#000000"))
-                no_item.setForeground(QColor("#ffffff"))
+                # Check for cached widgets
+                cached = self._widget_map.get(rel_path)
+                
+                # 0. No. Cell
+                no_item = cached['no_item'] if cached else NaturalSortTableWidgetItem(row + 1)
+                if not cached:
+                    no_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    no_item.setBackground(QColor("#000000"))
+                    no_item.setForeground(QColor("#ffffff"))
+                else:
+                    no_item.setText(str(row + 1))
                 self.table.setItem(row, 0, no_item)
                 
                 # 1. Icon Cell
                 t_icon_start = time.perf_counter()
-                icon_widget = QWidget()
-                icon_layout = QHBoxLayout(icon_widget)
-                icon_layout.setContentsMargins(2, 2, 2, 2)
-                
                 icon_path = item.get('image_path')
-                icon_btn = QPushButton()
-                icon_btn.setFixedSize(36, 36)
-                icon_btn.setProperty("rel_path", item.get('rel_path'))
+                if cached:
+                    icon_btn = cached['icon_btn']
+                    icon_widget = icon_btn.parentWidget()
+                else:
+                    icon_widget = QWidget()
+                    icon_layout = QHBoxLayout(icon_widget)
+                    icon_layout.setContentsMargins(2, 2, 2, 2)
+                    icon_btn = QPushButton()
+                    icon_btn.setFixedSize(36, 36)
+                    icon_btn.clicked.connect(lambda ch, b=icon_btn: self._on_icon_btn_clicked(b))
+                    icon_layout.addWidget(icon_btn, alignment=Qt.AlignmentFlag.AlignCenter)
                 
+                icon_btn.setProperty("rel_path", rel_path)
                 if icon_path:
                     if len(icon_path) <= 4:
                         icon_btn.setIcon(QIcon())
                         icon_btn.setText(icon_path)
                     else:
-                        if icon_path not in self._icon_cache:
-                            self._icon_cache[icon_path] = QIcon(icon_path)
+                        if icon_path not in self._icon_cache: self._icon_cache[icon_path] = QIcon(icon_path)
                         icon_btn.setIcon(self._icon_cache[icon_path])
                         icon_btn.setIconSize(QSize(32, 32))
-                        icon_btn.setText("") # Ensure no leftover text
+                        icon_btn.setText("")
                 else:
                     icon_btn.setIcon(QIcon())
                     icon_btn.setText("❓")
                 
-                icon_btn.clicked.connect(lambda ch, btn=icon_btn: self._on_icon_btn_clicked(btn))
-                icon_layout.addWidget(icon_btn, alignment=Qt.AlignmentFlag.AlignCenter)
                 self.table.setCellWidget(row, 1, icon_widget)
-                
-                # Phase 1.1.110: Map Icon/No for exhaustive sync
-                self._widget_map[rel_path]['icon_btn'] = icon_btn
-                self._widget_map[rel_path]['no_item'] = no_item
-
                 t_icon_total += time.perf_counter() - t_icon_start
                 
-                # 2. Favorite (CheckBox) - Col 2
-                fav_widget = QWidget()
-                fav_layout = QHBoxLayout(fav_widget)
-                fav_layout.setContentsMargins(0,0,0,0)
-                fav_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                
-                fav_cb = QPushButton()
-                fav_cb.setCheckable(True)
+                # 2. Favorite
+                if cached:
+                    fav_cb = cached['fav']
+                    fav_widget = fav_cb.parentWidget()
+                    fav_sort_item = cached['fav_sort']
+                else:
+                    fav_widget = QWidget()
+                    fav_layout = QHBoxLayout(fav_widget)
+                    fav_layout.setContentsMargins(0,0,0,0)
+                    fav_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    fav_cb = QPushButton()
+                    fav_cb.setCheckable(True)
+                    fav_cb.setFixedSize(24, 24)
+                    fav_cb.setStyleSheet("background: transparent; border: none;")
+                    fav_cb.toggled.connect(lambda checked, r=rel_path: self._on_fav_toggled_v2(r, checked))
+                    fav_layout.addWidget(fav_cb)
+                    fav_sort_item = SortableTableWidgetItem(0, "")
+
                 is_fav = item.get('is_favorite', False)
+                fav_cb.setProperty("rel_path", rel_path) # Critical for save
+                fav_cb.blockSignals(True)
                 fav_cb.setChecked(is_fav)
-                fav_cb.setFixedSize(24, 24)
-                fav_cb.setText("") 
                 fav_cb.setIcon(self._draw_star_icon(is_fav))
-                fav_cb.setIconSize(QSize(22, 22))
-                fav_cb.setStyleSheet(f"background: transparent; border: none;") 
+                fav_cb.blockSignals(False)
+                fav_sort_item.set_value(1 if is_fav else 0, "")
                 
-                self._widget_map[rel_path]['fav'] = fav_cb
-                
-                fav_cb.toggled.connect(lambda checked, rel=rel_path: self._on_fav_toggled_v2(rel, checked))
-                fav_cb.setProperty("rel_path", item['rel_path'])
-                fav_cb.setProperty("is_fav_editor", True) 
-                
-                fav_layout.addWidget(fav_cb)
-                
-                fav_sort_item = SortableTableWidgetItem(1 if is_fav else 0, "")
                 self.table.setItem(row, 2, fav_sort_item)
                 self.table.setCellWidget(row, 2, fav_widget)
-                self._widget_map[rel_path]['fav_sort'] = fav_sort_item
 
-                # 3. Score (SpinBox) - Col 3
-                score_widget = QWidget()
-                score_layout = QHBoxLayout(score_widget)
-                score_layout.setContentsMargins(0,0,0,0)
-                score_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                
+                # 3. Score
+                if cached:
+                    score_spin = cached['score']
+                    score_widget = score_spin.parentWidget()
+                    score_sort_item = cached['score_sort']
+                else:
+                    score_widget = QWidget()
+                    score_layout = QHBoxLayout(score_widget)
+                    score_layout.setContentsMargins(0,0,0,0)
+                    score_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    score_spin = QSpinBox()
+                    score_spin.setRange(0, 9999)
+                    score_spin.setFixedWidth(60)
+                    score_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    score_spin.setStyleSheet("QSpinBox { background-color: #333; color: white; border: 1px solid #555; border-radius: 4px; }")
+                    score_spin.valueChanged.connect(lambda val, r=rel_path: self._on_score_changed_v2(r, val))
+                    score_layout.addWidget(score_spin)
+                    score_sort_item = SortableTableWidgetItem(0, "")
+
                 score_val = int(item.get('score', 0))
-                score_spin = QSpinBox()
-                score_spin.setRange(0, 9999)
+                score_spin.setProperty("rel_path", rel_path) # Critical for save
+                score_spin.blockSignals(True)
                 score_spin.setValue(score_val)
-                score_spin.setFixedWidth(60)
-                score_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                score_spin.setStyleSheet("""
-                    QSpinBox { background-color: #333; color: white; border: 1px solid #555; border-radius: 4px; }
-                    QSpinBox::up-button, QSpinBox::down-button { background-color: #444; width: 16px; }
-                    QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #555; }
-                """)
-                self._widget_map[item['rel_path']]['score'] = score_spin
-                score_spin.valueChanged.connect(lambda val, rel=item['rel_path']: self._on_score_changed_v2(rel, val))
-                score_spin.setProperty("rel_path", item['rel_path'])
-                score_spin.setProperty("is_score_editor", True) 
+                score_spin.blockSignals(False)
+                score_sort_item.set_value(score_val, "")
                 
-                score_layout.addWidget(score_spin)
-                
-                score_sort_item = SortableTableWidgetItem(score_val, "")
                 self.table.setItem(row, 3, score_sort_item)
                 self.table.setCellWidget(row, 3, score_widget)
-                self._widget_map[item['rel_path']]['score_sort'] = score_sort_item
 
-                # 4. Folder Name (Read-only context) - Col 4
-                folder_name = os.path.basename(item.get('rel_path'))
-                folder_item = NaturalSortTableWidgetItem(folder_name)
-                folder_item.setForeground(QColor("#bbbbbb")) 
-                font = folder_item.font()
-                font.setItalic(True)
-                folder_item.setFont(font)
+                # 4. Folder Name
+                folder_item = cached['folder_sort'] if cached else NaturalSortTableWidgetItem("")
+                if not cached:
+                    folder_item.setForeground(QColor("#bbbbbb")) 
+                    font = folder_item.font()
+                    font.setItalic(True)
+                    folder_item.setFont(font)
+                folder_name = os.path.basename(rel_path)
+                folder_item.set_value(folder_name)
                 self.table.setItem(row, 4, folder_item)
-                self._widget_map[item['rel_path']]['folder_sort'] = folder_item
                 
-                # 5. Display Name (Editable) - Col 5
+                # 5. Display Name
                 t_name_start = time.perf_counter()
-                name_edit = QuickEdit(item.get('display_name') or "")
+                if cached:
+                    name_edit = cached['name']
+                    name_sort_item = cached['name_sort']
+                else:
+                    name_edit = QuickEdit("")
+                    name_edit.setStyleSheet("color: #ffffff; background-color: #4a4a4a; border: 1px solid #555; padding: 4px; border-radius: 4px;")
+                    name_edit.textChanged.connect(lambda text, r=rel_path: self._on_name_edited_v2(r, text))
+                    name_sort_item = NaturalSortTableWidgetItem("")
+
+                display_name = item.get('display_name') or ""
+                name_edit.setProperty("rel_path", rel_path) # Critical for save
+                name_edit.blockSignals(True)
+                name_edit.setText(display_name)
                 name_edit.setPlaceholderText(folder_name)
-                name_edit.setStyleSheet("color: #ffffff; background-color: #4a4a4a; border: 1px solid #555; padding: 4px; border-radius: 4px;")
-                name_edit.textChanged.connect(lambda text, rel=item['rel_path']: self._on_name_edited_v2(rel, text))
-                self._widget_map[item['rel_path']]['name'] = name_edit
+                name_edit.blockSignals(False)
+                name_sort_item.set_value(display_name or folder_name, "")
+                
                 self.table.setCellWidget(row, 5, name_edit)
-                sort_name = (item.get('display_name') or folder_name)
-                name_sort_item = NaturalSortTableWidgetItem(sort_name, "") 
-                self.table.setItem(row, 5, name_sort_item) 
-                self._widget_map[item['rel_path']]['name_sort'] = name_sort_item
+                self.table.setItem(row, 5, name_sort_item)
                 t_name_total += time.perf_counter() - t_name_start
                 
-                # 6+. Tags/Separator Columns
+                # 6+. Tags
                 t_tag_start = time.perf_counter()
                 current_tags = {t.strip().lower() for t in (item.get('tags') or "").split(",") if t.strip()}
                 
+                if not cached:
+                    cached = {'tags': {}, 'tag_sort_items': {}}
+                    self._widget_map[rel_path] = cached
+                    cached['no_item'] = no_item
+                    cached['icon_btn'] = icon_btn
+                    cached['fav'] = fav_cb
+                    cached['fav_sort'] = fav_sort_item
+                    cached['score'] = score_spin
+                    cached['score_sort'] = score_sort_item
+                    cached['folder_sort'] = folder_item
+                    cached['name'] = name_edit
+                    cached['name_sort'] = name_sort_item
+
                 for i, col_info in enumerate(self._all_tag_columns):
                     col_idx = 6 + i
-                    
                     if col_info['type'] == 'sep':
-                        sep_label = QLabel("|")
-                        sep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        sep_label.setStyleSheet("color: #666; font-weight: bold;")
-                        self.table.setCellWidget(row, col_idx, sep_label)
+                        # Separators are simple QLabels, we can recreate or recycle similarly if needed, but they are cheap.
+                        sep = QLabel("|")
+                        sep.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        sep.setStyleSheet("color: #666; font-weight: bold;")
+                        self.table.setCellWidget(row, col_idx, sep)
                     else:
                         tag_info = col_info['tag_info']
                         tag_name = tag_info.get('name', '')
                         lower_name = tag_name.lower()
                         is_active = lower_name in current_tags
                         
-                        mode = tag_info.get('display_mode', 'text')
-                        emoji = tag_info.get('emoji', '')
-                        display_name = tag_info.get('display', tag_name)
-                        icon_path = tag_info.get('icon', '')
-                        
-                        tag_btn = QPushButton()
-                        tag_btn.setCheckable(True)
-                        tag_btn.setFixedSize(31, 31) 
-                        tag_btn.setProperty("rel_path", item['rel_path']) 
-                        tag_btn.setProperty("tag_name", lower_name) 
+                        if lower_name in cached['tags']:
+                            tag_btn = cached['tags'][lower_name]
+                            tag_widget = tag_btn.parentWidget()
+                            tag_sort_item = cached['tag_sort_items'][lower_name]
+                        else:
+                            tag_btn = QPushButton()
+                            tag_btn.setCheckable(True)
+                            tag_btn.setFixedSize(31, 31)
+                            tag_btn.toggled.connect(lambda ch, r=rel_path, tn=lower_name, b=tag_btn: self._on_tag_toggled_v2(r, tn, ch, b))
+                            tag_widget = QWidget()
+                            tag_layout = QHBoxLayout(tag_widget)
+                            tag_layout.setContentsMargins(0,0,0,0)
+                            tag_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                            tag_layout.addWidget(tag_btn)
+                            tag_sort_item = SortableTableWidgetItem(0, "")
+                            cached['tags'][lower_name] = tag_btn
+                            cached['tag_sort_items'][lower_name] = tag_sort_item
                         
                         self._sync_tag_button(tag_btn, tag_info, is_active, tag_name)
-                        
-                        self._widget_map[item['rel_path']]['tags'][lower_name] = tag_btn
-                        
-                        tag_btn.toggled.connect(lambda ch, btn=tag_btn: self._on_tag_toggled_v2(btn.property("rel_path"), btn.property("tag_name"), ch, btn))
-                        
-                        tag_widget = QWidget()
-                        tag_layout = QHBoxLayout(tag_widget)
-                        tag_layout.setContentsMargins(0,0,0,0)
-                        tag_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        tag_layout.addWidget(tag_btn)
-                        
+                        tag_sort_item.set_value(1 if is_active else 0, "")
                         self.table.setCellWidget(row, col_idx, tag_widget)
-                        
-                        tag_sort_item = SortableTableWidgetItem(1 if is_active else 0, "")
                         self.table.setItem(row, col_idx, tag_sort_item)
-                        self._widget_map[item['rel_path']]['tag_sort_items'][lower_name] = tag_sort_item
 
                 t_tag_total += time.perf_counter() - t_tag_start
                 self.table.setRowHeight(row, 44)
@@ -1408,11 +1414,11 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 btn.setText(emoji)
             else:
                 btn.setIcon(QIcon())
-                btn.setText(display_text[:2] if len(display_text) > 2 else display_text)
+                btn.setText(display_text)
         else:
             # Fallback if no tag info found in cache
             btn.setIcon(QIcon())
-            btn.setText((tag_name or "")[:2])
+            btn.setText(tag_name or "")
         
         self._update_tag_btn_style(btn, is_active)
         btn.blockSignals(False)
@@ -1647,74 +1653,34 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             changes = {}
             
             # 1. Favorite
-            is_fav = btn_fav.isChecked()
+            is_fav = item_data.get('is_favorite', False)
             orig_fav = item_data.get('_orig_fav', False)
-            if is_fav != orig_fav:
-                changes['is_favorite'] = is_fav
-                logging.debug(f"[SaveDebug] {rel_path}: Fav changed {orig_fav} -> {is_fav}")
-            
+            if bool(is_fav) != bool(orig_fav):
+                changes['is_favorite'] = bool(is_fav)
+
             # 2. Score
-            score_widget_container = self.table.cellWidget(row, 3)
-            if score_widget_container:
-                spin = score_widget_container.findChild(QSpinBox)
-                if spin:
-                    sc = spin.value()
-                    orig_score = item_data.get('_orig_score', 0)
-                    if sc != orig_score:
-                        changes['score'] = sc
-                        logging.debug(f"[SaveDebug] {rel_path}: Score changed {orig_score} -> {sc}")
-            
+            sc = int(item_data.get('score', 0))
+            orig_score = int(item_data.get('_orig_score', 0))
+            if sc != orig_score:
+                changes['score'] = sc
+
             # 3. Display Name
-            name_widget = self.table.cellWidget(row, 5)
-            if isinstance(name_widget, QLineEdit):
-                name_text = name_widget.text().strip()
-                orig_name = item_data.get('_orig_name', "")
-                # Phase 1.1.71: Only save if there's a REAL change
-                # If both are empty (or effectively empty), it's not a change
-                # If user typed something different, that's a change
-                if name_text != orig_name:
-                    # Additional guard: Empty "" to "" is not a change
-                    if not (name_text == "" and orig_name == ""):
-                        changes['display_name'] = name_text
-                        logging.debug(f"[SaveDebug] {rel_path}: Name changed '{orig_name}' -> '{name_text}'")
+            name_text = item_data.get('display_name', '').strip()
+            orig_name = item_data.get('_orig_name', '')
+            if name_text != orig_name:
+                changes['display_name'] = name_text
 
             # 4. Tags
-            if rel_path in self._pending_tag_changes:
-                row_changes = self._pending_tag_changes[rel_path]
-                if row_changes:
-                    # Construct final tags set
-                    original_tags_set = {t.strip().lower() for t in (item_data.get('_orig_tags', '')).split(',') if t.strip()}
-                    
-                    # Casing fix: Try to preserve original casing from item_data['tags'] if available
-                    raw_tags = item_data.get('tags', '')
-                    casing_map = {t.strip().lower(): t.strip() for t in raw_tags.split(',') if t.strip()}
-                    
-                    final_tags_list = []
-                    # Construct current tags including pending changes
-                    current_tags_set = {t.strip().lower() for t in raw_tags.split(",") if t.strip()}
-                    if rel_path in self._pending_tag_changes:
-                        for tag, state in self._pending_tag_changes[rel_path].items():
-                            if state: current_tags_set.add(tag.lower())
-                            else: current_tags_set.discard(tag.lower())
-                    
-                    for t_low in sorted(list(current_tags_set)):
-                        # If tag existed, use its old casing. If new or from frequent list, use that.
-                        preserved = casing_map.get(t_low)
-                        if preserved: 
-                            final_tags_list.append(preserved)
-                        else:
-                            # Search in frequent_tags for correct casing
-                            freq_match = next((ft['name'] for ft in self.frequent_tags if ft['name'].lower() == t_low), t_low)
-                            final_tags_list.append(freq_match)
-                            
-                    new_tags_str = ",".join(final_tags_list)
-                    # Compare using lowercase normalization to avoid 144-items bug
-                    if _normalize_tags(new_tags_str, lowercase=True) != item_data.get('_orig_tags', ''):
-                        changes['tags'] = new_tags_str
+            cur_tags_norm = _normalize_tags(item_data.get('tags', ''), lowercase=True)
+            orig_tags_norm = item_data.get('_orig_tags', '')
+            if cur_tags_norm != orig_tags_norm:
+                changes['tags'] = item_data.get('tags', '')
 
             if changes:
                 changes['rel_path'] = rel_path
                 update_list.append(changes)
+        
+        logging.info(f"[QuickViewSave] Collected {len(update_list)} items with real changes.")
         
         if update_list:
             if self.db:

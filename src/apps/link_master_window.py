@@ -150,6 +150,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Link Filter State (for linked/unlinked category filtering)
         self.link_filter_mode = None  # 'linked', 'unlinked', or None
         self.favorite_filter_mode = False
+        self.show_hidden = False  # Show hidden folders toggle
 
         # Phase 4 Style Sync: Base Button Styles
         self.btn_normal_style = "background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px;"
@@ -238,26 +239,45 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.nav_index = -1
         self._is_navigating_history = False
         
-        # Optimization: QuickView Caching
-        self.quick_view_dialog = None 
-        
+        # Optimization: QuickView Caching (Separated by Scope)
+        self.cat_quick_view_dialog = None
+        self.pkg_quick_view_dialog = None
         # Override btn_quick_manage behavior if it exists
         if hasattr(self, 'btn_quick_manage'):
             try:
                 self.btn_quick_manage.clicked.disconnect()
             except: pass
             self.btn_quick_manage.installEventFilter(self)
+            
+        # Phase 15: Override btn_pkg_quick_manage behavior
+        if hasattr(self, 'btn_pkg_quick_manage'):
+            try:
+                self.btn_pkg_quick_manage.clicked.disconnect()
+            except: pass
+            self.btn_pkg_quick_manage.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        """Handle custom events, specifically Right Click on Quick Manage button."""
+        """Handle custom events, specifically Right Click on Quick Manage buttons."""
+        # Category Quick Manage
         if hasattr(self, 'btn_quick_manage') and obj == self.btn_quick_manage:
             if event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.MouseButton.LeftButton:
-                    self._open_quick_view_cached()
+                    self._open_quick_view_cached(scope="category")
                     return True
                 elif event.button() == Qt.MouseButton.RightButton:
-                    self._open_quick_view_delegate()
+                    self._open_quick_view_delegate(scope="category")
                     return True
+        
+        # Package Quick Manage
+        if hasattr(self, 'btn_pkg_quick_manage') and obj == self.btn_pkg_quick_manage:
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self._open_quick_view_cached(scope="package")
+                    return True
+                elif event.button() == Qt.MouseButton.RightButton:
+                    self._open_quick_view_delegate(scope="package")
+                    return True
+                    
         return super().eventFilter(obj, event)
 
     def _save_card_settings(self):
@@ -1006,8 +1026,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     
 
-    def _get_quick_view_data(self):
-        """Prepare items data for QuickView."""
+    def _get_quick_view_data(self, scope="all"):
+        """Prepare items data for QuickView. Scope can be 'all', 'category', or 'package'."""
         from src.ui.link_master.item_card import ItemCard
         from src.core.lang_manager import _
         import os
@@ -1026,11 +1046,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     widgets.extend(get_all_widgets(item.layout()))
             return widgets
 
-        # Combine both layouts if visible
+        # Determine layouts based on scope
         ui_obj = self # window itself
         target_layouts = []
-        if hasattr(ui_obj, 'cat_layout'): target_layouts.append(ui_obj.cat_layout)
-        if hasattr(ui_obj, 'pkg_layout'): target_layouts.append(ui_obj.pkg_layout)
+        if scope in ["all", "category"]:
+            if hasattr(ui_obj, 'cat_layout'): target_layouts.append(ui_obj.cat_layout)
+        if scope in ["all", "package"]:
+            if hasattr(ui_obj, 'pkg_layout'): target_layouts.append(ui_obj.pkg_layout)
         
         items_data = []
         
@@ -1072,16 +1094,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         return items_data
 
-    def _open_quick_view_cached(self):
-        """Mode 1: Cached QuickView (Reuse instance)."""
+    def _open_quick_view_cached(self, scope="category"):
+        """Mode 1: Cached QuickView (Reuse instance). scope=('category'|'package')"""
         from PyQt6.QtWidgets import QMessageBox
         from src.core.lang_manager import _
 
-        items_data = self._get_quick_view_data()
+        items_data = self._get_quick_view_data(scope=scope)
         if not items_data:
             if not hasattr(self, "_toast"):
                 self._toast = Toast(self, "", y_offset=140)
-            self._toast.show_message(_("No visible items to manage."), preset="warning")
+            
+            msg = _("No visible categories to manage.") if scope == "category" else _("No visible packages to manage.")
+            self._toast.show_message(msg, preset="warning")
             return
 
         # Get frequent tags
@@ -1089,30 +1113,40 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, '_load_frequent_tags'):
             frequent_tags = self._load_frequent_tags()
 
-        if self.quick_view_dialog and not self.quick_view_dialog.isHidden():
-            # Already open, just bring to front
-            self.quick_view_dialog.raise_()
-            self.quick_view_dialog.activateWindow()
-            return
-            
-        # Get current context (folder path)
-        current_context = getattr(self, 'current_path', None)
+        # Determine target cache attribute
+        dialog_attr = "cat_quick_view_dialog" if scope == "category" else "pkg_quick_view_dialog"
+        dialog = getattr(self, dialog_attr, None)
 
-        if self.quick_view_dialog:
+        # Check if cached dialog still exists
+        try:
+            if dialog and not dialog.isHidden():
+                # Already open, just bring to front
+                dialog.raise_()
+                dialog.activateWindow()
+                return
+        except RuntimeError:
+            # C++ object was deleted, reset reference
+            setattr(self, dialog_attr, None)
+            dialog = None
+            
+        # Get current context (view path, not selection path)
+        current_context = getattr(self, 'current_view_path', None)
+
+        if dialog:
             # Reuse existing: Reload data
-            if hasattr(self.quick_view_dialog, 'reload_data'):
-                self.quick_view_dialog.reload_data(items_data, frequent_tags, context_id=current_context)
-            self.quick_view_dialog.show()
+            if hasattr(dialog, 'reload_data'):
+                dialog.reload_data(items_data, frequent_tags, context_id=current_context, scope=scope)
+            dialog.show()
         else:
             # Create new
-            self._open_quick_view_manager_internal(items_data, frequent_tags, mode="cached", context_id=current_context)
+            self._open_quick_view_manager_internal(items_data, frequent_tags, mode="cached", context_id=current_context, scope=scope)
 
-    def _open_quick_view_delegate(self):
-        """Mode 2: Delegate QuickView (New Class)."""
+    def _open_quick_view_delegate(self, scope="category"):
+        """Mode 2: Delegate QuickView (New Class). scope=('category'|'package')"""
         from src.ui.link_master.dialogs.quick_view_delegate import QuickViewDelegateDialog
         from src.core.lang_manager import _
         
-        items_data = self._get_quick_view_data()
+        items_data = self._get_quick_view_data(scope=scope)
         if not items_data:
             if not hasattr(self, "_toast"):
                 self._toast = Toast(self, "", y_offset=140)
@@ -1139,7 +1173,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             frequent_tags=frequent_tags,
             db=self.db, 
             storage_root=self.storage_root,
-            show_hidden=getattr(self, 'show_hidden', True)
+            show_hidden=getattr(self, 'show_hidden', True),
+            scope=scope
         )
         # Modeless
         dialog.finished.connect(self._on_quick_view_finished)
@@ -1152,43 +1187,50 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         """Legacy access (if any) - redirects to cached mode."""
         self._open_quick_view_cached()
 
-    def _open_quick_view_manager_internal(self, items_data, frequent_tags, mode="cached", context_id=None):
+    def _open_quick_view_manager_internal(self, items_data, frequent_tags, mode="cached", context_id=None, scope="category"):
         """Internal launcher."""
         from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
-        from PyQt6.QtWidgets import QDialog
         
-        self.quick_view_dialog = QuickViewManagerDialog(
+        dialog_attr = "cat_quick_view_dialog" if scope == "category" else "pkg_quick_view_dialog"
+        
+        dialog = QuickViewManagerDialog(
             self, 
             items_data=items_data, 
             frequent_tags=frequent_tags,
             db=self.db, 
             storage_root=self.storage_root,
-            show_hidden=getattr(self, 'show_hidden', True)
+            show_hidden=getattr(self, 'show_hidden', True),
+            scope=scope
         )
-        # Phase 1.1.25: Initialize context ID for cache handling
-        self.quick_view_dialog._last_context_id = context_id
+        setattr(self, dialog_attr, dialog)
         
-        self.quick_view_dialog.finished.connect(self._on_quick_view_finished)
-        self.quick_view_dialog.show()
+        # Phase 1.1.25: Initialize context ID for cache handling
+        dialog._last_context_id = context_id
+        
+        dialog.finished.connect(self._on_quick_view_finished)
+        dialog.show()
 
     def _on_quick_view_finished(self, result_code):
         """Handle QuickView dialog closure/save."""
         dialog = self.sender()
         if not dialog: return
         
-        # Determine if it's the cached one
-        if hasattr(self, 'quick_view_dialog') and dialog == self.quick_view_dialog:
+        # Determine if it's one of the cached ones
+        is_cached = (hasattr(self, 'cat_quick_view_dialog') and dialog == self.cat_quick_view_dialog) or \
+                    (hasattr(self, 'pkg_quick_view_dialog') and dialog == self.pkg_quick_view_dialog)
+        
+        if is_cached:
             # CACHED MODE: Do NOT clear reference.
-            # Just ensure it's hidden (it typically is by now).
-            # We treat 'finished' as just hiding.
             pass
         elif hasattr(self, 'quick_view_delegate_dialog') and dialog == self.quick_view_delegate_dialog:
              # DELEGATE MODE: Clear reference (fresh every time)
              self.quick_view_delegate_dialog = None
         else:
             # Fallback for unexpected dialogs
-            if self.quick_view_dialog == dialog:
-                self.quick_view_dialog = None
+            if getattr(self, 'cat_quick_view_dialog', None) == dialog:
+                self.cat_quick_view_dialog = None
+            if getattr(self, 'pkg_quick_view_dialog', None) == dialog:
+                self.pkg_quick_view_dialog = None
 
         # Refresh Main Window if changes were made
         # Check if we need to reload ANY item cards.
@@ -2484,7 +2526,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 import time
                 t_opt = time.perf_counter()
                 from src.components.sub_windows import OptionsWindow
-                self.options_window = OptionsWindow(self, self.db)
+                self.options_window = OptionsWindow(None, self.db)
                 self.logger.info(f"[Profile] OptionsWindow (Lazy) init took {time.perf_counter()-t_opt:.3f}s")
                 # Removed setParent to prevent darkening artifacts (Double Transparency)
                 # self.options_window.setParent(self, self.options_window.windowFlags())

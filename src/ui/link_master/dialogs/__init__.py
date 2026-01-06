@@ -12,8 +12,6 @@ Future extractions will create separate files and update imports here.
 # Import all dialog classes from the legacy file
 from src.ui.link_master.dialogs_legacy import (
     AppRegistrationDialog,
-    PreviewTableDialog,
-    FullPreviewDialog,
     FolderPropertiesDialog,
     TagManagerDialog,
     TagCreationDialog,
@@ -24,7 +22,10 @@ from src.ui.link_master.dialogs_legacy import (
 )
 from src.ui.link_master.dialogs.file_management import FileManagementDialog
 from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
-
+from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDialog
+from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
+from src.ui.link_master.dialogs.url_list_dialog import URLItemWidget, URLListDialog
+from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
 __all__ = [
     'AppRegistrationDialog',
@@ -39,5 +40,11 @@ __all__ = [
     'PresetPropertiesDialog',
     'FileManagementDialog',
     'QuickViewManagerDialog',
+    'ExecutablesManagerDialog',
+    'LibraryDependencyDialog',
+    'LibraryRegistrationDialog',
+    'URLItemWidget',
+    'URLListDialog',
+    'PreviewItemWidget',
 ]
 

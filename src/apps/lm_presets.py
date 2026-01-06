@@ -215,9 +215,24 @@ class LMPresetsMixin:
         storage_root = app_data.get('storage_root')
         if not target_root or not storage_root: return
         
-        reply = QMessageBox.question(self, "Unload Links", 
-                                   "Are you sure you want to remove ALL active symlinks for this app?",
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Unload Links")
+        msg_box.setText("Are you sure you want to remove ALL active symlinks for this app?")
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        
+        # Style to match dark theme and ensure visibility
+        msg_box.setStyleSheet("""
+            QMessageBox { background-color: #2b2b2b; }
+            QLabel { color: #ffffff; }
+            QPushButton { 
+                background-color: #3b3b3b; color: #ffffff; 
+                border: 1px solid #555; border-radius: 4px; padding: 4px 12px;
+            }
+            QPushButton:hover { background-color: #4a4a4a; }
+        """)
+        
+        reply = msg_box.exec()
         
         if reply == QMessageBox.StandardButton.Yes:
             try:

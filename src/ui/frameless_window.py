@@ -61,6 +61,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.container.setMouseTracking(True)
         self.container.installEventFilter(self)
         self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.container.setAttribute(Qt.WidgetAttribute.WA_Hover)
         
         self._update_stylesheet()
         self.setCentralWidget(self.container) # Assuming set_content_widget is a typo and it should be setCentralWidget
@@ -130,7 +131,8 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.content_area = QWidget(self.container)
         self.main_layout.addWidget(self.content_area)
         self.content_area.setMouseTracking(True)
-        # self.content_area.installEventFilter(self) # Redundant
+        self.content_area.installEventFilter(self)
+        self.content_area.setAttribute(Qt.WidgetAttribute.WA_Hover)
 
         self.main_layout.setContentsMargins(0, 0, 5, 5)
     
@@ -398,6 +400,8 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         layout = QVBoxLayout(self.content_area)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.addWidget(widget)
+        widget.installEventFilter(self) # Ensure top-level content handles resize cursor reset
+        widget.setAttribute(Qt.WidgetAttribute.WA_Hover)
 
     def set_resizable(self, resizable: bool):
         self.resizable = resizable
@@ -420,16 +424,23 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         super().changeEvent(event)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.MouseMove:
-            if self.resizable and not self.isMaximized() and not self.isFullScreen() and not self._resizing and not self.draggable:
-                global_pos = event.globalPosition().toPoint()
-                local_pos = self.mapFromGlobal(global_pos)
+        # Resize Cursor Hover Handling (Even over child widgets via HoverMove)
+        if event.type() in [QEvent.Type.MouseMove, QEvent.Type.HoverMove]:
+            if self.resizable and not self.isMaximized() and not self.isFullScreen() and not getattr(self, '_resizing', False) and not getattr(self, 'draggable', False):
+                # For HoverMove, the position is in event.position()
+                pos = event.position().toPoint() if event.type() == QEvent.Type.HoverMove else event.pos()
                 
-                # IMPORTANT: Only call _update_cursor if we are actually over a region 
-                # that might need a cursor change (near edges).
-                edges = self._get_resize_edges(local_pos)
-                if edges or self.cursor().shape() != Qt.CursorShape.ArrowCursor:
-                    self._update_cursor(edges)
+                # Use mapFromGlobal if obj is a child widget filtering events
+                if obj != self:
+                    pos = self.mapFromGlobal(obj.mapToGlobal(pos))
+                
+                edges = self._get_resize_edges(pos)
+                self._update_cursor(edges)
+        
+        elif event.type() == QEvent.Type.HoverLeave:
+             # Reset cursor when leaving the window or moving deep into content if needed
+             self.setCursor(Qt.CursorShape.ArrowCursor)
+
         return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):
@@ -667,6 +678,9 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
         
         # 2. Content Area
         self.content_area = QWidget(self.container)
+        self.content_area.setMouseTracking(True)
+        self.content_area.installEventFilter(self)
+        self.content_area.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.addWidget(self.content_area)
@@ -727,6 +741,8 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
             old = self.content_layout.takeAt(0).widget()
             if old: old.deleteLater()
         self.content_layout.addWidget(widget)
+        widget.installEventFilter(self)
+        widget.setAttribute(Qt.WidgetAttribute.WA_Hover)
 
     def setWindowTitle(self, title: str):
         super().setWindowTitle(title)
@@ -768,6 +784,19 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
              self.setWindowIcon(icon)
 
     def eventFilter(self, obj, event):
+        # Resize Cursor Hover Handling
+        if event.type() in [QEvent.Type.MouseMove, QEvent.Type.HoverMove]:
+            if getattr(self, 'resizable', False) and not self.isMaximized() and not getattr(self, '_is_resizing', False) and not getattr(self, '_is_dragging', False):
+                pos = event.position().toPoint() if event.type() == QEvent.Type.HoverMove else event.pos()
+                if obj != self:
+                    pos = self.mapFromGlobal(obj.mapToGlobal(pos))
+                
+                edges = self._get_resize_edges(pos)
+                self._update_cursor(edges)
+        
+        elif event.type() == QEvent.Type.HoverLeave:
+             self.setCursor(Qt.CursorShape.ArrowCursor)
+
         # Dragging logic - Check if title_bar exists first to avoid AttributeError during init
         if hasattr(self, 'title_bar') and obj == self.title_bar:
             if event.type() == QEvent.Type.MouseButtonPress:

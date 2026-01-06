@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QApplication, QTableWidgetItem, QSpinBox
-from PyQt6.QtCore import Qt, QRect, QPoint, QRectF, QEvent, QSize
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QApplication, QTableWidgetItem, QSpinBox, QStyle
+from PyQt6.QtCore import Qt, QRect, QPoint, QPointF, QRectF, QEvent, QSize
 from PyQt6.QtGui import QPainter, QColor, QIcon, QPen, QBrush, QPixmap, QCursor
 import os
 import logging
@@ -136,15 +136,21 @@ class TagColumnDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Draw Background
-        bg_color = QColor("#444444") if not is_active else QColor("#5dade2") # Use theme-like blue for active
+        is_hover = (option.state & QStyle.StateFlag.State_MouseOver)
+        
+        bg_color = QColor("#444444") if not is_active else QColor("#5dade2") 
         if is_active:
              # Active: Solid Blue
+             if is_hover:
+                 bg_color = QColor("#7fbce8") # Brighter blue on hover
              painter.setBrush(QBrush(bg_color))
         else:
              # Inactive: Darker grey
-             painter.setBrush(QBrush(QColor("#333333")))
+             if is_hover:
+                 bg_color = QColor("#555555") # Brighter grey on hover
+             painter.setBrush(QBrush(bg_color))
         
-        painter.setPen(QPen(QColor("#555555"), 1))
+        painter.setPen(QPen(QColor("#666666") if is_hover else QColor("#555555"), 1))
         painter.drawRoundedRect(btn_rect, 4, 4)
         
         # Draw Content
@@ -187,8 +193,24 @@ class TagColumnDelegate(QStyledItemDelegate):
         painter.restore()
 
     def editorEvent(self, event, model, option, index):
-        """Handle Click."""
+        """Handle Click and Hover (cursor)."""
+        # Always check if mouse is over the actual pill rect for interactive feel
+        rect = option.rect
+        size = 25
+        btn_rect = QRectF(rect.center().x() - size/2, rect.center().y() - size/2, size, size)
+        is_over_pill = btn_rect.contains(QPointF(event.pos())) if hasattr(event, 'pos') else False
+
+        if event.type() in [QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress]:
+            view = self.parent()
+            if view and is_over_pill:
+                view.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            elif view:
+                view.unsetCursor()
+
         if event.type() == QEvent.Type.MouseButtonRelease:
+            if not is_over_pill:
+                return False
+                
             # Toggle state
             current_state = bool(index.data(Qt.ItemDataRole.UserRole))
             new_state = not current_state
@@ -215,13 +237,12 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
     Mode 2: High Performance QuickView using Delegates.
     Avoids creating thousands of QWidgets.
     """
-    def __init__(self, parent, items_data, frequent_tags, db, storage_root, show_hidden=True):
-        super().__init__(parent, items_data, frequent_tags, db, storage_root, show_hidden)
+    def __init__(self, parent, items_data, frequent_tags, db, storage_root, show_hidden=True, scope="category"):
+        super().__init__(parent, items_data, frequent_tags, db, storage_root, show_hidden, scope=scope)
         self.setObjectName("QuickViewDelegateDialog")
-        self._base_title = _("Quick View Manager (Mode 2: Delegate)")
+        # Base title is already set by super().__init__ based on scope
         self.setWindowTitle(self._base_title)
         self._pending_changes = {} # rel_path -> {key: val}
-        self._has_changes = False
         self.results = [] # Always list for parity
         
         self._load_table_data()
@@ -261,6 +282,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
 
         # Connect itemChanged for Display Name persistence
         # We need to block signals during data fill to prevent recursive calls
+        self.table.setMouseTracking(True) # Phase 16: Enable tracking for cursor changes
         self.table.blockSignals(True)
         self.table.setRowCount(len(self.items_data))
         self._load_all_data_delegate()
@@ -272,8 +294,18 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             it_name = self.table.item(r, 5)
             if it_name: self.table.openPersistentEditor(it_name)
         
-        self.table.resizeColumnsToContents()
         self.table.blockSignals(False)
+        
+        # Phase 16: Ensure Display Name column stretches AFTER everything is loaded
+        from PyQt6.QtWidgets import QHeaderView
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch) # Re-apply after resize
+        
+        # Enforce separator widths AFTER automatic resize
+        for i, col_info in enumerate(self._all_tag_columns):
+            if col_info['type'] == 'sep':
+                self.table.setColumnWidth(6 + i, 2)
         
         # Connect after loading
         self.table.itemChanged.connect(self._on_item_changed_delegate)
@@ -296,6 +328,23 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         # Phase 1.1.21: Final visibility enforcement
         self.setWindowOpacity(1.0)
         self.show()
+        
+        # Phase 16: Force layout settlement after show()
+        self.table.updateGeometry()
+        QApplication.processEvents()
+        
+        # 1. First automatic resize
+        self.table.resizeColumnsToContents()
+        
+        # 2. Stretch specific columns
+        from PyQt6.QtWidgets import QHeaderView
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        
+        # 3. Finally enforce separator widths AFTER automatic resize
+        for i, col_info in enumerate(self._all_tag_columns):
+            if col_info['type'] == 'sep':
+                self.table.setColumnWidth(6 + i, 2)
+        
         self.raise_()
         self.activateWindow()
         
@@ -383,14 +432,6 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self._record_pending_change(rel_path, 'tags', new_tags_str)
         self._update_window_title()
 
-    def _update_window_title(self):
-        """Update window title to show unsaved status if changes exist."""
-        title = self._base_title
-        if self._has_changes:
-            title += f" - {_('未保存')}"
-        
-        if self.windowTitle() != title:
-            self.setWindowTitle(title)
 
     def _on_fav_toggled_delegate(self, rel_path, is_fav):
         item = next((i for i in self.items_data if i['rel_path'] == rel_path), None)
@@ -398,7 +439,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         
         item['is_favorite'] = is_fav
         self._update_sort_data(rel_path, 2, 1 if is_fav else 0)
-        self._record_pending_change(rel_path, 'is_favorite', 1 if is_fav else 0)
+        self._record_pending_change(rel_path, 'is_favorite', is_fav) # Phase 1.1.262: Pass Boolean for better parity
         self._update_window_title()
 
     def _on_score_changed_delegate(self, rel_path, score):

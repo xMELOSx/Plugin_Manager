@@ -243,43 +243,35 @@ class LMDisplayMixin:
 
     def _toggle_favorite_filter(self):
         """Toggle filter to show only favorited items."""
-        is_checked = self.btn_filter_favorite.isChecked()
-        self.favorite_filter_mode = is_checked
-        if is_checked:
-            self.btn_filter_favorite.setStyleSheet(self.btn_selected_style)
-        else:
-            self.btn_filter_favorite.setStyleSheet(self.btn_normal_style)
+        toggled_on = self.btn_filter_favorite.toggle()
+        self.favorite_filter_mode = toggled_on
         self._apply_card_filters()
 
     def _toggle_linked_filter(self):
         """Toggle filter to show only linked categories and categories containing linked packages."""
-        is_checked = self.btn_filter_linked.isChecked()
+        toggled_on = self.btn_filter_linked.toggle()
         
         # Uncheck the other filter if this is checked
-        if is_checked:
-            self.btn_filter_unlinked.setChecked(False)
+        if toggled_on:
+            if self.btn_filter_unlinked.toggled_state:
+                self.btn_filter_unlinked.toggle()  # Force off
             self.link_filter_mode = 'linked'
-            self.btn_filter_linked.setStyleSheet(self.btn_selected_style)
-            self.btn_filter_unlinked.setStyleSheet(self.btn_normal_style)
         else:
             self.link_filter_mode = None
-            self.btn_filter_linked.setStyleSheet(self.btn_normal_style)
         
         self._apply_card_filters()
 
     def _toggle_unlinked_filter(self):
         """Toggle filter to show only unlinked categories and categories containing unlinked packages."""
-        is_checked = self.btn_filter_unlinked.isChecked()
+        toggled_on = self.btn_filter_unlinked.toggle()
         
         # Uncheck the other filter if this is checked
-        if is_checked:
-            self.btn_filter_linked.setChecked(False)
+        if toggled_on:
+            if self.btn_filter_linked.toggled_state:
+                self.btn_filter_linked.toggle()  # Force off
             self.link_filter_mode = 'unlinked'
-            self.btn_filter_unlinked.setStyleSheet(self.btn_selected_style)
-            self.btn_filter_linked.setStyleSheet(self.btn_normal_style)
         else:
             self.link_filter_mode = None
-            self.btn_filter_unlinked.setStyleSheet(self.btn_normal_style)
         
         self._apply_card_filters()
 

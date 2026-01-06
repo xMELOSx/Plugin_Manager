@@ -21,6 +21,10 @@ from src.ui.common_widgets import StyledLineEdit, StyledComboBox, StyledSpinBox
 import os
 import subprocess
 import shutil
+from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDialog
+from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
+from src.ui.link_master.dialogs.url_list_dialog import URLItemWidget, URLListDialog
+from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
 class TagIconLineEdit(StyledLineEdit):
     """QLineEdit that accepts image drag and drop."""
@@ -559,1503 +563,6 @@ class AppRegistrationDialog(QDialog):
             "url_list": getattr(self, "url_list_json", "[]")
         }
 
-
-class ExecutablesManagerDialog(QDialog):
-    """Dialog to manage executable links for an app with styling and reordering."""
-    def __init__(self, parent=None, executables: list = None):
-        super().__init__(parent)
-        self.setWindowTitle(_("Manage Executables"))
-        self.setMinimumSize(600, 500)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QTableWidget { background-color: #2d2d2d; color: #e0e0e0; gridline-color: #3d3d3d; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
-        
-        self.executables = list(executables) if executables else []
-        self._init_ui()
-        self._load_table()
-
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        # Form for adding/editing
-        form_group = QGroupBox(_("Add / Edit Executable"))
-        form_group.setStyleSheet("QGroupBox { color: #aaa; font-weight: bold; }")
-        form_layout = QFormLayout(form_group)
-        
-        self.name_edit = StyledLineEdit()
-        self.name_edit.setPlaceholderText(_("Display Name (e.g. 'Launch Game')"))
-        form_layout.addRow(_("Name:"), self.name_edit)
-        
-        path_layout = QHBoxLayout()
-        self.path_edit = StyledLineEdit()
-        self.path_edit.setPlaceholderText(_("Executable path (.exe)"))
-        path_layout.addWidget(self.path_edit)
-        browse_btn = QPushButton(_("Browse"))
-        browse_btn.clicked.connect(self._browse_exe)
-        path_layout.addWidget(browse_btn)
-        form_layout.addRow(_("Path:"), path_layout)
-        
-        self.args_edit = StyledLineEdit()
-        self.args_edit.setPlaceholderText(_("Command line arguments (optional)"))
-        form_layout.addRow(_("Args:"), self.args_edit)
-        
-        # Color selections
-        color_layout = QHBoxLayout()
-        self.btn_color = "#3498db"
-        self.txt_color = "#ffffff"
-        
-        self.btn_color_preview = QPushButton(_("■ BG Color"))
-        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-        self.btn_color_preview.clicked.connect(self._pick_btn_color)
-        color_layout.addWidget(self.btn_color_preview)
-        
-        self.txt_color_preview = QPushButton(_("T Text Color"))
-        self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
-        self.txt_color_preview.clicked.connect(self._pick_txt_color)
-        color_layout.addWidget(self.txt_color_preview)
-        
-        form_layout.addRow(_("Style:"), color_layout)
-        
-        self.add_btn = QPushButton(_("➕ Register/Update"))
-        self.add_btn.clicked.connect(self._add_or_update_exe)
-        self.add_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
-        form_layout.addRow("", self.add_btn)
-        
-        layout.addWidget(form_group)
-        
-        # Table
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels([_("Name"), _("Path"), _("Args"), _("Actions")])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
-        
-        # Reorder and Actions
-        bottom_layout = QHBoxLayout()
-        
-        up_btn = QPushButton(_("▲ Up"))
-        up_btn.clicked.connect(lambda: self._move_exe(-1))
-        bottom_layout.addWidget(up_btn)
-        
-        down_btn = QPushButton(_("▼ Down"))
-        down_btn.clicked.connect(lambda: self._move_exe(1))
-        bottom_layout.addWidget(down_btn)
-        
-        bottom_layout.addStretch()
-        
-        save_btn = QPushButton(_("OK (Save Changes)"))
-        save_btn.clicked.connect(self.accept)
-        save_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; width: 150px;")
-        bottom_layout.addWidget(save_btn)
-        
-        layout.addLayout(bottom_layout)
-
-    def _pick_btn_color(self):
-        from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor(self.btn_color), self, _("Select Button Color"))
-        if color.isValid():
-            self.btn_color = color.name()
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-
-    def _pick_txt_color(self):
-        from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor(self.txt_color), self, _("Select Text Color"))
-        if color.isValid():
-            self.txt_color = color.name()
-            self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
-
-    def _browse_exe(self):
-        path, _filter = QFileDialog.getOpenFileName(self, _("Select Executable"), "", _("Executables (*.exe);;All Files (*)"))
-        if path:
-            self.path_edit.setText(path)
-
-    def _add_or_update_exe(self):
-        name = self.name_edit.text().strip()
-        path = self.path_edit.text().strip()
-        args = self.args_edit.text().strip()
-        
-        if not name or not path:
-            QMessageBox.warning(self, _("Error"), _("Name and Path are required."))
-            return
-        
-        new_exe = {
-            "name": name, 
-            "path": path, 
-            "args": args,
-            "btn_color": self.btn_color,
-            "text_color": self.txt_color
-        }
-        
-        # If we have a selected row, update it, otherwise add new
-        row = self.table.currentRow()
-        if row >= 0:
-            self.executables[row] = new_exe
-            self.table.setCurrentCell(-1, -1)
-        else:
-            self.executables.append(new_exe)
-        
-        self._load_table()
-        self._clear_form()
-
-    def _clear_form(self):
-        self.name_edit.clear()
-        self.path_edit.clear()
-        self.args_edit.clear()
-        self.btn_color = "#3498db"
-        self.txt_color = "#ffffff"
-        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-        self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
-
-    def _load_table(self):
-        self.table.setRowCount(0)
-        for i, exe in enumerate(self.executables):
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            
-            name_item = QTableWidgetItem(exe['name'])
-            # Apply custom colors to name preview in table
-            name_item.setBackground(QColor(exe.get('btn_color', '#3498db')))
-            name_item.setForeground(QColor(exe.get('text_color', '#ffffff')))
-            
-            self.table.setItem(row, 0, name_item)
-            self.table.setItem(row, 1, QTableWidgetItem(os.path.basename(exe['path'])))
-            self.table.setItem(row, 2, QTableWidgetItem(exe.get('args', '')))
-            
-            # Action buttons
-            actions_widget = QWidget()
-            actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(2, 2, 2, 2)
-            actions_layout.setSpacing(4)
-            
-            edit_btn = QPushButton("✏")
-            edit_btn.setFixedSize(24, 24)
-            edit_btn.clicked.connect(lambda ch, r=row: self._edit_row(r))
-            actions_layout.addWidget(edit_btn)
-            
-            del_btn = QPushButton("🗑")
-            del_btn.setFixedSize(24, 24)
-            del_btn.setStyleSheet("background-color: #c0392b;")
-            del_btn.clicked.connect(lambda ch, r=row: self._delete_row(r))
-            actions_layout.addWidget(del_btn)
-            
-            self.table.setCellWidget(row, 3, actions_widget)
-
-    def _edit_row(self, row):
-        if 0 <= row < len(self.executables):
-            exe = self.executables[row]
-            self.name_edit.setText(exe['name'])
-            self.path_edit.setText(exe['path'])
-            self.args_edit.setText(exe.get('args', ''))
-            self.btn_color = exe.get('btn_color', '#3498db')
-            self.txt_color = exe.get('text_color', '#ffffff')
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-            self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
-            self.table.selectRow(row)
-
-    def _delete_row(self, row):
-        if 0 <= row < len(self.executables):
-            self.executables.pop(row)
-            self._load_table()
-
-    def _move_exe(self, delta):
-        row = self.table.currentRow()
-        if row < 0: return
-        
-        new_row = row + delta
-        if 0 <= new_row < len(self.executables):
-            self.executables[row], self.executables[new_row] = self.executables[new_row], self.executables[row]
-            self._load_table()
-            self.table.selectRow(new_row)
-
-    def get_executables(self):
-        return self.executables
-
-
-class LibraryDependencyDialog(QDialog):
-    """Dialog to manage library dependencies for a package."""
-    def __init__(self, parent=None, lib_deps_json: str = "[]"):
-        super().__init__(parent)
-        self.setWindowTitle(_("Library Dependency Settings"))
-        self.setMinimumSize(450, 350)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QListWidget::item { padding: 4px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
-        
-        import json
-        try:
-            self.lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
-        except:
-            self.lib_deps = []
-        
-        self._init_ui()
-        self._load_list()
-    
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        layout.addWidget(QLabel(_("Add or remove libraries to use.")))
-        
-        # Add form
-        add_form = QHBoxLayout()
-        
-        self.lib_combo = StyledComboBox()
-        self.lib_combo.setMinimumWidth(150)
-        self._load_available_libraries()
-        add_form.addWidget(self.lib_combo)
-        
-        self.ver_combo = StyledComboBox()
-        self.ver_combo.addItem(_("Preferred"), None)
-        self.ver_combo.setMinimumWidth(100)
-        add_form.addWidget(self.ver_combo)
-        
-        self.lib_combo.currentIndexChanged.connect(self._on_lib_selected)
-        
-        add_btn = QPushButton(_("Add"))
-        add_btn.clicked.connect(self._add_dep)
-        add_form.addWidget(add_btn)
-        
-        layout.addLayout(add_form)
-        
-        # Current deps list
-        layout.addWidget(QLabel(_("Current Dependencies:")))
-        self.dep_list = QListWidget()
-        self.dep_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.dep_list.customContextMenuRequested.connect(self._show_context_menu)
-        layout.addWidget(self.dep_list)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        ok_btn = QPushButton(_("OK"))
-        ok_btn.setStyleSheet("background-color: #27ae60; color: white;")
-        ok_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(ok_btn)
-        
-        cancel_btn = QPushButton(_("Cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(btn_layout)
-    
-    def _load_available_libraries(self):
-        """Load available libraries from parent's window DB."""
-        self.lib_combo.clear()
-        self.lib_combo.addItem(_("-- Select Library --"), None)
-        
-        try:
-            curr = self.parent()
-            while curr:
-                if hasattr(curr, 'db') and curr.db:
-                    all_configs = curr.db.get_all_folder_configs()
-                    lib_names = set()
-                    for rel_path, cfg in all_configs.items():
-                        if cfg.get('is_library', 0):
-                            lib_names.add(cfg.get('lib_name', 'Unknown'))
-                    
-                    for name in sorted(lib_names):
-                        self.lib_combo.addItem(f"📚 {name}", name)
-                    break
-                curr = curr.parent()
-        except:
-            pass
-    
-    def _on_lib_selected(self, index):
-        """Update version dropdown when library is selected."""
-        self.ver_combo.clear()
-        self.ver_combo.addItem(_("Preferred"), None)
-        
-        lib_name = self.lib_combo.currentData()
-        if not lib_name:
-            return
-        
-        try:
-            curr = self.parent()
-            while curr:
-                if hasattr(curr, 'db') and curr.db:
-                    all_configs = curr.db.get_all_folder_configs()
-                    for rel_path, cfg in all_configs.items():
-                        if cfg.get('is_library', 0) and cfg.get('lib_name') == lib_name:
-                            ver = cfg.get('lib_version', 'Unknown')
-                            self.ver_combo.addItem(f"📦 {ver}", ver)
-                    break
-                curr = curr.parent()
-        except:
-            pass
-    
-    def _add_dep(self):
-        lib_name = self.lib_combo.currentData()
-        if not lib_name:
-            return
-        
-        version = self.ver_combo.currentData()
-        
-        # Check if already exists
-        for dep in self.lib_deps:
-            if isinstance(dep, dict) and dep.get('name') == lib_name:
-                return
-            elif isinstance(dep, str) and dep == lib_name:
-                return
-        
-        if version:
-            self.lib_deps.append({'name': lib_name, 'version': version})
-        else:
-            self.lib_deps.append({'name': lib_name})
-        
-        self._load_list()
-    
-    def _load_list(self):
-        self.dep_list.clear()
-        for dep in self.lib_deps:
-            if isinstance(dep, dict):
-                name = dep.get('name', 'Unknown')
-                ver = dep.get('version')
-                text = f"📚 {name}" + (f" @ {ver}" if ver else _(" (Preferred)"))
-            else:
-                text = f"📚 {dep}" + _(" (Preferred)")
-            
-            item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, dep)
-            self.dep_list.addItem(item)
-    
-    def _show_context_menu(self, pos):
-        item = self.dep_list.itemAt(pos)
-        if not item:
-            return
-        
-        menu = QMenu(self)
-        remove_action = menu.addAction(_("🗑 Delete"))
-        action = menu.exec(self.dep_list.mapToGlobal(pos))
-        
-        if action == remove_action:
-            dep = item.data(Qt.ItemDataRole.UserRole)
-            if dep in self.lib_deps:
-                self.lib_deps.remove(dep)
-            self._load_list()
-    
-    def get_lib_deps_json(self) -> str:
-        import json
-        return json.dumps(self.lib_deps)
-
-
-class LibraryRegistrationDialog(QDialog):
-    """Library Registration Dialog - Select existing library or register version."""
-    def __init__(self, parent=None, db=None):
-        super().__init__(parent)
-        self.db = db
-        self.setWindowTitle(_("Library Registration"))
-        self.setMinimumSize(400, 200)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #ffffff; }
-            QLabel { color: #ffffff; }
-            QLineEdit, QComboBox { background-color: #444444; color: #ffffff; border: 1px solid #555555; padding: 6px; }
-            QComboBox QAbstractItemView { background-color: #444444; color: #ffffff; selection-background-color: #3498db; }
-            QPushButton { background-color: #3d3d3d; color: #ffffff; padding: 6px 12px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
-        self._init_ui()
-    
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        layout.addWidget(QLabel(_("Register selected package as a library")))
-        
-        form = QFormLayout()
-        
-        # Library name: dropdown with existing libraries + option to add new
-        self.lib_combo = QComboBox()
-        self.lib_combo.setEditable(True)
-        self.lib_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.lib_combo.lineEdit().setPlaceholderText(_("Enter new library name"))
-        self.lib_combo.setStyleSheet("color: white; QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; }")
-        
-        # Load existing libraries (but don't select any)
-        self._load_existing_libraries()
-        self.lib_combo.setCurrentIndex(-1)  # Ensure no item is selected by default
-        self.lib_combo.lineEdit().setText("") # Clear text 
-        self.lib_combo.currentTextChanged.connect(self._on_lib_changed)
-        form.addRow(_("Library Name:"), self.lib_combo)
-        
-        # Existing versions label
-        self.existing_versions_label = QLabel("")
-        self.existing_versions_label.setStyleSheet("color: #888; font-size: 11px;")
-        form.addRow("", self.existing_versions_label)
-        
-        # Version input
-        self.version_edit = QLineEdit()
-        self.version_edit.setPlaceholderText(_("1.0"))
-        form.addRow(_("Version:"), self.version_edit)
-        
-        layout.addLayout(form)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        ok_btn = QPushButton(_("Register"))
-        ok_btn.setStyleSheet("background-color: #27ae60; color: white;")
-        ok_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(ok_btn)
-        
-        cancel_btn = QPushButton(_("Cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(btn_layout)
-    
-    def _load_existing_libraries(self):
-        self.lib_combo.clear()
-        if not self.db:
-            return
-        
-        all_configs = self.db.get_all_folder_configs()
-        lib_names = set()
-        self.lib_versions = {}  # name -> [versions]
-        
-        for rel_path, cfg in all_configs.items():
-            if cfg.get('is_library', 0):
-                name = cfg.get('lib_name', 'Unknown')
-                lib_names.add(name)
-                if name not in self.lib_versions:
-                    self.lib_versions[name] = []
-                ver = cfg.get('lib_version', 'Unknown')
-                if ver not in self.lib_versions[name]:
-                    self.lib_versions[name].append(ver)
-        
-        for name in sorted(lib_names):
-            clean_name = name.replace("📚 ", "").replace("📚", "").strip()
-            self.lib_combo.addItem(f"📚 {clean_name}", clean_name)
-    
-    def _on_lib_changed(self, text):
-        # Show existing versions if an existing library is selected
-        clean_name = text.replace("📚 ", "")
-        if clean_name in self.lib_versions:
-            vers = ", ".join(sorted(self.lib_versions[clean_name], reverse=True))
-            self.existing_versions_label.setText(_("Existing Versions: {vers}").format(vers=vers))
-        else:
-            self.existing_versions_label.setText("")
-    
-    def get_library_name(self) -> str:
-        # Check current index - if it's an existing library, use its clean data
-        idx = self.lib_combo.currentIndex()
-        if idx >= 0:
-            # Only use itemData if the current text still matches the selection's text
-            if self.lib_combo.currentText() == self.lib_combo.itemText(idx):
-                data = self.lib_combo.itemData(idx)
-                if data:
-                    return str(data).strip()
-            
-        # If user typed manually or modified the selected text
-        text = self.lib_combo.currentText().strip()
-        # Remove any stray emojis if the user typed them or copy-pasted
-        text = text.replace("📚", "").strip()
-        return text
-    
-    def get_version(self) -> str:
-        return self.version_edit.text().strip() or "1.0"
-
-
-class PreviewItemWidget(QWidget):
-    """Custom widget for each preview item in the list."""
-    removed = pyqtSignal(str)  # Emitted when item is removed, passes path
-    
-    def __init__(self, path: str, parent_dialog=None):
-        super().__init__()
-        self.path = path
-        self.parent_dialog = parent_dialog
-        self._init_ui()
-    
-    def _init_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 3, 5, 3)
-        layout.setSpacing(5)
-        
-        # Drag Handle (☰)
-        drag_label = QLabel("☰")
-        drag_label.setFixedWidth(20)
-        drag_label.setStyleSheet("color: #888; font-size: 14px;")
-        drag_label.setCursor(Qt.CursorShape.SizeAllCursor)
-        drag_label.setToolTip(_("Drag to reorder"))
-        layout.addWidget(drag_label)
-        
-        # Path Label (stretch)
-        self.path_label = QLabel(self.path)
-        self.path_label.setToolTip(self.path)
-        self.path_label.setStyleSheet("color: #e0e0e0;")
-        layout.addWidget(self.path_label, 1)
-        
-        # Detect if file is an image for conditional button visibility
-        ext = os.path.splitext(self.path)[1].lower()
-        is_image = ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']
-        
-        # Button Order: Icon → Crop → Launch → Explorer → Delete
-        btn_style = "QPushButton { padding: 2px 5px; } QPushButton:hover { background-color: #5d5d5d; }"
-        
-        # Icon Sync (✨) - Images only
-        if is_image:
-            sync_btn = QPushButton("✨")
-            sync_btn.setToolTip(_("Set as folder icon"))
-            sync_btn.setFixedWidth(28)
-            sync_btn.setStyleSheet(btn_style)
-            sync_btn.clicked.connect(self._sync_to_icon)
-            layout.addWidget(sync_btn)
-            
-            # Crop (✂️) - Images only
-            crop_btn = QPushButton("✂")
-            crop_btn.setToolTip(_("Free crop image"))
-            crop_btn.setFixedWidth(28)
-            crop_btn.setStyleSheet(btn_style)
-            crop_btn.clicked.connect(self._crop_image)
-            layout.addWidget(crop_btn)
-        else:
-            # Spacers for alignment
-            for i in range(2): # 💡 FIX: Use 'i' instead of '_' to avoid shadowing translation function
-                spacer = QWidget()
-                spacer.setFixedWidth(28)
-                layout.addWidget(spacer)
-        
-        # Open File (🚀)
-        open_btn = QPushButton("🚀")
-        open_btn.setToolTip(_("Open in external app"))
-        open_btn.setFixedWidth(28)
-        open_btn.setStyleSheet(btn_style)
-        open_btn.clicked.connect(self._open_file)
-        layout.addWidget(open_btn)
-        
-        # Open in Explorer (📁)
-        explorer_btn = QPushButton("📁")
-        explorer_btn.setToolTip(_("Open folder in Explorer"))
-        explorer_btn.setFixedWidth(28)
-        explorer_btn.setStyleSheet(btn_style)
-        explorer_btn.clicked.connect(self._open_in_explorer)
-        layout.addWidget(explorer_btn)
-        
-        # Delete (❌)
-        del_btn = QPushButton("❌")
-        del_btn.setFixedWidth(28)
-        del_btn.setStyleSheet(btn_style)
-        del_btn.clicked.connect(self._remove)
-        layout.addWidget(del_btn)
-    
-    def _sync_to_icon(self):
-        if self.parent_dialog and hasattr(self.parent_dialog, '_sync_to_icon'):
-            self.parent_dialog._sync_to_icon(self.path)
-    
-    def _crop_image(self):
-        if self.parent_dialog and hasattr(self.parent_dialog, '_crop_image'):
-            self.parent_dialog._crop_image(self.path)
-    
-    def _open_file(self):
-        if os.path.exists(self.path):
-            os.startfile(self.path)
-    
-    def _open_in_explorer(self):
-        import subprocess
-        norm_path = os.path.normpath(self.path)
-        if os.path.exists(norm_path):
-            subprocess.Popen(['explorer', '/select,', norm_path])
-    
-    def _remove(self):
-        self.removed.emit(self.path)
-
-
-class PreviewTableDialog(QDialog):
-    """Dialog to manage multiple preview files with drag-and-drop reordering."""
-    def __init__(self, parent=None, paths: list = None):
-        super().__init__(parent)
-        self.setWindowTitle(_("Manage Full Previews"))
-        self.resize(700, 400)
-        self.paths = paths or []
-        self._init_ui()
-        self._load_paths()
-        
-        # Phase 32: Restore Size
-        from src.core.link_master.database import get_lm_db
-        # We need an app context for general settings, but LM uses lm_ui_state for splitters etc.
-        # For dialogs, let's use a common 'lm_global_settings' or just the first app's DB for now,
-        # or better, use the instance of 'db' if available from parent.
-        self.db = getattr(parent, 'db', None)
-        if self.db:
-            geom = self.db.get_setting("geom_preview_table", None)
-            if geom: self.restoreGeometry(bytes.fromhex(geom))
-    
-    def closeEvent(self, event):
-        if self.db:
-            self.db.set_setting("geom_preview_table", self.saveGeometry().toHex().data().decode())
-        super().closeEvent(event)
-
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        # Dark theme
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QListWidget::item { padding: 2px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-            QToolTip { background-color: #2d2d2d; color: #fff; border: 1px solid #555; padding: 4px; }
-        """)
-        
-        # List Widget with Drag-Drop
-        self.list_widget = QListWidget()
-        self.list_widget.setDragEnabled(True)
-        self.list_widget.setAcceptDrops(True)
-        self.list_widget.setDropIndicatorShown(True)
-        self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
-        # Sync paths after drag-drop
-        self.list_widget.model().rowsMoved.connect(self._on_rows_moved)
-        layout.addWidget(self.list_widget)
-        
-        # Toolbar
-        btns = QHBoxLayout()
-        add_btn = QPushButton(_("➕ Add File"))
-        add_btn.clicked.connect(self._add_file)
-        clear_btn = QPushButton(_("🗑 Clear All"))
-        clear_btn.clicked.connect(self._clear_all)
-        
-        paste_btn = QPushButton(_("📋 Paste from Clipboard"))
-        paste_btn.clicked.connect(self._add_from_clipboard)
-        
-        btns.addWidget(add_btn)
-        btns.addWidget(paste_btn)
-        btns.addWidget(clear_btn)
-        btns.addStretch()
-        
-        ok_btn = QPushButton(_("OK"))
-        ok_btn.clicked.connect(self.accept)
-        btns.addWidget(ok_btn)
-        
-        layout.addLayout(btns)
-
-    def _load_paths(self):
-        self.list_widget.clear()
-        for path in self.paths:
-            self._add_item(path)
-
-    def _add_item(self, path):
-        item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 36))
-        item.setData(Qt.ItemDataRole.UserRole, path)  # Store path in item data
-        
-        widget = PreviewItemWidget(path, self)
-        widget.removed.connect(self._on_item_removed)
-        
-        self.list_widget.addItem(item)
-        self.list_widget.setItemWidget(item, widget)
-
-    def _on_item_removed(self, path):
-        if path in self.paths:
-            self.paths.remove(path)
-        self._load_paths()
-
-    def _on_rows_moved(self, parent, start, end, destination, row):
-        """Sync self.paths after drag-drop reorder."""
-        self._sync_paths_from_list()
-
-    def _sync_paths_from_list(self):
-        """Rebuild self.paths from current list order."""
-        self.paths = []
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            if item:
-                path = item.data(Qt.ItemDataRole.UserRole)
-                if path:
-                    self.paths.append(path)
-
-    def _show_context_menu(self, pos):
-        item = self.list_widget.itemAt(pos)
-        if not item:
-            return
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background-color: #2d2d2d; color: #e0e0e0; } QMenu::item:selected { background-color: #3d5a80; }")
-        
-        move_top = menu.addAction(_("⬆ Move to Top"))
-        move_bottom = menu.addAction(_("⬇ Move to Bottom"))
-        menu.addSeparator()
-        delete_action = menu.addAction(_("❌ Remove"))
-        
-        action = menu.exec(self.list_widget.mapToGlobal(pos))
-        
-        if action == move_top:
-            self._move_to_top(item)
-        elif action == move_bottom:
-            self._move_to_bottom(item)
-        elif action == delete_action:
-            path = item.data(Qt.ItemDataRole.UserRole)
-            self._on_item_removed(path)
-
-    def _move_to_top(self, item):
-        row = self.list_widget.row(item)
-        if row <= 0:
-            return
-        path = item.data(Qt.ItemDataRole.UserRole)
-        if path in self.paths:
-            self.paths.remove(path)
-            self.paths.insert(0, path)
-        self._load_paths()
-        self.list_widget.setCurrentRow(0)
-
-    def _move_to_bottom(self, item):
-        row = self.list_widget.row(item)
-        if row >= self.list_widget.count() - 1:
-            return
-        path = item.data(Qt.ItemDataRole.UserRole)
-        if path in self.paths:
-            self.paths.remove(path)
-            self.paths.append(path)
-        self._load_paths()
-        self.list_widget.setCurrentRow(self.list_widget.count() - 1)
-
-    def _add_file(self):
-        file_path, _filter = QFileDialog.getOpenFileName(self, _("Add Preview File"), "", 
-                                                  _("Videos/Images (*.mp4 *.mkv *.avi *.png *.jpg *.jpeg *.gif);;All Files (*.*)"))
-        if file_path:
-            if file_path not in self.paths:
-                self.paths.append(file_path)
-                self._add_item(file_path)
-
-    def _clear_all(self):
-        self.paths = []
-        self.list_widget.clear()
-
-    def _sync_to_icon(self, path):
-        if self.parent() and hasattr(self.parent(), "_sync_icon_from_preview"):
-            self.parent()._sync_icon_from_preview(path)
-
-    def _crop_image(self, path):
-        """Open the image in IconCropDialog for free cropping (arbitrary rectangles)."""
-        if not os.path.exists(path):
-            QMessageBox.warning(self, _("Error"), _("File not found."))
-            return
-        
-        dialog = IconCropDialog(self, path, allow_free=True)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            cropped_pixmap = dialog.get_cropped_pixmap()
-            if cropped_pixmap and not cropped_pixmap.isNull():
-                import time
-                crop_dir = os.path.join(os.environ.get('APPDATA', ''), 'LinkMaster', 'Cache', 'Cropped')
-                os.makedirs(crop_dir, exist_ok=True)
-                
-                base_name = os.path.splitext(os.path.basename(path))[0]
-                cropped_filename = f"{base_name}_cropped_{int(time.time())}.png"
-                cropped_path = os.path.join(crop_dir, cropped_filename)
-                
-                if cropped_pixmap.save(cropped_path, "PNG"):
-                    idx = self.paths.index(path) if path in self.paths else -1
-                    if idx >= 0:
-                        self.paths[idx] = cropped_path
-                    self._load_paths()
-                else:
-                    QMessageBox.warning(self, _("Error"), _("Failed to save cropped image."))
-
-    def get_paths(self):
-        """Return paths in the current visual order."""
-        self._sync_paths_from_list()
-        return self.paths
-
-    def _add_from_clipboard(self):
-        """Add image data or file paths directly from clipboard."""
-        clipboard = QApplication.clipboard()
-        mime_data = clipboard.mimeData()
-        
-        if mime_data.hasUrls():
-            added = False
-            for url in mime_data.urls():
-                local_path = url.toLocalFile()
-                if os.path.exists(local_path):
-                    if local_path not in self.paths:
-                        self.paths.append(local_path)
-                        self._add_item(local_path)
-                        added = True
-            if added:
-                return
-
-        image = clipboard.image()
-        if not image.isNull():
-            temp_dir = os.path.join(os.environ.get('APPDATA', ''), 'LinkMaster', 'Cache', 'Clipboard')
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            import time
-            filename = f"clip_{int(time.time())}.png"
-            target_path = os.path.join(temp_dir, filename)
-            
-            if image.save(target_path, "PNG"):
-                if target_path not in self.paths:
-                    self.paths.append(target_path)
-                    self._add_item(target_path)
-            else:
-                QMessageBox.warning(self, _("Clip Error"), _("Failed to save image from clipboard."))
-            return
-            
-        QMessageBox.information(self, _("Empty Clipboard"), _("No image or file found in clipboard."))
-
-
-class URLItemWidget(QWidget):
-    """Custom widget for each URL item in the list."""
-    removed = pyqtSignal(object)
-    changed = pyqtSignal()
-    
-    def __init__(self, data: dict, is_marked: bool = False, parent_dialog=None):
-        super().__init__()
-        # data is {"url": str, "active": bool}
-        self.url = data.get('url', '')
-        self.is_active = data.get('active', True)
-        self.is_marked = is_marked
-        self.parent_dialog = parent_dialog
-        self._init_ui()
-    
-    def _init_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 3, 5, 3)
-        layout.setSpacing(5)
-        
-        # Drag Handle (☰)
-        drag_label = QLabel("☰")
-        drag_label.setFixedWidth(20)
-        drag_label.setStyleSheet("color: #888; font-size: 14px;")
-        drag_label.setCursor(Qt.CursorShape.SizeAllCursor)
-        layout.addWidget(drag_label)
-        
-        # Active Toggle (👁/🌑)
-        self.active_btn = QPushButton("👁" if self.is_active else "🌑")
-        self.active_btn.setFixedWidth(32)
-        self.active_btn.setToolTip(_("Toggle URL Active/Inactive"))
-        self.active_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; }")
-        self.active_btn.clicked.connect(self._toggle_active)
-        layout.addWidget(self.active_btn)
-
-        # Mark indicator (🔗 for last working URL)
-        self.mark_btn = QPushButton("🔗" if self.is_marked else "  ")
-        self.mark_btn.setFixedWidth(32)
-        self.mark_btn.setToolTip(_("Mark as Preferred (Fast Access)"))
-        self.mark_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; color: #2ecc71; }" if self.is_marked else "QPushButton { background: transparent; border: none; font-size: 16px; color: #888; }")
-        self.mark_btn.clicked.connect(self._mark_as_preferred)
-        layout.addWidget(self.mark_btn)
-        
-        # URL Label
-        self.url_label = QLabel(self.url)
-        self.url_label.setToolTip(self.url)
-        self.url_label.setStyleSheet("color: #e0e0e0; cursor: pointer;" if self.is_active else "color: #666; cursor: pointer; text-decoration: line-through;")
-        self.url_label.mousePressEvent = self._start_edit
-        
-        self.url_edit = QLineEdit(self.url)
-        self.url_edit.setStyleSheet("background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 2px;")
-        self.url_edit.returnPressed.connect(self._finish_edit)
-        self.url_edit.editingFinished.connect(self._finish_edit)
-        self.url_edit.hide()
-        
-        layout.addWidget(self.url_label, 1)
-        layout.addWidget(self.url_edit, 1)
-        
-        btn_style = "QPushButton { padding: 2px 5px; background: transparent; border: none; font-size: 14px; } QPushButton:hover { background-color: #5d5d5d; }"
-        
-        # Test connectivity (🔍)
-        test_btn = QPushButton("🔍")
-        test_btn.setToolTip(_("Test connectivity"))
-        test_btn.setFixedWidth(30)
-        test_btn.setStyleSheet(btn_style)
-        test_btn.clicked.connect(self._test_url)
-        layout.addWidget(test_btn)
-        
-        # Open in browser (🌐)
-        open_btn = QPushButton("🌐")
-        open_btn.setToolTip(_("Open in browser"))
-        open_btn.setFixedWidth(30)
-        open_btn.setStyleSheet(btn_style)
-        open_btn.clicked.connect(self._open_url)
-        layout.addWidget(open_btn)
-        
-        # Delete (❌)
-        del_btn = QPushButton("❌")
-        del_btn.setFixedWidth(30)
-        del_btn.setStyleSheet(btn_style)
-        del_btn.clicked.connect(self._remove)
-        layout.addWidget(del_btn)
-    
-    def _toggle_active(self):
-        self.is_active = not self.is_active
-        self.active_btn.setText("👁" if self.is_active else "🌑")
-        self.url_label.setStyleSheet("color: #e0e0e0; cursor: pointer;" if self.is_active else "color: #666; cursor: pointer; text-decoration: line-through;")
-        self.changed.emit()
-
-    def _start_edit(self, event):
-        self.url_label.hide()
-        self.url_edit.setText(self.url)
-        self.url_edit.show()
-        self.url_edit.setFocus()
-    
-    def _finish_edit(self):
-        if self.url_edit.isHidden(): return
-        new_url = self.url_edit.text().strip()
-        if new_url and new_url != self.url:
-            self.url = new_url
-            self.url_label.setText(new_url)
-            self.changed.emit()
-        self.url_edit.hide()
-        self.url_label.show()
-    
-    def _mark_as_preferred(self):
-        """Mark this URL as the preferred one in the parent dialog."""
-        if self.parent_dialog:
-            self.parent_dialog.set_marked_url(self.url)
-
-    def set_marked(self, is_marked: bool):
-        self.is_marked = is_marked
-        self.mark_btn.setText("🔗" if is_marked else "  ")
-        self.mark_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 14px; color: #2ecc71; }" if is_marked else "QPushButton { background: transparent; border: none; font-size: 14px; color: #888; }")
-
-    def _test_url(self):
-        import urllib.request
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        try:
-            req = urllib.request.Request(self.url, method='HEAD')
-            req.add_header('User-Agent', user_agent)
-            urllib.request.urlopen(req, timeout=5)
-            QMessageBox.information(self, _("Success"), _("✅ Reachable"))
-        except Exception as e:
-            QMessageBox.warning(self, _("Failed"), _("❌ Failed: {error}").format(error=e))
-
-    def _open_url(self):
-        import webbrowser
-        webbrowser.open(self.url)
-        if self.parent_dialog:
-            self.parent_dialog._on_url_opened(self.url)
-    
-    def _remove(self):
-        self.removed.emit(self)
-    
-    def set_marked(self, marked: bool):
-        self.is_marked = marked
-        self.mark_btn.setText("🔗" if marked else "  ")
-        self.mark_label.setStyleSheet("color: #2ecc71;" if marked else "color: #888;")
-
-
-class URLListDialog(QDialog):
-    """Dialog to manage multiple URLs with connectivity testing."""
-    def __init__(self, parent=None, url_list_json: str = '[]', marked_url: str = None):
-        super().__init__(parent)
-        self.setWindowTitle(_("Manage URLs"))
-        self.resize(600, 450)
-        
-        import json
-        try:
-            raw_data = json.loads(url_list_json)
-        except:
-            raw_data = []
-            
-        # Migrate flat list to objects
-        self.url_data = [] # List of {"url": "...", "active": bool}
-        self.auto_mark = True
-        self.marked_url = marked_url
-        
-        if isinstance(raw_data, dict):
-             # Meta format: {"urls": [...], "auto_mark": bool, "marked_url": ...}
-             self.url_data = raw_data.get('urls', [])
-             self.auto_mark = raw_data.get('auto_mark', True)
-             # Prefer marked_url from JSON if present
-             if not self.marked_url:
-                 self.marked_url = raw_data.get('marked_url')
-        else:
-             # Flat list format
-             for u in raw_data:
-                 if isinstance(u, str):
-                     self.url_data.append({"url": u, "active": True})
-                 else:
-                     self.url_data.append(u)
-                     
-        self._init_ui()
-        self._load_urls()
-
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QListWidget::item { padding: 2px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-            QLabel { color: #e0e0e0; }
-            QCheckBox { color: #e0e0e0; }
-        """)
-        
-        # URL Input
-        input_layout = QHBoxLayout()
-        self.url_input = StyledLineEdit()
-        self.url_input.setPlaceholderText(_("Enter URL (https://...)"))
-        self.url_input.returnPressed.connect(self._add_url)
-        input_layout.addWidget(self.url_input)
-        
-        add_btn = QPushButton("➕ " + _("Add"))
-        add_btn.clicked.connect(self._add_url)
-        input_layout.addWidget(add_btn)
-        layout.addLayout(input_layout)
-
-        # Header Labels
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(5, 5, 5, 5)
-        header_layout.setSpacing(5)
-        
-        # Match URLItemWidget's fixed widths
-        # ☰:20, 👁:32, 🔗:32, URL:stretch, 🔍:30, 🌐:30, ❌:30
-        header_layout.addSpacing(25) # ☰ + spacing
-        
-        h_active = QLabel(_("Active"))
-        h_active.setFixedWidth(32)
-        h_active.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(h_active)
-        
-        h_pref = QLabel(_("Priority"))
-        h_pref.setFixedWidth(32)
-        h_pref.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(h_pref)
-        
-        h_url = QLabel("URL")
-        h_url.setStyleSheet("padding-left: 5px;")
-        header_layout.addWidget(h_url, 1)
-        
-        h_test = QLabel("✓")
-        h_test.setFixedWidth(30)
-        h_test.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(h_test)
-        
-        h_link = QLabel(_("Link"))
-        h_link.setFixedWidth(30)
-        h_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(h_link)
-        
-        h_del = QLabel(_("Delete"))
-        h_del.setFixedWidth(30)
-        h_del.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(h_del)
-        
-        layout.addLayout(header_layout)
-        
-        # List Widget with Drag-Drop
-        self.list_widget = QListWidget()
-        self.list_widget.setDragEnabled(True)
-        self.list_widget.setAcceptDrops(True)
-        self.list_widget.setDropIndicatorShown(True)
-        self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.list_widget.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
-        self.list_widget.model().rowsMoved.connect(self._on_rows_moved)
-        layout.addWidget(self.list_widget)
-        
-        # Toolbar
-        btns = QHBoxLayout()
-        
-        auto_mark_layout = QHBoxLayout()
-        auto_mark_label = QLabel(_("Auto-mark last accessed URL (🔗):"))
-        auto_mark_label.setStyleSheet("color: #aaa; font-size: 11px;")
-        self.auto_mark_chk = SlideButton()
-        self.auto_mark_chk.setChecked(self.auto_mark)
-        auto_mark_layout.addWidget(auto_mark_label)
-        auto_mark_layout.addWidget(self.auto_mark_chk)
-        auto_mark_layout.addStretch()
-        layout.addLayout(auto_mark_layout)
-
-        test_all_btn = QPushButton(_("🔍 Test All && Open First Working"))
-        test_all_btn.clicked.connect(self._test_and_open_first)
-        test_all_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
-        btns.addWidget(test_all_btn)
-        
-        clear_btn = QPushButton(_("🗑 Clear All"))
-        clear_btn.clicked.connect(self._clear_all)
-        btns.addWidget(clear_btn)
-        
-        btns.addStretch()
-        
-        ok_btn = QPushButton("OK")
-        ok_btn.clicked.connect(self.accept)
-        btns.addWidget(ok_btn)
-        
-        layout.addLayout(btns)
-
-
-    def _load_urls(self):
-        self.list_widget.clear()
-        for data in self.url_data:
-            url = data.get('url', '')
-            self._add_item(data, is_marked=(url == self.marked_url))
-
-    def _add_item(self, data, is_marked=False):
-        item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 36))
-        item.setData(Qt.ItemDataRole.UserRole, data.get('url'))
-        
-        widget = URLItemWidget(data, is_marked, self)
-        widget.removed.connect(self._on_item_removed)
-        widget.changed.connect(self._sync_urls_from_list)
-        
-        self.list_widget.addItem(item)
-        self.list_widget.setItemWidget(item, widget)
-
-    def _add_url(self):
-        url = self.url_input.text().strip()
-        if url:
-            # Check if already exists? maybe not necessary to block duplicates if useful.
-            new_data = {"url": url, "active": True}
-            self.url_data.append(new_data)
-            self._add_item(new_data)
-            self.url_input.clear()
-
-    def _on_item_removed(self, widget):
-        url = widget.url
-        for data in self.url_data:
-            if data['url'] == url:
-                self.url_data.remove(data)
-                break
-        if url == self.marked_url:
-            self.marked_url = None
-        self._load_urls()
-
-    def _on_rows_moved(self, parent, start, end, destination, row):
-        self._sync_urls_from_list()
-
-    def _sync_urls_from_list(self):
-        self.url_data = []
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            widget = self.list_widget.itemWidget(item)
-            if widget:
-                self.url_data.append({"url": widget.url, "active": widget.is_active})
-                if widget.is_marked:
-                    self.marked_url = widget.url
-
-    def set_marked_url(self, url: str):
-        """Set the marked URL and update all items."""
-        self.marked_url = url
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            widget = self.list_widget.itemWidget(item)
-            if widget:
-                widget.set_marked(widget.url == url)
-        self.changed.emit()
-
-    def _show_context_menu(self, pos):
-        item = self.list_widget.itemAt(pos)
-        if not item: return
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background-color: #2d2d2d; color: #e0e0e0; } QMenu::item:selected { background-color: #3d5a80; }")
-        
-        mark_action = menu.addAction(_("🔗 Mark as Working"))
-        move_top = menu.addAction(_("⬆ Move to Top"))
-        move_bottom = menu.addAction(_("⬇ Move to Bottom"))
-        menu.addSeparator()
-        delete_action = menu.addAction(_("❌ Remove"))
-        
-        action = menu.exec(self.list_widget.mapToGlobal(pos))
-        url = item.data(Qt.ItemDataRole.UserRole)
-        
-        if action == mark_action:
-            self.marked_url = url
-            self._load_urls()
-        elif action == move_top:
-            self._move_to_top(item)
-        elif action == move_bottom:
-            self._move_to_bottom(item)
-        elif action == delete_action:
-            # Pass the fake widget-like object or just call removal logic
-            for data in self.url_data:
-                if data['url'] == url:
-                    self.url_data.remove(data)
-                    break
-            if url == self.marked_url:
-                self.marked_url = None
-            self._load_urls()
-
-    def _move_to_top(self, item):
-        url = item.data(Qt.ItemDataRole.UserRole)
-        target = None
-        for d in self.url_data:
-            if d['url'] == url:
-                target = d
-                break
-        if target:
-            self.url_data.remove(target)
-            self.url_data.insert(0, target)
-        self._load_urls()
-        self.list_widget.setCurrentRow(0)
-
-    def _move_to_bottom(self, item):
-        url = item.data(Qt.ItemDataRole.UserRole)
-        target = None
-        for d in self.url_data:
-            if d['url'] == url:
-                target = d
-                break
-        if target:
-            self.url_data.remove(target)
-            self.url_data.append(target)
-        self._load_urls()
-        self.list_widget.setCurrentRow(self.list_widget.count() - 1)
-
-    def _test_and_open_first(self):
-        """Test all URLs in order, open first working one, and mark it."""
-        import urllib.request
-        import urllib.error
-        import webbrowser
-        
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        
-        for data in self.url_data:
-            if not data.get('active', True): continue
-            url = data.get('url')
-            try:
-                req = urllib.request.Request(url, method='HEAD')
-                req.add_header('User-Agent', user_agent)
-                urllib.request.urlopen(req, timeout=5)
-                # Success! Open and mark
-                self.marked_url = url
-                self._load_urls()
-                webbrowser.open(url)
-                return
-            except urllib.error.HTTPError as e:
-                if e.code == 405:
-                    # Retry with GET
-                    try:
-                        req = urllib.request.Request(url, method='GET')
-                        req.add_header('User-Agent', user_agent)
-                        urllib.request.urlopen(req, timeout=5)
-                        self.marked_url = url
-                        self._load_urls()
-                        webbrowser.open(url)
-                        return
-                    except:
-                        continue
-                continue
-            except:
-                continue
-        
-        QMessageBox.warning(self, _("No Working URL"), _("No active links.\n\nAll registered URLs failed to connect."))
-
-
-    def _on_url_opened(self, url):
-        """Called when a URL is opened via the browser button."""
-        if self.auto_mark_chk.isChecked():
-            self.marked_url = url
-            self._load_urls()
-
-    def _clear_all(self):
-        self.url_data = []
-        self.marked_url = None
-        self.list_widget.clear()
-
-
-    def get_data(self):
-        import json
-        self._sync_urls_from_list()
-        result = {
-            "urls": self.url_data,
-            "auto_mark": self.auto_mark_chk.isChecked(),
-            "marked_url": self.marked_url
-        }
-        return json.dumps(result)
-
-
-class FullPreviewDialog(QDialog):
-    """Gallery-style dialog to display large previews of selected images."""
-    def __init__(self, parent=None, paths: list = None, name: str = "Preview"):
-        super().__init__(parent)
-        self.setWindowTitle(_("Preview: {name}").format(name=name))
-        self.resize(800, 600)
-        self.paths = paths or []
-        self.current_index = 0
-        self._init_ui()
-        self._update_display()
-        
-        # Phase 32: Restore Size
-        self.db = getattr(parent, 'db', None)
-        if self.db:
-            geom = self.db.get_setting("geom_full_preview", None)
-            if geom: self.restoreGeometry(bytes.fromhex(geom))
-
-    def closeEvent(self, event):
-        if self.db:
-            self.db.set_setting("geom_full_preview", self.saveGeometry().toHex().data().decode())
-        super().closeEvent(event)
-
-    def _init_ui(self):
-        from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QPushButton
-        from PyQt6.QtCore import Qt
-        
-        layout = QVBoxLayout(self)
-        
-        # Image Display Area
-        self.image_label = QLabel(_("Loading..."))
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("background-color: #111; border-radius: 8px;")
-        self.image_label.setMinimumSize(600, 400)
-        layout.addWidget(self.image_label, 1)
-        
-        # Navigation Area
-        nav_layout = QHBoxLayout()
-        
-        self.prev_btn = QPushButton(_("◀ Previous"))
-        self.prev_btn.clicked.connect(self._prev_image)
-        self.prev_btn.setStyleSheet("background-color: #444; color: white;")
-        
-        self.counter_label = QLabel("1 / 1")
-        self.counter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.counter_label.setStyleSheet("color: #888;")
-        
-        self.next_btn = QPushButton(_("Next ▶"))
-        self.next_btn.clicked.connect(self._next_image)
-        self.next_btn.setStyleSheet("background-color: #444; color: white;")
-        
-        # Phase 4 Enhancements
-        self.crop_btn = QPushButton(_("🎨 Crop"))
-        self.crop_btn.clicked.connect(self._crop_current)
-        self.crop_btn.setStyleSheet("background-color: #444; color: white;")
-        
-        self.set_icon_btn = QPushButton(_("🖼 Set as Icon"))
-        self.set_icon_btn.clicked.connect(self._set_as_icon_current)
-        self.set_icon_btn.setStyleSheet("background-color: #444; color: white;")
-        
-        self.open_btn = QPushButton(_("🔗 Open File"))
-        self.open_btn.clicked.connect(self._open_current)
-        self.open_btn.setStyleSheet("background-color: #2980b9; color: white;")
-        
-        nav_layout.addWidget(self.prev_btn)
-        nav_layout.addWidget(self.counter_label)
-        nav_layout.addWidget(self.next_btn)
-        nav_layout.addStretch()
-        nav_layout.addWidget(self.crop_btn)
-        nav_layout.addWidget(self.set_icon_btn)
-        nav_layout.addWidget(self.open_btn)
-        
-        layout.addLayout(nav_layout)
-
-    def _update_display(self):
-        from PyQt6.QtGui import QPixmap
-        from PyQt6.QtCore import Qt
-        
-        if not self.paths:
-            self.image_label.setText(_("No images available."))
-            self.counter_label.setText("0 / 0")
-            return
-        
-        path = self.paths[self.current_index]
-        pixmap = QPixmap(path)
-        if not pixmap.isNull():
-            scaled = pixmap.scaled(
-                self.image_label.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.image_label.setPixmap(scaled)
-        else:
-            self.image_label.setText(_("Cannot load: {path}").format(path=path))
-        
-        self.counter_label.setText(f"{self.current_index + 1} / {len(self.paths)}")
-        self.prev_btn.setEnabled(self.current_index > 0)
-        self.next_btn.setEnabled(self.current_index < len(self.paths) - 1)
-        
-        # Toggle Icon controls visibility based on extension
-        is_image = path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))
-        self.crop_btn.setVisible(is_image)
-        self.set_icon_btn.setVisible(is_image)
-
-    def _crop_current(self):
-        """Open cropping dialog for current image."""
-        if not self.paths: return
-        path = self.paths[self.current_index]
-        # free_crop = True means any aspect ratio
-        from src.ui.link_master.dialogs_legacy import IconCropDialog
-        dlg = IconCropDialog(self, path, allow_free=True)
-        if dlg.exec():
-            # What to do with the cropped image? 
-            # Prompt user to save as icon? Or just add to previews?
-            # User requirement: "free-cropping feature for images within the full preview gallery"
-            # Let's say it saves it as a new preview file.
-            pixmap = dlg.get_cropped_pixmap()
-            if pixmap:
-                import os, time
-                # Save to cache
-                curr = self.parent()
-                app_name = "Unknown"
-                while curr:
-                    if hasattr(curr, 'app_name'):
-                        app_name = curr.app_name
-                        break
-                    curr = curr.parent()
-                
-                project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-                cache_dir = os.path.join(project_root, "src", "resource", "app", app_name, ".icon_cache")
-                os.makedirs(cache_dir, exist_ok=True)
-                
-                save_path = os.path.join(cache_dir, f"crop_{int(time.time())}.png")
-                pixmap.save(save_path, "PNG")
-                
-                # Add to paths and update
-                self.paths.append(save_path)
-                self.current_index = len(self.paths) - 1
-                self._update_display()
-                
-                # If parent is PreviewTableDialog, update its table too
-                if hasattr(self.parent(), '_add_row'):
-                    self.parent()._add_row(save_path)
-
-    def _set_as_icon_current(self):
-        """Set the current image as folder icon via parent."""
-        if not self.paths: return
-        path = self.paths[self.current_index]
-        
-        # Traverse to FolderPropertiesDialog
-        curr = self.parent()
-        fprop_dlg = None
-        while curr:
-            if hasattr(curr, '_sync_icon_from_preview'):
-                fprop_dlg = curr
-                break
-            curr = curr.parent()
-        
-        if fprop_dlg:
-            fprop_dlg._sync_icon_from_preview(path)
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(self, _("Success"), _("Set as Icon."))
-        else:
-             from PyQt6.QtWidgets import QMessageBox
-             QMessageBox.warning(self, _("Error"), _("Could not access properties dialog."))
-
-    def _prev_image(self):
-        if self.current_index > 0:
-            self.current_index -= 1
-            self._update_display()
-
-    def _next_image(self):
-        if self.current_index < len(self.paths) - 1:
-            self.current_index += 1
-            self._update_display()
-
-    def _open_current(self):
-        import os
-        if self.paths and 0 <= self.current_index < len(self.paths):
-            os.startfile(self.paths[self.current_index])
-
-
 class FolderPropertiesDialog(QDialog, OptionsMixin):
     """Dialog to configure folder-specific display properties."""
     def __init__(self, parent=None, folder_path: str = "", current_config: dict = None, 
@@ -2269,11 +776,29 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Display Name (Alias)
         self.name_edit = StyledLineEdit()
         self.name_edit.setPlaceholderText(_("Leave empty to use folder name"))
+        
+        # Phase 26: Batch mode display name controls
+        self.batch_clear_name_toggle = None
         if self.batch_mode:
-             self.name_edit.setPlaceholderText(_("Leave empty to keep original names"))
-             
-        self.name_edit.setText(self.current_config.get('display_name') or '')
-        display_form.addRow(_("Display Name:"), self.name_edit)
+            name_row = QHBoxLayout()
+            self.name_edit.setPlaceholderText(_("Enter name to apply to all"))
+            self.name_edit.setEnabled(False)  # Disabled by default in batch mode
+            name_row.addWidget(self.name_edit)
+            
+            clear_name_label = QLabel(_("Edit Name:"))
+            clear_name_label.setStyleSheet("color: #aaa; font-size: 10px;")
+            name_row.addWidget(clear_name_label)
+            
+            self.batch_clear_name_toggle = SlideButton()
+            self.batch_clear_name_toggle.setChecked(False)
+            self.batch_clear_name_toggle.toggled.connect(self._on_clear_name_toggle)
+            name_row.addWidget(self.batch_clear_name_toggle)
+            
+            display_form.addRow(_("Display Name:"), name_row)
+        else:
+            self.name_edit.setText(self.current_config.get('display_name') or '')
+            display_form.addRow(_("Display Name:"), self.name_edit)
+
         
         # Favorite System: ★ Toggle + Score (Phase 33: Left Aligned)
         fav_layout = QHBoxLayout()
@@ -2299,7 +824,22 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         score_label = QLabel(_("Score:"))
         fav_layout.addWidget(score_label)
         self.score_dial = CompactDial(self, digits=3, show_arrows=True)
+        self.score_dial.setValue(self.current_config.get('score', 0))  # Phase 26: Fix score loading bug
         fav_layout.addWidget(self.score_dial)
+        
+        # Phase 26: Batch mode score update toggle (default OFF to prevent unintended changes)
+        self.batch_update_score_toggle = None
+        if self.batch_mode:
+            self.score_dial.setEnabled(False)  # Disabled by default in batch mode
+            fav_layout.addSpacing(10)
+            update_score_label = QLabel(_("Update Score:"))
+            update_score_label.setStyleSheet("color: #aaa; font-size: 10px;")
+            fav_layout.addWidget(update_score_label)
+            self.batch_update_score_toggle = SlideButton()
+            self.batch_update_score_toggle.setChecked(False)
+            self.batch_update_score_toggle.toggled.connect(self._on_update_score_toggle)
+            fav_layout.addWidget(self.batch_update_score_toggle)
+        
         fav_layout.addStretch() # Align Left
         
         display_form.addRow("", fav_layout)
@@ -2586,6 +1126,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.target_combo = StyledComboBox()
         self.target_combo.setMinimumWidth(200)
         
+        if self.batch_mode:
+            self.target_combo.addItem(_("--- No Change ---"), "KEEP")
+
+        
         # 1. Inherit (App Default)
         last_target_key = self.current_app_data.get('last_target', 'target_root')
         root_map = {'target_root': 0, 'target_root_2': 1, 'target_root_3': 2}
@@ -2759,49 +1303,60 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.manage_redirection_btn.clicked.connect(self._open_file_management_shortcut)
             adv_form.addRow("", self.manage_redirection_btn)  # Empty label for full width
             
-            # Phase 28: Conflict Tag Detection - Tag Input FIRST, then Dropdown
-            conflict_tag_layout = QHBoxLayout()
-            
-            # Tag input field (FIRST)
-            self.conflict_tag_edit = StyledLineEdit()
-            self.conflict_tag_edit.setPlaceholderText(_("Tag to search..."))
-            self.conflict_tag_edit.setText(self.current_config.get('conflict_tag', '') or '')
-            conflict_tag_layout.addWidget(self.conflict_tag_edit, 2)  # stretch=2
-            
-            # Dropdown for scope selection (SECOND)
-            self.conflict_scope_combo = StyledComboBox()
-            self.conflict_scope_combo.addItem(_("Disabled"), "disabled")
-            self.conflict_scope_combo.addItem(_("Category"), "category")
-            self.conflict_scope_combo.addItem(_("Global"), "global")
-            # Load initial scope value
-            current_scope = self.current_config.get('conflict_scope', 'disabled')
+        # Phase 28/26: Conflict Tag Detection (Available in batch mode)
+        conflict_tag_layout = QHBoxLayout()
+        
+        # Tag input field
+        self.conflict_tag_edit = StyledLineEdit()
+        self.conflict_tag_edit.setPlaceholderText(_("Tag to search..."))
+        if self.batch_mode:
+            self.conflict_tag_edit.setPlaceholderText(_("Leave empty to keep existing"))
+        self.conflict_tag_edit.setText(self.current_config.get('conflict_tag', '') or '')
+        conflict_tag_layout.addWidget(self.conflict_tag_edit, 2)  # stretch=2
+        
+        # Dropdown for scope selection
+        self.conflict_scope_combo = StyledComboBox()
+        if self.batch_mode:
+            self.conflict_scope_combo.addItem(_("--- No Change ---"), "KEEP")
+        self.conflict_scope_combo.addItem(_("Disabled"), "disabled")
+        self.conflict_scope_combo.addItem(_("Category"), "category")
+        self.conflict_scope_combo.addItem(_("Global"), "global")
+        # Load initial scope value
+        current_scope = self.current_config.get('conflict_scope', 'disabled')
+        if self.batch_mode:
+            self.conflict_scope_combo.setCurrentIndex(0)
+        else:
             scope_idx = self.conflict_scope_combo.findData(current_scope)
             if scope_idx >= 0:
                 self.conflict_scope_combo.setCurrentIndex(scope_idx)
-            conflict_tag_layout.addWidget(self.conflict_scope_combo, 1)  # stretch=1
-            
-            adv_form.addRow(_("Conflict Tag:"), conflict_tag_layout)
-            
-            # Phase X: Library Usage Row (Half-width button + configured libs display)
-            lib_row = QHBoxLayout()
-            
-            self.btn_lib_usage = QPushButton(_("📚 Library Settings"))
-            self.btn_lib_usage.setFixedWidth(150)
-            self.btn_lib_usage.setStyleSheet("""
-                QPushButton { background-color: #2980b9; color: #fff; border: 1px solid #3498db; border-radius: 4px; padding: 4px 10px; }
-                QPushButton:hover { background-color: #3498db; }
-                QPushButton:pressed { background-color: #1a5276; }
-            """)
-            self.btn_lib_usage.clicked.connect(self._open_library_usage)
-            lib_row.addWidget(self.btn_lib_usage)
-            
-            # Show configured libraries
-            self.lib_display = QLabel()
-            self.lib_display.setStyleSheet("color: #88c; font-style: italic; padding: 4px;")
+        conflict_tag_layout.addWidget(self.conflict_scope_combo, 1)  # stretch=1
+        
+        adv_form.addRow(_("Conflict Tag:"), conflict_tag_layout)
+        
+        # Phase X/26: Library Usage Row (Available in batch mode)
+        lib_row = QHBoxLayout()
+        
+        self.btn_lib_usage = QPushButton(_("📚 Library Settings"))
+        self.btn_lib_usage.setFixedWidth(150)
+        self.btn_lib_usage.setStyleSheet("""
+            QPushButton { background-color: #2980b9; color: #fff; border: 1px solid #3498db; border-radius: 4px; padding: 4px 10px; }
+            QPushButton:hover { background-color: #3498db; }
+            QPushButton:pressed { background-color: #1a5276; }
+        """)
+        self.btn_lib_usage.clicked.connect(self._open_library_usage)
+        lib_row.addWidget(self.btn_lib_usage)
+        
+        # Show configured libraries
+        self.lib_display = QLabel()
+        self.lib_display.setStyleSheet("color: #88c; font-style: italic; padding: 4px;")
+        if self.batch_mode:
+            self.lib_display.setText(_("(Batch: Overwrites All If Changed)"))
+        else:
             self._update_lib_display()
-            lib_row.addWidget(self.lib_display, 1)
-            
-            adv_form.addRow(_("Libraries:"), lib_row)
+        lib_row.addWidget(self.lib_display, 1)
+        
+        adv_form.addRow(_("Libraries:"), lib_row)
+
         
         right_layout.addWidget(adv_group)
         right_layout.addStretch() # Push Up
@@ -3054,6 +1609,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
     def _get_selected_target_path(self):
         choice = self.target_combo.currentData()
+        if choice == "KEEP": # Phase 26: No Change
+            return "KEEP"
         if choice == 0: # Inherit
             return None
         if choice >= 1 and choice <= 3: # Roots
@@ -3247,6 +1804,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
     def _on_favorite_toggled_dialog(self, checked):
         self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite"))
+        
+    def _on_clear_name_toggle(self, checked):
+        """Phase 26: Toggle display name field based on 'Edit Name' toggle."""
+        self.name_edit.setEnabled(checked) # ON -> Enabled, OFF -> Disabled
+        if checked:
+            self.name_edit.setPlaceholderText(_("Leave empty to clear names"))
+        else:
+            self.name_edit.clear()
+            self.name_edit.setPlaceholderText(_("Toggle ON to edit/clear"))
+
+    def _on_update_score_toggle(self, checked):
+        """Phase 26: Enable/Disable score dial based on 'Update Score' toggle."""
+        self.score_dial.setEnabled(checked)
 
     def _open_url_manager(self):
         """Open specialized URL manager dialog."""
@@ -3311,15 +1881,23 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         manual_tags = [t.strip() for t in self.tags_edit.text().split(',') if t.strip()]
         all_tags = sorted(list(set(quick_tags + manual_tags)))
         
+        # Phase 26: Batch mode display name logic
+        display_name = self.name_edit.text().strip() or None
+        if self.batch_mode:
+            if getattr(self, 'batch_clear_name_toggle', None) and not self.batch_clear_name_toggle.isChecked():
+                display_name = "KEEP" # No change if toggle is OFF
+            elif not display_name:
+                display_name = "" # Explicitly clear if toggle is ON and field is empty
+        
         data = {
-            'display_name': self.name_edit.text().strip() or None if not self.batch_mode else (self.name_edit.text().strip() or None),
+            'display_name': display_name,
             'description': self.description_edit.toPlainText().strip() or None,
             'image_path': final_image_path.strip() or None, # Use the finalized image path
             'manual_preview_path': self.full_preview_edit.text().strip() or None,
             'author': self.author_edit.text().strip() or None,
             'url_list': self.url_list_edit.text() if self.url_list_edit.text() != '[]' else None,
             'is_favorite': 1 if self.favorite_btn.isChecked() else 0,
-            'score': self.score_dial.value(),
+            'score': self.score_dial.value() if not self.batch_mode or (getattr(self, 'batch_update_score_toggle', None) and self.batch_update_score_toggle.isChecked()) else "KEEP",
             'folder_type': self.type_combo.currentData(),
             'display_style': self.style_combo.currentData(),
             'display_style_package': self.style_combo_pkg.currentData(),
@@ -3331,9 +1909,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             'conflict_policy': self.conflict_override_combo.currentData(),
             'inherit_tags': 1 if self.inherit_tags_chk.isChecked() else 0,
             'target_override': self._get_selected_target_path(),
-            'conflict_tag': getattr(self, 'conflict_tag_edit', None) and self.conflict_tag_edit.text().strip() or None,
-            'conflict_scope': getattr(self, 'conflict_scope_combo', None) and self.conflict_scope_combo.currentData() or 'disabled',
-            'lib_deps': self.lib_deps if not self.batch_mode else None,
+            'conflict_tag': self.conflict_tag_edit.text().strip() if self.conflict_tag_edit.text().strip() else (None if not self.batch_mode else "KEEP"),
+            'conflict_scope': self.conflict_scope_combo.currentData(),
+            'lib_deps': self.lib_deps if not self.batch_mode else (self.lib_deps if self.lib_deps != self.current_config.get('lib_deps', '[]') else "KEEP"),
         }
         
         # Inject skip_levels into rules JSON
@@ -3358,9 +1936,20 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             clean_data = {}
             for k, v in data.items():
                 if v == "KEEP": continue
-                # For text fields, if it's None and not image/preview/tags/rules, it means "App Default" and should be ignored in batch mode
-                if v is None and k not in ['image_path', 'manual_preview_path', 'tags', 'deployment_rules']: 
+                
+                # Special handling for empty strings (like clearing display_name)
+                if v == "" and k == 'display_name':
+                    clean_data[k] = None # Database expects None for empty
+                    continue
+
+                # Special handling for empty/None values in batch mode
+                # If we specifically want to clear a field, it will be None or "" (not KEEP)
+                if v is None and k not in [
+                    'image_path', 'manual_preview_path', 'tags', 'deployment_rules', 
+                    'description', 'author', 'url_list', 'conflict_tag', 'target_override'
+                ]: 
                     continue 
+                
                 clean_data[k] = v
             return clean_data
             

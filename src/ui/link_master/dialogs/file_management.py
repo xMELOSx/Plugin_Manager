@@ -7,14 +7,57 @@ import ctypes
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                              QTreeView, QHeaderView, QMessageBox, QFrame, QLineEdit,
                              QStyledItemDelegate, QCheckBox, QFileDialog, QInputDialog,
-                             QWidget, QMenu, QApplication)
+                             QWidget, QMenu, QApplication, QStyle, QStyleOptionViewItem)
 from PyQt6.QtCore import Qt, QDir, pyqtSignal, QSortFilterProxyModel, QByteArray, QPoint
-from PyQt6.QtGui import QFileSystemModel, QColor, QFont, QPalette, QAction, QIcon
+from PyQt6.QtGui import QFileSystemModel, QColor, QFont, QPalette, QAction, QIcon, QPen, QBrush
 
 from src.ui.window_mixins import OptionsMixin
 from src.core.lang_manager import _
 from src.ui.frameless_window import FramelessDialog
 from src.core.link_master.core_paths import get_backup_dir, get_backup_path_for_file
+
+class SelectionAwareDelegate(QStyledItemDelegate):
+    """Delegate that brightens background color for selected items, preserving state visibility."""
+    def paint(self, painter, option, index):
+        # Create a local copy for modification
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        
+        # 1. Capture original selection/hover states
+        is_selected = opt.state & QStyle.StateFlag.State_Selected
+        is_hovered = opt.state & QStyle.StateFlag.State_MouseOver
+        
+        # 2. Get status-based background color from model
+        bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
+        base_color = bg_color if isinstance(bg_color, QColor) else None
+        
+        if is_selected or is_hovered:
+            # Determine "overwrite" color: Default (#444) or status-based (lighter)
+            if base_color:
+                if is_selected:
+                    draw_color = base_color.lighter(210) # Significantly brighter
+                else: # is_hovered
+                    draw_color = base_color.lighter(150) # Moderately brighter
+            else:
+                draw_color = QColor("#444444")
+            
+            # 3. Leverage the "Overwriting" behavior the user noted
+            # Set this color as BOTH the palette's Highlight and the background brush.
+            # ALSO force the text color to white to prevent Qt from switching it to black for contrast.
+            opt.palette.setColor(QPalette.ColorRole.Highlight, draw_color)
+            opt.palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+            opt.palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+            opt.backgroundBrush = QBrush(draw_color)
+            
+        # 4. Delegate to base class - let it draw using our modified colors
+        super().paint(painter, opt, index)
+
+    def createEditor(self, parent, option, index):
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            # Requirements: Ensure editor text is visible (no excessive internal padding)
+            editor.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555; padding: 2px; margin: 0;")
+        return editor
 
 class CheckableFileModel(QFileSystemModel):
     """ファイルシステムモデルにチェックボックス、転送モード切替、ターゲット編集機能を追加したもの。"""
@@ -250,11 +293,6 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
                 background-color: #1a1a1a; 
                 color: #ffffff; border: 1px solid #333; 
             }
-            /* Very subtle hover - just slightly brighter, keeps background visible */
-            QTreeView::item:hover { background-color: rgba(255, 255, 255, 0.08); }
-            /* Selection with white border and minimal overlay - background color (blue/red/black) stays visible */
-            QTreeView::item:selected { background-color: rgba(255, 255, 255, 0.12); color: #ffffff; outline: 1px solid rgba(255, 255, 255, 0.5); }
-            QTreeView::item:selected:active { background-color: rgba(255, 255, 255, 0.15); color: #ffffff; outline: 1px solid rgba(255, 255, 255, 0.6); }
 
             QHeaderView::section { 
                 background-color: #333; color: #ffffff; border: 1px solid #222; 
@@ -331,24 +369,22 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.proxy.setSourceModel(self.model)
         
         self.tree = QTreeView()
+        self.tree.setMouseTracking(True)
+        self.tree.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.tree.setItemDelegate(SelectionAwareDelegate(self.tree))
         self.tree.setModel(self.proxy)
         self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.folder_path)))
         self.tree.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
         self.tree.setAlternatingRowColors(True)
+
         self.tree.setStyleSheet("""
             QTreeView {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 1px solid #444;
-                selection-background-color: #3d3d3d;
-                alternate-background-color: #2d2d2d; 
+                background-color: #1a1a1a; 
+                alternate-background-color: #242424;
+                color: #ffffff; border: 1px solid #333; 
             }
             QTreeView::item {
                 padding: 4px;
-            }
-            QTreeView::item:selected {
-                background-color: #4d4d4d;
-                border: 1px solid #666;
             }
             QLineEdit {
                 background-color: #252525;
@@ -372,19 +408,20 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.tree.setEditTriggers(QTreeView.EditTrigger.DoubleClicked | QTreeView.EditTrigger.SelectedClicked | QTreeView.EditTrigger.EditKeyPressed)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
-        self.tree.header().setMinimumSectionSize(60) # Prevent total narrowing
-        self.tree.header().setStretchLastSection(True)
+        # Establish Column Widths
+        self.tree.setColumnWidth(0, 320) # 名前 (Name)
+        self.tree.setColumnWidth(1, 140) # バックアップ (Backup)
+        self.tree.setColumnWidth(2, 80)  # モード (Mode)
+        self.tree.setColumnWidth(3, 400) # ターゲット (Target)
+        self.tree.setColumnWidth(4, 90)  # サイズ (Size)
         
-        # Restore Column Widths
-        data = self.load_options("file_management_dialog_tree_widths")
-        if data and 'header' in data:
-            self.tree.header().restoreState(QByteArray.fromHex(data['header'].encode()))
-        else:
-            self.tree.setColumnWidth(0, 320) # Name
-            self.tree.setColumnWidth(1, 130) # Backup
-            self.tree.setColumnWidth(2, 90)  # Mode
-            self.tree.setColumnWidth(3, 350) # Target
-            self.tree.setColumnWidth(4, 80)  # Size
+        # Try to restore user preference, but clamp minimum to prevent "collapsed" UI
+        header_state = self.load_options("file_management_dialog_tree_widths")
+        if header_state and 'header' in header_state:
+            self.tree.header().restoreState(QByteArray.fromHex(header_state['header'].encode()))
+            if self.tree.columnWidth(0) < 50: # Fail-safe
+                self.tree.setColumnWidth(0, 320)
+                self.tree.setColumnWidth(3, 400)
         
         main_layout.addWidget(self.tree)
 
@@ -397,15 +434,21 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         LABEL_WIDTH = 110 # For alignment - defined here for batch header
 
         # Section Header: 一括設定 - Aligned with デフォルト button left edge
-        batch_header_layout = QHBoxLayout()
-        batch_header_layout.addSpacing(LABEL_WIDTH + 12)  # Match モード label width + spacing
-        batch_header = QLabel(_("<b>一括設定</b>"))
-        batch_header.setStyleSheet("color: #ffffff; font-size: 11pt; padding: 2px 0;")
-        batch_header_layout.addWidget(batch_header)
-        batch_header_layout.addStretch()
-        tools_layout.addLayout(batch_header_layout)
+        batch_header_row = QHBoxLayout()
+        batch_header_row.setContentsMargins(0, 0, 0, 0)
+        batch_header_row.setSpacing(0)
+        # Create a dummy label to match spacing of rows below it
+        dummy_label = QLabel()
+        dummy_label.setFixedWidth(LABEL_WIDTH)
+        dummy_label.setMargin(0)
+        batch_header_row.addWidget(dummy_label)
+        batch_header_row.addSpacing(12) 
         
-        tools_layout.addSpacing(4) # Full-width small space after header
+        batch_header = QLabel(_("<b>選択アイテム操作</b>"))
+        batch_header.setStyleSheet("color: #ffffff; font-size: 11pt; padding: 2px 0;")
+        batch_header_row.addWidget(batch_header)
+        batch_header_row.addStretch()
+        tools_layout.addLayout(batch_header_row)
 
         LABEL_WIDTH = 110 # For alignment
 
@@ -418,21 +461,22 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
 
         # Row 1: モード (Mode) - デフォルト | シンボリック | コピー
         mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.setSpacing(12) # Use 12 between all items
         mode_row.addWidget(create_aligned_label(_("モード:")))
-        mode_row.addSpacing(12)
         
-        # Mode buttons: デフォルト(枠のみ), シンボリック(青), コピー(深青)
+        # Mode buttons: Standardized width 110px
         mode_configs = [
-            (_("デフォルト"), "Default", "#444", "#666"),    # (label, value, bg_color, border_color)
+            (_("デフォルト"), "Default", "#444", "#666"),
             (_("シンボリック"), "symlink", "#2980b9", "#2980b9"),
-            (_("コピー"), "copy", "#0e4b7b", "#0e4b7b"), # Deep Blue
+            (_("コピー"), "copy", "#0e4b7b", "#0e4b7b"),
         ]
         for m_lbl, m_val, m_bg, m_border in mode_configs:
             btn = QPushButton(m_lbl)
             btn.setStyleSheet(f"""
                 QPushButton {{ 
                     background-color: {m_bg}; color: white; font-weight: bold; 
-                    min-width: 100px; padding: 6px 12px; border: 2px solid {m_border}; border-radius: 4px;
+                    min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid {m_border}; border-radius: 4px;
                 }}
                 QPushButton:hover {{ background-color: #555; border: 2px solid #888; }}
                 QPushButton:pressed {{ background-color: #333; }}
@@ -445,15 +489,16 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         # Row 2: ファイル操作 (File Operations) - 有効化 | 無効化 | バックアップ | 復元
         file_ops_row = QHBoxLayout()
+        file_ops_row.setContentsMargins(0, 0, 0, 0)
+        file_ops_row.setSpacing(12)
         file_ops_row.addWidget(create_aligned_label(_("ファイル操作:")))
-        file_ops_row.addSpacing(12)
         
-        # 有効化 (Enable) - gray border
+        # Operations: Unified width 110px
         btn_enable = QPushButton(_("有効化"))
         btn_enable.setStyleSheet("""
             QPushButton { 
                 background-color: #444; color: white; font-weight: bold; 
-                min-width: 100px; padding: 6px 12px; border: 2px solid #666; border-radius: 4px;
+                min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid #666; border-radius: 4px;
             }
             QPushButton:hover { background-color: #555; border: 2px solid #888; }
             QPushButton:pressed { background-color: #333; }
@@ -461,12 +506,11 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         btn_enable.clicked.connect(lambda: self._set_enabled_batch(True))
         file_ops_row.addWidget(btn_enable)
         
-        # 無効化 (Disable) - Red
         btn_disable = QPushButton(_("無効化"))
         btn_disable.setStyleSheet("""
             QPushButton { 
                 background-color: #a93226; color: white; font-weight: bold; 
-                min-width: 100px; padding: 6px 12px; border: 2px solid #a93226; border-radius: 4px;
+                min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid #a93226; border-radius: 4px;
             }
             QPushButton:hover { background-color: #c0392b; border: 2px solid #e74c3c; }
             QPushButton:pressed { background-color: #7b241c; }
@@ -474,14 +518,11 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         btn_disable.clicked.connect(lambda: self._set_enabled_batch(False))
         file_ops_row.addWidget(btn_disable)
         
-        file_ops_row.addSpacing(15)
-        
-        # バックアップ (Backup) - orange
         self.btn_backup = QPushButton(_("バックアップ"))
         self.btn_backup.setStyleSheet("""
             QPushButton {
                 background-color: #e67e22; color: white; font-weight: bold;
-                min-width: 120px; padding: 6px 12px; border: 2px solid #e67e22; border-radius: 4px;
+                min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid #e67e22; border-radius: 4px;
             }
             QPushButton:hover { background-color: #d35400; border: 2px solid #e67e22; }
             QPushButton:pressed { background-color: #b94500; }
@@ -489,12 +530,11 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.btn_backup.clicked.connect(self._backup_item)
         file_ops_row.addWidget(self.btn_backup)
         
-        # 復元 (Restore) - green
         self.btn_restore = QPushButton(_("復元"))
         self.btn_restore.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white; font-weight: bold;
-                min-width: 100px; padding: 6px 12px; border: 2px solid #27ae60; border-radius: 4px;
+                min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid #27ae60; border-radius: 4px;
             }
             QPushButton:hover { background-color: #219a52; border: 2px solid #27ae60; }
             QPushButton:pressed { background-color: #1a7a40; }
@@ -507,10 +547,11 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         # Row 3: ターゲット (Target) - プライマリ | セカンダリ | ターシャリ
         target_row = QHBoxLayout()
+        target_row.setContentsMargins(0, 0, 0, 0)
+        target_row.setSpacing(12)
         target_row.addWidget(create_aligned_label(_("ターゲット:")))
-        target_row.addSpacing(12)
         
-        # Target buttons: プライマリ(グレー), セカンダリ(青), ターシャリ(紫)
+        # Target buttons: Unified 110px
         target_configs = [
             (_("プライマリ"), self.primary_target, "#555", "#666"),
             (_("セカンダリ"), self.secondary_target, "#2980b9", "#2980b9"),
@@ -521,7 +562,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             btn.setStyleSheet(f"""
                 QPushButton {{ 
                     background-color: {t_bg}; color: white; font-weight: bold; 
-                    min-width: 100px; padding: 6px 12px; border: 2px solid {t_border}; border-radius: 4px;
+                    min-width: 110px; max-width: 110px; padding: 6px 12px; border: 2px solid {t_border}; border-radius: 4px;
                 }}
                 QPushButton:hover {{ background-color: #666; border: 2px solid #888; }}
                 QPushButton:pressed {{ background-color: #333; }}

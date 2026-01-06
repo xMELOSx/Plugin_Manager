@@ -2,9 +2,10 @@ import os
 import json
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
                              QPushButton, QTreeWidget, QTreeWidgetItem, QFormLayout, 
-                             QLineEdit, QMessageBox)
+                             QLineEdit, QMessageBox, QListWidget, QListWidgetItem, QMenu)
 from PyQt6.QtCore import pyqtSignal, Qt, QSize, QByteArray
 from src.core.lang_manager import _
+from src.ui.common_widgets import StyledComboBox
 
 class LibrarySettingsDialog(QDialog):
     """ライブラリの詳細設定ダイアログ"""
@@ -477,3 +478,235 @@ class DependentPackagesDialog(QDialog):
         new_deps = [d for d in lib_deps if not (isinstance(d, dict) and d.get('name') == self.lib_name) and not (isinstance(d, str) and d == self.lib_name)]
         self.db.update_folder_display_config(rel_path, lib_deps=json.dumps(new_deps))
         self._load_deps()
+
+
+class LibraryDependencyDialog(QDialog):
+    """Dialog to manage library dependencies for a package."""
+    def __init__(self, parent=None, lib_deps_json: str = "[]"):
+        super().__init__(parent)
+        self.setWindowTitle(_("Library Dependency Settings"))
+        self.setMinimumSize(450, 350)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
+            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
+            QListWidget::item { padding: 4px; }
+            QListWidget::item:selected { background-color: #3d5a80; }
+            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
+            QPushButton:hover { background-color: #5d5d5d; }
+        """)
+        
+        try:
+            self.lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
+        except:
+            self.lib_deps = []
+        
+        self._init_ui()
+        self._load_list()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(_("Add or remove libraries to use.")))
+        
+        add_form = QHBoxLayout()
+        self.lib_combo = StyledComboBox()
+        self.lib_combo.setMinimumWidth(150)
+        self._load_available_libraries()
+        add_form.addWidget(self.lib_combo)
+        
+        self.ver_combo = StyledComboBox()
+        self.ver_combo.addItem(_("Preferred"), None)
+        self.ver_combo.setMinimumWidth(100)
+        add_form.addWidget(self.ver_combo)
+        
+        self.lib_combo.currentIndexChanged.connect(self._on_lib_selected)
+        
+        add_btn = QPushButton(_("Add"))
+        add_btn.clicked.connect(self._add_dep)
+        add_form.addWidget(add_btn)
+        layout.addLayout(add_form)
+        
+        layout.addWidget(QLabel(_("Current Dependencies:")))
+        self.dep_list = QListWidget()
+        self.dep_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.dep_list.customContextMenuRequested.connect(self._show_context_menu)
+        layout.addWidget(self.dep_list)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton(_("OK"))
+        ok_btn.setStyleSheet("background-color: #27ae60; color: white;")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton(_("Cancel"))
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+    
+    def _load_available_libraries(self):
+        self.lib_combo.clear()
+        self.lib_combo.addItem(_("-- Select Library --"), None)
+        try:
+            curr = self.parent()
+            while curr:
+                if hasattr(curr, 'db') and curr.db:
+                    all_configs = curr.db.get_all_folder_configs()
+                    lib_names = set()
+                    for rel_path, cfg in all_configs.items():
+                        if cfg.get('is_library', 0):
+                            lib_names.add(cfg.get('lib_name', 'Unknown'))
+                    for name in sorted(lib_names):
+                        self.lib_combo.addItem(f"📚 {name}", name)
+                    break
+                curr = curr.parent()
+        except: pass
+    
+    def _on_lib_selected(self, index):
+        self.ver_combo.clear()
+        self.ver_combo.addItem(_("Preferred"), None)
+        lib_name = self.lib_combo.currentData()
+        if not lib_name: return
+        try:
+            curr = self.parent()
+            while curr:
+                if hasattr(curr, 'db') and curr.db:
+                    all_configs = curr.db.get_all_folder_configs()
+                    for rel_path, cfg in all_configs.items():
+                        if cfg.get('is_library', 0) and cfg.get('lib_name') == lib_name:
+                            ver = cfg.get('lib_version', 'Unknown')
+                            self.ver_combo.addItem(f"📦 {ver}", ver)
+                    break
+                curr = curr.parent()
+        except: pass
+    
+    def _add_dep(self):
+        lib_name = self.lib_combo.currentData()
+        if not lib_name: return
+        version = self.ver_combo.currentData()
+        for dep in self.lib_deps:
+            if isinstance(dep, dict) and dep.get('name') == lib_name: return
+            elif isinstance(dep, str) and dep == lib_name: return
+        if version:
+            self.lib_deps.append({'name': lib_name, 'version': version})
+        else:
+            self.lib_deps.append({'name': lib_name})
+        self._load_list()
+    
+    def _load_list(self):
+        self.dep_list.clear()
+        for dep in self.lib_deps:
+            if isinstance(dep, dict):
+                name = dep.get('name', 'Unknown')
+                ver = dep.get('version')
+                text = f"📚 {name}" + (f" @ {ver}" if ver else _(" (Preferred)"))
+            else:
+                text = f"📚 {dep}" + _(" (Preferred)")
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, dep)
+            self.dep_list.addItem(item)
+    
+    def _show_context_menu(self, pos):
+        item = self.dep_list.itemAt(pos)
+        if not item: return
+        menu = QMenu(self)
+        remove_action = menu.addAction(_("🗑 Delete"))
+        action = menu.exec(self.dep_list.mapToGlobal(pos))
+        if action == remove_action:
+            dep = item.data(Qt.ItemDataRole.UserRole)
+            if dep in self.lib_deps:
+                self.lib_deps.remove(dep)
+            self._load_list()
+    
+    def get_lib_deps_json(self) -> str:
+        return json.dumps(self.lib_deps)
+
+
+class LibraryRegistrationDialog(QDialog):
+    """Library Registration Dialog - Select existing library or register version."""
+    def __init__(self, parent=None, db=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle(_("Library Registration"))
+        self.setMinimumSize(400, 200)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; color: #ffffff; }
+            QLabel { color: #ffffff; }
+            QLineEdit, QComboBox { background-color: #444444; color: #ffffff; border: 1px solid #555555; padding: 6px; }
+            QComboBox QAbstractItemView { background-color: #444444; color: #ffffff; selection-background-color: #3498db; }
+            QPushButton { background-color: #3d3d3d; color: #ffffff; padding: 6px 12px; }
+            QPushButton:hover { background-color: #5d5d5d; }
+        """)
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(_("Register selected package as a library")))
+        form = QFormLayout()
+        
+        self.lib_combo = QComboBox()
+        self.lib_combo.setEditable(True)
+        self.lib_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.lib_combo.lineEdit().setPlaceholderText(_("Enter new library name"))
+        self.lib_combo.setStyleSheet("color: white;")
+        self._load_existing_libraries()
+        self.lib_combo.setCurrentIndex(-1)
+        self.lib_combo.lineEdit().setText("")
+        self.lib_combo.currentTextChanged.connect(self._on_lib_changed)
+        form.addRow(_("Library Name:"), self.lib_combo)
+        
+        self.existing_versions_label = QLabel("")
+        self.existing_versions_label.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow("", self.existing_versions_label)
+        
+        self.version_edit = QLineEdit()
+        self.version_edit.setPlaceholderText(_("1.0"))
+        form.addRow(_("Version:"), self.version_edit)
+        layout.addLayout(form)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton(_("Register"))
+        ok_btn.setStyleSheet("background-color: #27ae60; color: white;")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton(_("Cancel"))
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+    
+    def _load_existing_libraries(self):
+        self.lib_combo.clear()
+        if not self.db: return
+        all_configs = self.db.get_all_folder_configs()
+        lib_names = set()
+        self.lib_versions = {}
+        for rel_path, cfg in all_configs.items():
+            if cfg.get('is_library', 0):
+                name = cfg.get('lib_name', 'Unknown')
+                lib_names.add(name)
+                if name not in self.lib_versions:
+                    self.lib_versions[name] = []
+                ver = cfg.get('lib_version', 'Unknown')
+                if ver not in self.lib_versions[name]:
+                    self.lib_versions[name].append(ver)
+        for name in sorted(lib_names):
+            clean_name = name.replace("📚 ", "").replace("📚", "").strip()
+            self.lib_combo.addItem(f"📚 {clean_name}", clean_name)
+    
+    def _on_lib_changed(self, text):
+        clean_name = text.replace("📚 ", "")
+        if hasattr(self, 'lib_versions') and clean_name in self.lib_versions:
+            vers = ", ".join(sorted(self.lib_versions[clean_name], reverse=True))
+            self.existing_versions_label.setText(_("Existing Versions: {vers}").format(vers=vers))
+        else:
+            self.existing_versions_label.setText("")
+    
+    def get_library_name(self) -> str:
+        idx = self.lib_combo.currentIndex()
+        if idx >= 0 and self.lib_combo.currentText() == self.lib_combo.itemText(idx):
+            data = self.lib_combo.itemData(idx)
+            if data: return str(data).strip()
+        text = self.lib_combo.currentText().strip()
+        return text.replace("📚", "").strip()
+    
+    def get_version(self) -> str:
+        return self.version_edit.text().strip() or "1.0"

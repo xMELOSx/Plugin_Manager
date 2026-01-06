@@ -14,6 +14,7 @@ from src.core.lang_manager import _
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.explorer_window import ExplorerPanel
 from src.ui.link_master.tag_bar import TagBar
+from src.ui.title_bar_button import TitleBarButton
 
 def setup_ui(window):
     """Factory entry point to build the LinkMasterWindow UI."""
@@ -70,6 +71,7 @@ def _setup_header(window, main_layout, main_widget):
         QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
         QPushButton:pressed { background-color: #222; padding-top: 5px; padding-left: 5px; }
     """)
+    window.edit_app_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.edit_app_btn)
     
     window.web_btn = QPushButton("🌐", main_widget)
@@ -82,6 +84,7 @@ def _setup_header(window, main_layout, main_widget):
         QPushButton:hover { background-color: #3498db; border-color: #3498db; }
         QPushButton:pressed { background-color: #222; font-size: 13px; }
     """)
+    window.web_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.web_btn)
     
     window.register_app_btn = QPushButton("➕", main_widget)
@@ -94,6 +97,7 @@ def _setup_header(window, main_layout, main_widget):
         QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
         QPushButton:pressed { background-color: #222; font-size: 13px; }
     """)
+    window.register_app_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.register_app_btn)
     
     header_layout.addSpacing(20)
@@ -132,12 +136,14 @@ def _setup_header(window, main_layout, main_widget):
     window.search_btn.setObjectName("header_search_btn")
     window.search_btn.setFixedSize(30, 28)
     window.search_btn.clicked.connect(window._perform_search)
+    window.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.search_btn)
     
     window.clear_search_btn = QPushButton("✕", main_widget)
     window.clear_search_btn.setObjectName("header_clear_btn")
     window.clear_search_btn.setFixedSize(30, 28)
     window.clear_search_btn.clicked.connect(window._clear_search)
+    window.clear_search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.clear_search_btn)
     
     # Preventing transparency leakage from popups (User Fix)
@@ -160,6 +166,8 @@ def _setup_content_area(window, main_layout, main_widget):
     window.sidebar_splitter = QSplitter(Qt.Orientation.Horizontal, window.content_wrapper)
     window.sidebar_splitter.setHandleWidth(4)
     window.sidebar_splitter.setStyleSheet("QSplitter::handle { background-color: #444; } QSplitter::handle:hover { background-color: #666; }")
+    window.sidebar_splitter.installEventFilter(window)
+    window.sidebar_splitter.setAttribute(Qt.WidgetAttribute.WA_Hover)
     
     _setup_sidebar_drawer(window)
     
@@ -181,6 +189,8 @@ def _setup_sidebar(window, layout):
     btn_strip = QWidget(window.content_wrapper)
     btn_strip.setFixedWidth(28)
     btn_strip.setStyleSheet("background-color: #222; border-right: 1px solid #333;")
+    btn_strip.installEventFilter(window)
+    btn_strip.setAttribute(Qt.WidgetAttribute.WA_Hover)
     btn_strip_layout = QVBoxLayout(btn_strip)
     btn_strip_layout.setContentsMargins(1, 82, 1, 2)
     btn_strip_layout.setSpacing(10)
@@ -260,6 +270,8 @@ def _setup_sidebar(window, layout):
 
 def _setup_sidebar_drawer(window):
     window.drawer_widget = QWidget(window.sidebar_splitter)
+    window.drawer_widget.installEventFilter(window)
+    window.drawer_widget.setAttribute(Qt.WidgetAttribute.WA_Hover)
     window.drawer_ui_layout = QVBoxLayout(window.drawer_widget)
     window.drawer_ui_layout.setContentsMargins(0, 0, 0, 0)
     
@@ -365,30 +377,24 @@ def _setup_navigation_bar(window, right_layout):
         QPushButton:checked { background-color: #27ae60; border-color: #2ecc71; }
     """
     
-    window.btn_filter_favorite = QPushButton("🌟", window.content_wrapper)
+    window.btn_filter_favorite = TitleBarButton("🌟", window.content_wrapper, is_toggle=True)
     window.btn_filter_favorite.setObjectName("nav_filter_favorite_btn")
     window.btn_filter_favorite.setFixedSize(28, 26)
-    window.btn_filter_favorite.setCheckable(True)
     window.btn_filter_favorite.setToolTip(_("Show only folders with favorites"))
-    window.btn_filter_favorite.setStyleSheet(filter_btn_style)
     window.btn_filter_favorite.clicked.connect(window._toggle_favorite_filter)
     nav_bar_layout.addWidget(window.btn_filter_favorite)
     
-    window.btn_filter_linked = QPushButton("🔗", window.content_wrapper)
+    window.btn_filter_linked = TitleBarButton("🔗", window.content_wrapper, is_toggle=True)
     window.btn_filter_linked.setObjectName("nav_filter_linked_btn")
     window.btn_filter_linked.setFixedSize(28, 26)
-    window.btn_filter_linked.setCheckable(True)
     window.btn_filter_linked.setToolTip(_("Show only linked folders"))
-    window.btn_filter_linked.setStyleSheet(filter_btn_style)
     window.btn_filter_linked.clicked.connect(window._toggle_linked_filter)
     nav_bar_layout.addWidget(window.btn_filter_linked)
     
-    window.btn_filter_unlinked = QPushButton("⛓️‍💥", window.content_wrapper)
+    window.btn_filter_unlinked = TitleBarButton("⛓️‍💥", window.content_wrapper, is_toggle=True)
     window.btn_filter_unlinked.setObjectName("nav_filter_unlinked_btn")
     window.btn_filter_unlinked.setFixedSize(32, 26)
-    window.btn_filter_unlinked.setCheckable(True)
     window.btn_filter_unlinked.setToolTip(_("Show only unlinked folders"))
-    window.btn_filter_unlinked.setStyleSheet(filter_btn_style)
     window.btn_filter_unlinked.clicked.connect(window._toggle_unlinked_filter)
     nav_bar_layout.addWidget(window.btn_filter_unlinked)
     
@@ -397,7 +403,7 @@ def _setup_navigation_bar(window, right_layout):
     unlink_btn_style = """
         QPushButton { background-color: #c0392b; color: #fff; border: 1px solid #e74c3c; border-radius: 4px; padding: 2px 6px; }
         QPushButton:hover { background-color: #e74c3c; border-color: #fff; }
-        QPushButton:pressed { background-color: #922b21; }
+        QPushButton:pressed { background-color: #ff0000; }
     """
     window.btn_unlink_all = QPushButton("🔓", window.content_wrapper)
     window.btn_unlink_all.setObjectName("nav_unlink_all_btn")
@@ -405,6 +411,7 @@ def _setup_navigation_bar(window, right_layout):
     window.btn_unlink_all.setToolTip(_("Unlink All Active Links"))
     window.btn_unlink_all.setStyleSheet(unlink_btn_style)
     window.btn_unlink_all.clicked.connect(window._unload_active_links)
+    window.btn_unlink_all.setCursor(Qt.CursorShape.PointingHandCursor)
     nav_bar_layout.addWidget(window.btn_unlink_all)
     
     nav_bar_layout.addWidget(QLabel("|", window.content_wrapper, styleSheet="color: #555;"))
@@ -415,6 +422,7 @@ def _setup_navigation_bar(window, right_layout):
     window.btn_trash.setToolTip(_("Open Trash"))
     window.btn_trash.setStyleSheet(filter_btn_style)
     window.btn_trash.clicked.connect(window._open_trash_view)
+    window.btn_trash.setCursor(Qt.CursorShape.PointingHandCursor)
     nav_bar_layout.addWidget(window.btn_trash)
     
     right_layout.addLayout(nav_bar_layout)
@@ -578,6 +586,17 @@ def _setup_main_card_view(window, right_layout):
     window.btn_pkg_image_text.setFixedSize(44, 26)
     window.btn_pkg_image_text.clicked.connect(lambda: window._toggle_pkg_display_mode("image_text"))
     pkg_header.addWidget(window.btn_pkg_image_text)
+    
+    pkg_header.addWidget(QLabel("|", pkg_group, styleSheet="color: #555;"))
+    
+    window.btn_pkg_quick_manage = QPushButton("⚡", pkg_group)
+    window.btn_pkg_quick_manage.setObjectName("pkg_quick_manage_btn")
+    window.btn_pkg_quick_manage.setFixedSize(28, 26)
+    window.btn_pkg_quick_manage.setToolTip(_("Quick View Manager for Packages"))
+    window.btn_pkg_quick_manage.setStyleSheet(btn_style)
+    # Note: Logic connection happens in link_master_window.py or lm_ui_factory later
+    window.btn_pkg_quick_manage.clicked.connect(lambda: window._open_quick_view_cached(scope="package"))
+    pkg_header.addWidget(window.btn_pkg_quick_manage)
     
     pkg_group_layout.addLayout(pkg_header)
     

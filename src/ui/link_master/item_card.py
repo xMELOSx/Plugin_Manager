@@ -115,7 +115,7 @@ class ItemCard(QFrame):
         self._update_style()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 2, 0, 2)  # Minimal margins, centering by Qt flags
+        layout.setContentsMargins(0, 4, 0, 2)  # Top margin for selection border visibility
 
         # thumbnail - Using ThumbnailWidget component
         self.thumb_label = ThumbnailWidget(self)
@@ -340,14 +340,25 @@ class ItemCard(QFrame):
             new_image_path = kwargs.get('image_path')
             old_image_path = getattr(self, '_current_image_path', None)
 
-            # Phase 28: Always update image state when card is reused
+            # Phase 33: CRITICAL - Always update the expected path FIRST
+            # This is used to validate async callbacks
             self._current_image_path = new_image_path
+
+            # Phase 33: CRITICAL - Always clear old image immediately when path changes
+            # This prevents "ghost images" from appearing in empty slots
+            if new_image_path != old_image_path:
+                self.thumb_label.clear()
+                self._original_pixmap = None
 
             if new_image_path:
                 if new_image_path != old_image_path and self.loader:
                     self.thumb_label.setText(_("Loading..."))
-                    # Always load at 256x256 base size for high quality scaling later
-                    self.loader.load_image(new_image_path, QSize(256, 256), self.set_pixmap)
+                    # Phase 33: Use request validator to prevent stale image callbacks
+                    expected_path = new_image_path  # Capture for closure
+                    def validate_request():
+                        return getattr(self, '_current_image_path', None) == expected_path
+                    
+                    self.loader.load_image(new_image_path, QSize(256, 256), self.set_pixmap, validate_request)
                 # If same path, keep existing pixmap (no-op)
             else:
                 # Explicitly No image: Clear any existing pixmap
@@ -1250,7 +1261,7 @@ class ItemCard(QFrame):
 
         # Set margins - centering is handled by Qt.AlignCenter on widget add
         margin_h = 4
-        margin_t = 2
+        margin_t = 4  # Top margin for selection border visibility
         margin_b = 2
         spacing = 2
 

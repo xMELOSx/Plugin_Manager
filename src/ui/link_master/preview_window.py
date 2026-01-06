@@ -325,12 +325,24 @@ class PreviewWindow(QWidget):
         prop_layout.setContentsMargins(10, 10, 10, 10)
         prop_layout.setSpacing(10)
         
-        # Row 1: Link & Visibility
+        # Row 1: Link & Visibility (Using SlideButtons)
+        from src.ui.slide_button import SlideButton
         status_layout = QHBoxLayout()
-        self.deploy_check = QCheckBox(_("Link Enabled"))
+        
+        link_label = QLabel(_("Link Enabled"))
+        link_label.setStyleSheet("color: #ccc;")
+        status_layout.addWidget(link_label)
+        self.deploy_check = SlideButton(active_color="#27ae60")
         status_layout.addWidget(self.deploy_check)
-        self.visible_check = QCheckBox(_("Visibility"))
+        
+        status_layout.addSpacing(20)
+        
+        visible_label = QLabel(_("Visibility"))
+        visible_label.setStyleSheet("color: #ccc;")
+        status_layout.addWidget(visible_label)
+        self.visible_check = SlideButton(active_color="#3498db")
         status_layout.addWidget(self.visible_check)
+        
         status_layout.addStretch()
         prop_layout.addLayout(status_layout)
         

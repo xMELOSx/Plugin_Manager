@@ -191,13 +191,12 @@ class LMSelectionMixin:
             act_batch = menu.addAction(_("📝 Batch Edit Properties..."))
             act_batch.triggered.connect(self._batch_edit_properties_selected)
             
-            # Phase 1.0.9: Quick View Manager
-            act_quick = menu.addAction(_("⚡ Quick View Manager..."))
-            act_quick.triggered.connect(self._open_quick_view_manager)
+            # Phase 26: Quick View Manager removed from batch context menu per user request
             
             act_explorer = menu.addAction(_("📂 Open Selected in Explorer"))
             act_explorer.triggered.connect(self._batch_open_in_explorer)
             menu.addSeparator()
+
         
         if any_in_trash:
             if active_card:

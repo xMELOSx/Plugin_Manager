@@ -91,6 +91,8 @@ class ResizableMixin:
         self._resizing = False
         self._resize_edges = ""
         self.setMouseTracking(True)
+        # Enable hover to ensure MouseMove like events are captured even when child widgets have focus
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         
     def _get_resize_edges(self, pos: QPoint):
         w, h = self.width(), self.height()
