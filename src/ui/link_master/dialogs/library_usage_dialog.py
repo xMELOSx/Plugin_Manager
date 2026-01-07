@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QMessageBox, QHeaderView)
 from PyQt6.QtCore import Qt
 from src.core.lang_manager import _
+from src.ui.common_widgets import StyledComboBox
 import json
 
 class LibraryUsageDialog(QDialog):
@@ -102,7 +103,7 @@ class LibraryUsageDialog(QDialog):
                 item.setCheckState(0, Qt.CheckState.Checked)
             
             # Version Mode Combo: 優先 (use global priority version) or 任意 (choose specific)
-            combo_mode = QComboBox()
+            combo_mode = StyledComboBox()
             combo_mode.addItems([_("Preferred"), _("Specific")])
             if existing:
                 mode = existing.get('version_mode', 'priority')
@@ -116,7 +117,7 @@ class LibraryUsageDialog(QDialog):
             self.tree.setItemWidget(item, 1, combo_mode)
             
             # Specific Version Combo
-            combo_ver = QComboBox()
+            combo_ver = StyledComboBox()
             versions = sorted([v['version'] for v in libraries[lib_name]], reverse=True)
             combo_ver.addItems(versions)
             if existing and existing.get('version'):

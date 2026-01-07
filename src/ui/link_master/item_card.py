@@ -59,7 +59,8 @@ class ItemCard(QFrame):
                  deploy_type: str = 'folder', conflict_policy: str = 'backup',
                  app_deploy_default: str = 'folder', app_conflict_default: str = 'backup',
                  app_cat_style_default: str = 'image', app_pkg_style_default: str = 'image',
-                 show_link: bool = True, show_deploy: bool = True, deploy_button_opacity: float = 0.8):
+                 show_link: bool = True, show_deploy: bool = True, deploy_button_opacity: float = 0.8,
+                 is_library: int = 0, lib_name: str = '', **kwargs):
         super().__init__(parent)
         self.path = path # Source Path (Absolute)
         self.norm_path = (path or "").replace('\\', '/')
@@ -104,6 +105,8 @@ class ItemCard(QFrame):
         self.conflict_tag = None
         self.conflict_scope = 'disabled'
         self.is_library_alt_version = False  # True if another version of same library is deployed
+        self.is_library = is_library  # Phase 30: Library flag (from DB, 0 or 1)
+        self.lib_name = lib_name   # Phase 30: Library name for grouping
 
         # Phase 31: Visibility Toggles (Per mode)
         self.show_link_overlay = show_link
@@ -384,6 +387,11 @@ class ItemCard(QFrame):
 
     def _check_link_status(self):
         if not self.deployer: return
+        
+        # Phase 14/33: Categories derive status from children, NOT from physical symlink check
+        # Physical check on a category folder would return 'none' and wipe its orange/green frame.
+        if not getattr(self, 'is_package', True):
+             return
 
         # Final rule resolution for detection
         deploy_rule = self.deploy_type
@@ -601,6 +609,13 @@ class ItemCard(QFrame):
             self.link_status = status
         else:
             self._check_link_status()
+
+        # Phase 28/Debug: If successfully linked, clear any persistent logical conflict marker 
+        # to ensure immediate visual feedback without waiting for background worker.
+        if self.link_status == 'linked':
+            self.has_logical_conflict = False
+            self.is_library_alt_version = False
+            
         self._update_style()
         # Clear cache to force overlay update (fixes none→linked not reflecting)
         if hasattr(self, '_last_icon_overlay_state'):

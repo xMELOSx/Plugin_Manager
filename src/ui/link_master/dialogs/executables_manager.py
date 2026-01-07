@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from src.ui.common_widgets import StyledLineEdit
+from src.ui.action_button import ActionButton
 from src.core.lang_manager import _
 import os
 
@@ -23,6 +24,7 @@ class ExecutablesManagerDialog(QDialog):
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #e0e0e0; }
             QTableWidget { background-color: #2d2d2d; color: #e0e0e0; gridline-color: #3d3d3d; }
+            QHeaderView::section { background-color: #3d3d3d; color: #ffffff; padding: 4px; border: 1px solid #4d4d4d; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; }
             QPushButton:hover { background-color: #5d5d5d; }
         """)
@@ -58,16 +60,21 @@ class ExecutablesManagerDialog(QDialog):
         
         # Color selections
         color_layout = QHBoxLayout()
+        color_layout.setContentsMargins(5, 0, 0, 0) # Fix dead zone from left
+        color_layout.setSpacing(10)
         self.btn_color = "#3498db"
         self.txt_color = "#ffffff"
         
         self.btn_color_preview = QPushButton(_("■ BG Color"))
-        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
+        self.btn_color_preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
         self.btn_color_preview.clicked.connect(self._pick_btn_color)
         color_layout.addWidget(self.btn_color_preview)
         
         self.txt_color_preview = QPushButton(_("T Text Color"))
-        self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
+        self.txt_color_preview.setFixedWidth(80)
+        self.txt_color_preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.txt_color_preview.setStyleSheet("background-color: #333; color: white; border: 1px solid #555;")
         self.txt_color_preview.clicked.connect(self._pick_txt_color)
         color_layout.addWidget(self.txt_color_preview)
         
@@ -87,6 +94,7 @@ class ExecutablesManagerDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setColumnWidth(3, 120) # Accommodate labeled ActionButtons
         layout.addWidget(self.table)
         
         # Reorder and Actions
@@ -114,14 +122,14 @@ class ExecutablesManagerDialog(QDialog):
         color = QColorDialog.getColor(QColor(self.btn_color), self, _("Select Button Color"))
         if color.isValid():
             self.btn_color = color.name()
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
+            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
 
     def _pick_txt_color(self):
         from PyQt6.QtWidgets import QColorDialog
         color = QColorDialog.getColor(QColor(self.txt_color), self, _("Select Text Color"))
         if color.isValid():
             self.txt_color = color.name()
-            self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
+            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
 
     def _browse_exe(self):
         path, _filter = QFileDialog.getOpenFileName(self, _("Select Executable"), "", _("Executables (*.exe);;All Files (*)"))
@@ -162,8 +170,8 @@ class ExecutablesManagerDialog(QDialog):
         self.args_edit.clear()
         self.btn_color = "#3498db"
         self.txt_color = "#ffffff"
-        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-        self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
+        self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
+        self.txt_color_preview.setStyleSheet("background-color: #333; color: white; border: 1px solid #555;")
 
     def _load_table(self):
         self.table.setRowCount(0)
@@ -186,14 +194,14 @@ class ExecutablesManagerDialog(QDialog):
             actions_layout.setContentsMargins(2, 2, 2, 2)
             actions_layout.setSpacing(4)
             
-            edit_btn = QPushButton("✏")
-            edit_btn.setFixedSize(24, 24)
+            edit_btn = ActionButton(_("Edit"), parent=actions_widget, is_toggle=False)
+            edit_btn.setFixedSize(50, 24)
             edit_btn.clicked.connect(lambda ch, r=row: self._edit_row(r))
             actions_layout.addWidget(edit_btn)
             
-            del_btn = QPushButton("🗑")
-            del_btn.setFixedSize(24, 24)
-            del_btn.setStyleSheet("background-color: #c0392b;")
+            del_btn = ActionButton(_("Delete"), parent=actions_widget, is_toggle=False)
+            del_btn.set_danger(True) # Use new danger style for red look + click feel
+            del_btn.setFixedSize(50, 24)
             del_btn.clicked.connect(lambda ch, r=row: self._delete_row(r))
             actions_layout.addWidget(del_btn)
             
@@ -207,8 +215,8 @@ class ExecutablesManagerDialog(QDialog):
             self.args_edit.setText(exe.get('args', ''))
             self.btn_color = exe.get('btn_color', '#3498db')
             self.txt_color = exe.get('text_color', '#ffffff')
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: white; border: 1px solid #555;")
-            self.txt_color_preview.setStyleSheet(f"background-color: #333; color: {self.txt_color}; border: 1px solid #555;")
+            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
+            self.txt_color_preview.setStyleSheet("background-color: #333; color: white; border: 1px solid #555;")
             self.table.selectRow(row)
 
     def _delete_row(self, row):

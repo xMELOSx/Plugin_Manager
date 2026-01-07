@@ -260,21 +260,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         """Handle custom events, specifically Right Click on Quick Manage buttons."""
         # Category Quick Manage
         if hasattr(self, 'btn_quick_manage') and obj == self.btn_quick_manage:
-            if event.type() == QEvent.Type.MouseButtonPress:
-                if event.button() == Qt.MouseButton.LeftButton:
-                    self._open_quick_view_cached(scope="category")
-                    return True
-                elif event.button() == Qt.MouseButton.RightButton:
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.RightButton:
                     self._open_quick_view_delegate(scope="category")
                     return True
         
         # Package Quick Manage
         if hasattr(self, 'btn_pkg_quick_manage') and obj == self.btn_pkg_quick_manage:
-            if event.type() == QEvent.Type.MouseButtonPress:
-                if event.button() == Qt.MouseButton.LeftButton:
-                    self._open_quick_view_cached(scope="package")
-                    return True
-                elif event.button() == Qt.MouseButton.RightButton:
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.RightButton:
                     self._open_quick_view_delegate(scope="package")
                     return True
                     
@@ -814,7 +808,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Toggle existing panel
         if hasattr(self, '_settings_panel') and self._settings_panel.isVisible():
             self._settings_panel.hide()
+            if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
             return
+            
+        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(True)
         
         # Create panel if not exists
         if not hasattr(self, '_settings_panel'):
@@ -1159,7 +1156,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             frequent_tags = self._load_frequent_tags()
         
         # Phase 1.1.80: Reuse existing delegate dialog to prevent infinite windows
-        existing = getattr(self, 'quick_view_delegate_dialog', None)
+        dialog_attr = f'quick_view_delegate_{scope}'
+        existing = getattr(self, dialog_attr, None)
         if existing and not existing.isHidden():
             # Bring existing window to front
             existing.raise_()
@@ -1177,11 +1175,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             scope=scope
         )
         # Modeless
-        dialog.finished.connect(self._on_quick_view_finished)
+        dialog.finished.connect(lambda: self._on_quick_view_finished(scope))
         dialog.show()
         
         # Keep reference to prevent GC and enable reuse
-        self.quick_view_delegate_dialog = dialog
+        setattr(self, dialog_attr, dialog)
 
     def _open_quick_view_manager(self):
         """Legacy access (if any) - redirects to cached mode."""
@@ -1215,6 +1213,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         dialog = self.sender()
         if not dialog: return
         
+        # Determine scope from dialog if possible (Phase Multi-Delegate)
+        scope = getattr(dialog, 'scope', 'category')
+        
         # Determine if it's one of the cached ones
         is_cached = (hasattr(self, 'cat_quick_view_dialog') and dialog == self.cat_quick_view_dialog) or \
                     (hasattr(self, 'pkg_quick_view_dialog') and dialog == self.pkg_quick_view_dialog)
@@ -1222,15 +1223,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if is_cached:
             # CACHED MODE: Do NOT clear reference.
             pass
-        elif hasattr(self, 'quick_view_delegate_dialog') and dialog == self.quick_view_delegate_dialog:
-             # DELEGATE MODE: Clear reference (fresh every time)
-             self.quick_view_delegate_dialog = None
         else:
-            # Fallback for unexpected dialogs
-            if getattr(self, 'cat_quick_view_dialog', None) == dialog:
-                self.cat_quick_view_dialog = None
-            if getattr(self, 'pkg_quick_view_dialog', None) == dialog:
-                self.pkg_quick_view_dialog = None
+            # DELEGATE or Dynamic MODE: Clear specific reference
+            dialog_attr = f'quick_view_delegate_{scope}'
+            if getattr(self, dialog_attr, None) == dialog:
+                setattr(self, dialog_attr, None)
+            
+            # Legacy/Fallback cleanup
+            if getattr(self, 'quick_view_delegate_dialog', None) == dialog:
+                self.quick_view_delegate_dialog = None
 
         # Refresh Main Window if changes were made
         # Check if we need to reload ANY item cards.
@@ -1591,6 +1592,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._update_notes_path()
             if self.sidebar_tabs.currentIndex() == 1 and self.drawer_widget.isVisible() and self.notes_panel:
                 self.notes_panel.refresh()
+
+            self._refresh_tag_visuals()
 
             # Sync Target Buttons
             self.btn_target_a.setChecked(self.current_target_key == "target_root")
@@ -2768,6 +2771,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         break
                         
                 QMessageBox.information(self, "Success", f"Updated {data['name']}")
+                self._manual_rebuild()
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 

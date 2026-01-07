@@ -24,6 +24,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import pyqtSignal, Qt, QUrl, QTimer
 from src.ui.link_master.dialogs.library_dialogs import LibrarySettingsDialog, DependentPackagesDialog
+from src.ui.common_widgets import StyledComboBox
 
 
 class LibraryItemDelegate(QStyledItemDelegate):
@@ -461,9 +462,10 @@ class LibraryPanel(QWidget):
             item.setText(2, latest_ver)
             
             # Version Dropdown
-            priority_combo = QComboBox()
+            priority_combo = StyledComboBox()
             priority_combo.setFixedHeight(24)
-            priority_combo.setStyleSheet("background: #333; color: #eee; border: 1px solid #555; font-size: 11px; margin-top: 2px;")
+            # Do NOT overwrite StyledComboBox stylesheet, just adjust font if needed
+            priority_combo.setStyleSheet(priority_combo.styleSheet() + " QComboBox { font-size: 11px; margin-top: 2px; }")
             priority_combo.blockSignals(True) # Prevent DB updates during refresh
             priority_combo.addItem(_("🔄 Latest"), "__LATEST__")
             for v in versions:

@@ -212,13 +212,13 @@ msgid "AND"
 msgstr "AND"
 
 msgid "📦 All Packages"
-msgstr "📦 すべてのパッケージ"
+msgstr "📦 パッケージ"
 
 msgid "📁 Categories Only"
-msgstr "📁 カテゴリのみ"
+msgstr "📁 カテゴリ"
 
 msgid "📁+📦 Cats with Pkgs"
-msgstr "📁+📦 パッケージを含むカテゴリ"
+msgstr "📁+📦 全て"
 
 msgid "Global"
 msgstr "全体"
@@ -1996,6 +1996,9 @@ msgstr "Tree Skip階層数:"
 
 msgid "Target Override:"
 msgstr "ターゲット上書き:"
+
+msgid "Delete"
+msgstr "削除"
 
 msgid "Select Target Destination Override"
 msgstr "ターゲット上書き先を選択"

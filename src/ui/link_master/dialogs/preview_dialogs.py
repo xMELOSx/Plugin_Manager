@@ -147,8 +147,8 @@ class PreviewTableDialog(QDialog):
         
         # Dark theme
         self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
+            QDialog { background-color: #2b2b2b; color: #e0e0e0; }
+            QListWidget { background-color: #333333; color: #e0e0e0; border: 1px solid #444444; }
             QListWidget::item { padding: 2px; }
             QListWidget::item:selected { background-color: #3d5a80; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
@@ -230,7 +230,7 @@ class PreviewTableDialog(QDialog):
         if not item: return
         
         menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background-color: #2d2d2d; color: #e0e0e0; } QMenu::item:selected { background-color: #3d5a80; }")
+        menu.setStyleSheet("QMenu { background-color: #333333; color: #e0e0e0; } QMenu::item:selected { background-color: #3d5a80; }")
         
         move_top = menu.addAction(_("⬆ Move to Top"))
         move_bottom = menu.addAction(_("⬇ Move to Bottom"))
@@ -366,12 +366,13 @@ class FullPreviewDialog(QDialog):
         super().closeEvent(event)
 
     def _init_ui(self):
+        self.setStyleSheet("QDialog { background-color: #2b2b2b; }")
         layout = QVBoxLayout(self)
         
         # Image Display Area
         self.image_label = QLabel(_("Loading..."))
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("background-color: #111; border-radius: 8px;")
+        self.image_label.setStyleSheet("background-color: #1a1a1a; border-radius: 8px;")
         self.image_label.setMinimumSize(600, 400)
         layout.addWidget(self.image_label, 1)
         

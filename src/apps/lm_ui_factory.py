@@ -15,6 +15,8 @@ from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.explorer_window import ExplorerPanel
 from src.ui.link_master.tag_bar import TagBar
 from src.ui.title_bar_button import TitleBarButton
+from src.ui.action_button import ActionButton
+from src.ui.common_widgets import StyledComboBox
 
 def setup_ui(window):
     """Factory entry point to build the LinkMasterWindow UI."""
@@ -23,10 +25,24 @@ def setup_ui(window):
     main_widget.setStyleSheet("""
         QWidget { background-color: transparent; }
         QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
-        QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; }
+        QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 25px 4px 8px; border-radius: 4px; }
         QComboBox:hover { border-color: #3498db; background-color: #444; }
-        QComboBox::drop-down { border: none; }
-        QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; border: 1px solid #555; }
+        QComboBox::drop-down { 
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 20px;
+            border-left: 1px solid #555;
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+        QComboBox::down-arrow {
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid #fff;
+            margin-right: 2px;
+        }
+        QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; border: 1px solid #555; outline: none; }
         QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
         QLineEdit:hover { border-color: #3498db; background-color: #444; }
         QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
@@ -53,7 +69,7 @@ def _setup_header(window, main_layout, main_widget):
     header_layout = QHBoxLayout()
     header_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     
-    window.app_combo = QComboBox(main_widget)
+    window.app_combo = StyledComboBox(main_widget)
     window.app_combo.setObjectName("header_app_combo")
     window.app_combo.setMinimumWidth(200)
     window.app_combo.currentIndexChanged.connect(window._on_app_changed)
@@ -114,8 +130,27 @@ def _setup_header(window, main_layout, main_widget):
     window.search_logic.setObjectName("search_logic_combo")
     window.search_logic.addItem(_("OR"), "or")
     window.search_logic.addItem(_("AND"), "and")
-    window.search_logic.setFixedWidth(60)
     header_layout.addWidget(window.search_logic)
+    
+    # Label-style refined dropdown (no arrow)
+    window.search_logic.setFixedWidth(60)
+    window.search_logic.setStyleSheet(window.search_logic.styleSheet() + """
+        QComboBox { 
+            padding-left: 6px; 
+            padding-right: 6px; 
+            border: 1px solid #555; 
+            border-radius: 4px;
+            background-color: #3b3b3b; 
+        }
+        QComboBox::drop-down { width: 0px; border: none; background: transparent; }
+        QComboBox::down-arrow { 
+            image: none; 
+            border: none; /* CRITICAL: Clear the global border-based triangle */
+            width: 0px; 
+            height: 0px; 
+            background: none;
+        }
+    """)
     
     window.search_bar = QLineEdit(main_widget)
     window.search_bar.setObjectName("main_search_bar")
@@ -124,7 +159,7 @@ def _setup_header(window, main_layout, main_widget):
     window.search_bar.returnPressed.connect(window._perform_search)
     header_layout.addWidget(window.search_bar)
     
-    window.search_mode = QComboBox(main_widget)
+    window.search_mode = StyledComboBox(main_widget)
     window.search_mode.setObjectName("search_mode_combo")
     window.search_mode.addItem(_("📦 All Packages"), "all_packages")
     window.search_mode.addItem(_("📁 Categories Only"), "categories_only")
@@ -132,16 +167,16 @@ def _setup_header(window, main_layout, main_widget):
     window.search_mode.setFixedWidth(150)
     header_layout.addWidget(window.search_mode)
     
-    window.search_btn = QPushButton("🔍", main_widget)
+    window.search_btn = ActionButton("🔍", main_widget)
     window.search_btn.setObjectName("header_search_btn")
-    window.search_btn.setFixedSize(30, 28)
+    window.search_btn.setFixedSize(32, 28)
     window.search_btn.clicked.connect(window._perform_search)
     window.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.search_btn)
     
-    window.clear_search_btn = QPushButton("✕", main_widget)
+    window.clear_search_btn = ActionButton("✕", main_widget)
     window.clear_search_btn.setObjectName("header_clear_btn")
-    window.clear_search_btn.setFixedSize(30, 28)
+    window.clear_search_btn.setFixedSize(32, 28)
     window.clear_search_btn.clicked.connect(window._clear_search)
     window.clear_search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.clear_search_btn)
@@ -416,13 +451,11 @@ def _setup_navigation_bar(window, right_layout):
     
     nav_bar_layout.addWidget(QLabel("|", window.content_wrapper, styleSheet="color: #555;"))
     
-    window.btn_trash = QPushButton("🗑", window.content_wrapper)
+    window.btn_trash = ActionButton("🗑", window.content_wrapper, is_toggle=True)
     window.btn_trash.setObjectName("nav_trash_btn")
     window.btn_trash.setFixedSize(28, 26)
     window.btn_trash.setToolTip(_("Open Trash"))
-    window.btn_trash.setStyleSheet(filter_btn_style)
     window.btn_trash.clicked.connect(window._open_trash_view)
-    window.btn_trash.setCursor(Qt.CursorShape.PointingHandCursor)
     nav_bar_layout.addWidget(window.btn_trash)
     
     right_layout.addLayout(nav_bar_layout)
@@ -500,20 +533,18 @@ def _setup_main_card_view(window, right_layout):
     
     cat_header.addWidget(QLabel("|", cat_group, styleSheet="color: #555;"))
     
-    window.btn_card_settings = QPushButton("📓", cat_group)
+    window.btn_card_settings = ActionButton("📓", cat_group, is_toggle=True)
     window.btn_card_settings.setObjectName("cat_card_settings_btn")
     window.btn_card_settings.setFixedSize(28, 26)
     window.btn_card_settings.setToolTip(_("Card Size Settings"))
-    window.btn_card_settings.setStyleSheet(btn_style)
     window.btn_card_settings.clicked.connect(window._show_settings_menu)
     cat_header.addWidget(window.btn_card_settings)
     
-    window.btn_quick_manage = QPushButton("⚡", cat_group)
+    window.btn_quick_manage = ActionButton("⚡", cat_group, is_toggle=False, trigger_on_release=True)
     window.btn_quick_manage.setObjectName("cat_quick_manage_btn")
     window.btn_quick_manage.setFixedSize(28, 26)
     window.btn_quick_manage.setToolTip(_("Quick View Manager (Bulk Edit Visible Folders)"))
-    window.btn_quick_manage.setStyleSheet(btn_style)
-    window.btn_quick_manage.clicked.connect(window._open_quick_view_manager)
+    window.btn_quick_manage.released.connect(window._open_quick_view_manager)
     cat_header.addWidget(window.btn_quick_manage)
     
     cat_group_layout.addLayout(cat_header)
@@ -589,13 +620,11 @@ def _setup_main_card_view(window, right_layout):
     
     pkg_header.addWidget(QLabel("|", pkg_group, styleSheet="color: #555;"))
     
-    window.btn_pkg_quick_manage = QPushButton("⚡", pkg_group)
+    window.btn_pkg_quick_manage = ActionButton("⚡", pkg_group, is_toggle=False, trigger_on_release=True)
     window.btn_pkg_quick_manage.setObjectName("pkg_quick_manage_btn")
     window.btn_pkg_quick_manage.setFixedSize(28, 26)
     window.btn_pkg_quick_manage.setToolTip(_("Quick View Manager for Packages"))
-    window.btn_pkg_quick_manage.setStyleSheet(btn_style)
-    # Note: Logic connection happens in link_master_window.py or lm_ui_factory later
-    window.btn_pkg_quick_manage.clicked.connect(lambda: window._open_quick_view_cached(scope="package"))
+    window.btn_pkg_quick_manage.released.connect(lambda: window._open_quick_view_cached(scope="package"))
     pkg_header.addWidget(window.btn_pkg_quick_manage)
     
     pkg_group_layout.addLayout(pkg_header)

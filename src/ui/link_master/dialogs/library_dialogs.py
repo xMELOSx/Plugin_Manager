@@ -325,7 +325,7 @@ class DependentPackagesDialog(QDialog):
                 item.setText(1, "🟢" if status == 'linked' else "⚪")
                 item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
                 
-                combo = QComboBox()
+                combo = StyledComboBox()
                 combo.addItems(ver_options)
                 ver_mode = dep.get('version_mode', 'latest') if isinstance(dep, dict) else 'latest'
                 spec_ver = dep.get('version') if isinstance(dep, dict) else None
@@ -642,7 +642,7 @@ class LibraryRegistrationDialog(QDialog):
         layout.addWidget(QLabel(_("Register selected package as a library")))
         form = QFormLayout()
         
-        self.lib_combo = QComboBox()
+        self.lib_combo = StyledComboBox()
         self.lib_combo.setEditable(True)
         self.lib_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.lib_combo.lineEdit().setPlaceholderText(_("Enter new library name"))

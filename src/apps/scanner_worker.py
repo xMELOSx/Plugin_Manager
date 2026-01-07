@@ -325,9 +325,14 @@ class ScannerWorker(QObject):
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)
         db_status = item_config.get('last_known_status')
-        if (item_config or link_status == 'linked') and db_status != link_status:
+        # CRITICAL: Do NOT overwrite conflict with none/linked if we just detected something else
+        if (item_config or link_status != 'none') and db_status != link_status:
             try:
-                self.db.update_folder_display_config(item_rel, last_known_status=link_status)
+                # If existing is 'conflict', be careful about overwriting it unless current is definitive
+                if db_status == 'conflict' and link_status not in ('linked', 'partial'):
+                    pass # Keep conflict if new is just 'none' or 'misplaced'
+                else:
+                    self.db.update_folder_display_config(item_rel, last_known_status=link_status)
             except Exception as e:
                 self.logger.warning(f"Failed to sync status for {item_rel}: {e}")
 
@@ -336,8 +341,8 @@ class ScannerWorker(QObject):
         has_favorite = item_rel in getattr(self, '_favorite_ancestors', set())
         has_conflict = False
         t_child_start = time.perf_counter()
-        if os.path.isdir(item_abs_path) and not (has_linked and has_favorite):
-            # Fallback to direct scan if not caught by pre-calc (e.g. physical status not in DB)
+        if os.path.isdir(item_abs_path):
+            # Scan children for physical status and hierarchical conflicts
             h_l, h_c = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
             has_linked = has_linked or h_l
             has_conflict = h_c
@@ -411,6 +416,8 @@ class ScannerWorker(QObject):
             'conflict_tag': item_config.get('conflict_tag'),
             'conflict_scope': item_config.get('conflict_scope'),
             'has_tag_conflict': bool(item_config.get('conflict_tag')),
+            'is_library': item_config.get('is_library', 0),  # Phase 30: Library flag
+            'lib_name': item_config.get('lib_name', ''),     # Phase 30: Library name
             '_profile_link': t_link_end - t_link_start,
             '_profile_child': t_child_end - t_child_start,
             '_profile_auto': t_auto_end - t_auto_start

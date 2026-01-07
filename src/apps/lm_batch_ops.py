@@ -23,8 +23,8 @@ class LMBatchOpsMixin:
                 if isinstance(w, ItemCard) and w.path in paths:
                     w.update_link_status()  # Re-check and update border
                     
-        # Note: Removed _update_parent_category_status() for performance
-        # self._update_parent_category_status()
+        # Phase 32: Update parent category borders (green frames)
+        self._update_parent_category_status()
         
         # Phase 28 RE-FIX: Always trigger a full tag/library refresh after status change
         self._refresh_tag_visuals()
@@ -1090,6 +1090,10 @@ class LMBatchOpsMixin:
                             # Use display_name instead of text()
                             self.logger.info(f"[UIUpdate] HIT: {getattr(w, 'display_name', 'Unknown')}")
                             w.update_link_status()
+                            
+                            # Phase 32: Update parent category border (green frame)
+                            if w.is_package:
+                                self._update_parent_category_status()
                             return
         self.logger.warning(f"[UIUpdate] MISS: No card found for {target_path}")
         # Note: Removed _update_parent_category_status() for performance

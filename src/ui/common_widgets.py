@@ -31,7 +31,7 @@ class StyledComboBox(QComboBox):
                 background-color: #3b3b3b;
                 color: #ffffff;
                 border: 1px solid #555;
-                padding: 4px 30px 4px 8px;
+                padding: 3px 25px 3px 6px;
                 border-radius: 4px;
             }
             QComboBox:hover {
@@ -40,26 +40,15 @@ class StyledComboBox(QComboBox):
             QComboBox::drop-down {
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
-                width: 25px;
-                border-left: 1px solid #555;
-                border-top-right-radius: 4px;
-                border-bottom-right-radius: 4px;
+                width: 18px;
                 background-color: #333;
-            }
-            QComboBox::drop-down:hover {
-                background-color: #444;
+                border: none;
+                border-left: 1px solid #555;
             }
             QComboBox::down-arrow {
-                border: none;
+                image: none;
+                border: none; /* Clear global CSS triangle */
                 background: none;
-                /* Draw a triangle using standard characters or image. 
-                   Since images are fragile, we can use a small Unicode character 
-                   by setting it as text or better yet, use a standard built-in image. */
-                image: url(placeholder); /* placeholder to ensure the area is active */
-            }
-            QComboBox::down-arrow:on { /* shift arrow when popup is open */
-                top: 1px;
-                left: 1px;
             }
             /* Styling the internal list view */
             QComboBox QAbstractItemView {
@@ -79,12 +68,16 @@ class StyledComboBox(QComboBox):
         from PyQt6.QtCore import QPoint
         
         painter = QPainter(self)
+        # Avoid drawing arrow if widget is too small
+        if self.width() < 30:
+            painter.end()
+            return
+            
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Calculate triangle position (centered in the drop-down area)
-        # The drop-down width is 25px
+        # Calculate triangle position
         rect = self.rect()
-        arrow_x = rect.width() - 13
+        arrow_x = rect.width() - 9
         arrow_y = rect.height() // 2 + 1
         
         # Draw small triangle

@@ -378,19 +378,18 @@ class LMDeploymentOpsMixin:
                     elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
                 QMessageBox.information(self, _("Conflict Handled"), msg)
 
-             if update_ui:
-                # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
-                self._update_card_by_path(full_src)
-                if hasattr(self, '_update_total_link_count'):
-                    self._update_total_link_count()
-                
-                tag = config.get('conflict_tag')
-                is_lib = config.get('is_library', 0)
-                if tag or is_lib:
-                    self._refresh_tag_visuals(target_tag=tag)
-                
-                if hasattr(self, 'library_panel') and self.library_panel:
-                    self.library_panel.refresh()
+             # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
+             self._update_card_by_path(full_src)
+             if hasattr(self, '_update_total_link_count'):
+                 self._update_total_link_count()
+             
+             # Phase 28/Debug: Always refresh tag visuals after any deploy to ensure physical occupancy
+             # or library alt-version highlighting is updated globally.
+             tag = config.get('conflict_tag')
+             self._refresh_tag_visuals(target_tag=tag)
+             
+             if hasattr(self, 'library_panel') and self.library_panel:
+                 self.library_panel.refresh()
         
         return success
 
@@ -720,46 +719,59 @@ class LMDeploymentOpsMixin:
 
     def _on_tag_refresh_finished(self, result):
         """Callback from background worker. Updates visible cards on Main Thread."""
-        if not result: return
+        if not result:
+             return
         
-        # Phase 28/31 Optim: Use pre-calculated abs_config_map for O(1) matching
-        # Avoids calling os.path.relpath(card.path) which is very slow on UI thread.
+        # Phase 28/31 Optim: Use pre-calculated maps for matching
+        # 1. Package loop uses absolute paths (for individual card pinpoint updates)
+        # 2. Category refresh uses relative paths (for hierarchical status calculation)
         abs_config_map = result.get('abs_config_map', {})
+        all_configs = result.get('all_configs', {}) # Relative path map (from DB)
         
         change_count = 0
         card_count = 0
-
-        for i in range(self.pkg_layout.count()):
-            item = self.pkg_layout.itemAt(i)
-            if item and item.widget():
-                card = item.widget()
-                card_count += 1
-                card_changed = False
-                
-                # Use norm_path (cached in ItemCard) or path
-                path_key = getattr(card, 'norm_path', (card.path or "").replace('\\', '/'))
-                cfg = abs_config_map.get(path_key, {})
-                
-                if cfg:
-                    is_alt = cfg.get('is_library_alt_version', False)
-                    if getattr(card, 'is_library_alt_version', False) != is_alt:
-                        card.is_library_alt_version = is_alt
-                        card_changed = True
-
-                    has_logical = cfg.get('has_logical_conflict', False)
-                    if getattr(card, 'has_logical_conflict', False) != has_logical:
-                        card.has_logical_conflict = has_logical
-                        card_changed = True
-
-                    if card_changed:
-                        change_count += 1
-                        card._update_style()
         
-        # Note: Bulk DB update now handled INSIDE the background worker thread.
-        # self.db.update_visual_flags_bulk(bulk_updates) # Removed
+        # Helper to normalize path for matching (same logic as Worker)
+        def norm_match(p):
+            if not p: return ""
+            p = p.replace('\\', '/')
+            return p.lower() if os.name == 'nt' else p
+
+        # Pre-process abs_config_map keys for speed
+        norm_abs_map = {norm_match(k): v for k, v in abs_config_map.items()}
+
+        pkg_lay = getattr(self, 'pkg_layout', None)
+        if pkg_lay:
+            for i in range(pkg_lay.count()):
+                item = pkg_lay.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    card_count += 1
+                    card_changed = False
+                    
+                    # Match by normalized absolute path
+                    path_key = norm_match(getattr(card, 'path', ''))
+                    cfg = norm_abs_map.get(path_key, {})
+                    
+                    if cfg:
+                        is_alt = bool(cfg.get('is_library_alt_version', False))
+                        if getattr(card, 'is_library_alt_version', False) != is_alt:
+                            card.is_library_alt_version = is_alt
+                            card_changed = True
+    
+                        has_logical = bool(cfg.get('has_logical_conflict', False))
+                        if getattr(card, 'has_logical_conflict', False) != has_logical:
+                            card.has_logical_conflict = has_logical
+                            card_changed = True
+    
+                        if card_changed:
+                            change_count += 1
+                            card._update_style()
         
-        # Still need to update category summary UI (green frames)
-        self._refresh_category_cards_cached(result.get('all_configs', {}))
+        # Phase 28: Refresh category borders (Hierarchical status)
+        # CRITICAL FIX: Must pass Relative Path map (all_configs) to _refresh_category_cards_cached
+        # passing abs_config_map was causing every folder to show ZERO status.
+        self._refresh_category_cards_cached(all_configs)
         
         if hasattr(self, 'library_panel') and self.library_panel:
              self.library_panel.refresh()
@@ -775,13 +787,15 @@ class LMDeploymentOpsMixin:
         target_root = app_data.get(self.current_target_key)
         if not target_root: return
         
-        for i in range(self.cat_layout.count()):
-            item = self.cat_layout.itemAt(i)
-            if item and item.widget():
-                card = item.widget()
-                if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
-                    has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                    card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_unlinked_children=has_unlinked, has_partial=has_partial)
+        cat_lay = getattr(self, 'cat_layout', None)
+        if cat_lay:
+            for i in range(cat_lay.count()):
+                item = cat_lay.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
+                        has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                        card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_unlinked_children=has_unlinked, has_partial=has_partial)
 
     def _on_card_deployment_requested(self, path):
         """Phase 30: Handle direct deployment toggle from card overlay button."""

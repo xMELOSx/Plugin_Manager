@@ -473,7 +473,12 @@ class LMFileOpsMixin:
                         w_path = norm(w.path or "")
                         if w_path == target_path:
                             # self.logger.debug(f"[CardUpdate] Found card: {w.folder_name}")
-                            w.update_link_status()
+                            if getattr(w, 'is_package', True):
+                                w.update_link_status()
+                            else:
+                                # For categories, we need a hierarchical refresh!
+                                if hasattr(self, '_refresh_category_cards'):
+                                    self._refresh_category_cards()
                             card_found = True
                             break
             if card_found: break

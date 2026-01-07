@@ -239,6 +239,10 @@ class LMPresetsMixin:
                 self.deployer.cleanup_links_in_target(target_root, storage_root)
                 QMessageBox.information(self, "Success", "All links unloaded.")
                 self._on_app_changed(self.app_combo.currentIndex()) # Refresh view
+                
+                # Phase 28/Debug: Explicitly clear all highlight borders after bulk unlink
+                if hasattr(self, '_refresh_tag_visuals'):
+                    self._refresh_tag_visuals()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Unload failed: {e}")
 

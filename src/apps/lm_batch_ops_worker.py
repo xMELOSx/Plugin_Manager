@@ -33,6 +33,15 @@ class TagConflictWorker(QObject):
             # Step 1: Collect Active State (Linked items) and Library Names
             linked_count = 0
             for p, cfg in all_configs.items():
+                # Skip trash items and corrupted paths
+                if '/Trash/' in p or p.startswith('..') or '/Trash' in p:
+                    continue
+                
+                # Skip orphaned DB entries (folder no longer exists on disk)
+                abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
+                if not os.path.exists(abs_check):
+                    continue
+                    
                 if cfg.get('last_known_status') == 'linked':
                     linked_count += 1
                     # Library tracking
@@ -75,6 +84,15 @@ class TagConflictWorker(QObject):
             abs_config_map = {} # For UI thread matching
 
             for p, cfg in all_configs.items():
+                # Skip trash items and corrupted paths (same filter as Step 1)
+                if '/Trash/' in p or p.startswith('..') or '/Trash' in p:
+                    continue
+                
+                # Skip orphaned DB entries (folder no longer exists on disk)
+                abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
+                if not os.path.exists(abs_check):
+                    continue
+                    
                 # Normalized path for matching
                 norm_p = p.replace('\\', '/')
                 rel_p = p
@@ -111,9 +129,11 @@ class TagConflictWorker(QObject):
                         if m.get('path') == p: continue
                         if scope == 'global' or m['scope'] == 'global':
                             has_logical_conflict = True
+                            print(f"[ConflictDebug] TAG GLOBAL: '{p}' conflicts with '{m.get('path')}' via tag '{tag}'")
                             break
                         if scope == 'category' and m['cat'] == my_cat:
                             has_logical_conflict = True
+                            print(f"[ConflictDebug] TAG CATEGORY: '{p}' conflicts with '{m.get('path')}' via tag '{tag}' in category '{my_cat}'")
                             break
                 
                 # C. Global Physical Occupancy Check
@@ -123,10 +143,12 @@ class TagConflictWorker(QObject):
                     norm_target = target_path.replace('\\', '/').lower()
                     if norm_target in active_targets_map and active_targets_map[norm_target] != p:
                         has_logical_conflict = True
+                        print(f"[ConflictDebug] PHYSICAL OCCUPANCY: '{p}' conflicts with '{active_targets_map[norm_target]}' at target '{norm_target}'")
                 
                 # D. Physical status override
                 if not has_logical_conflict and status == 'conflict':
                     has_logical_conflict = True
+                    print(f"[ConflictDebug] DB STATUS: '{p}' has 'conflict' status in DB")
 
                 # Step 2.6: Persistent marking
                 cfg['has_logical_conflict'] = has_logical_conflict
@@ -140,8 +162,9 @@ class TagConflictWorker(QObject):
                     'has_logical_conflict': 1 if has_logical_conflict else 0,
                     'is_library_alt_version': 1 if is_library_alt_version else 0
                 }
-                # Prepare result for UI thread matching by absolute path
-                abs_config_map[abs_p] = cfg
+                # Prepare result for UI thread matching by absolute path (Case-insensitive for Windows)
+                match_p = abs_p.lower() if os.name == 'nt' else abs_p
+                abs_config_map[match_p] = cfg
 
             # 2.7: Perform DB Update in Background Thread
             local_db.update_visual_flags_bulk(bulk_updates)

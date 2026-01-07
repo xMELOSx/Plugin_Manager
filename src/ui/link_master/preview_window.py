@@ -562,18 +562,18 @@ class PreviewWindow(QWidget):
     def _apply_style(self):
         self.setStyleSheet("""
             PreviewWindow {
-                background-color: #1a1a1a;
+                background-color: #2b2b2b;
             }
             QWidget {
-                background-color: #1e1e1e;
+                background-color: #2b2b2b;
                 color: #e0e0e0;
             }
             QWidget#navBar, QWidget#videoControls {
-                background-color: #2d2d2d;
-                border: 1px solid #3d3d3d;
+                background-color: #333333;
+                border: 1px solid #444444;
             }
             QWidget#propContainer {
-                background-color: #1e1e1e;
+                background-color: #2b2b2b;
             }
             QLabel {
                 color: #e0e0e0;
@@ -581,7 +581,7 @@ class PreviewWindow(QWidget):
                 background-color: transparent;
             }
             QLabel#readOnlyField {
-                background-color: #2d2d2d;
+                background-color: #333333;
                 padding: 5px;
                 border-radius: 3px;
             }
@@ -597,9 +597,9 @@ class PreviewWindow(QWidget):
                 background-color: #5d5d5d;
             }
             QLineEdit, QTextEdit {
-                background-color: #2d2d2d;
+                background-color: #333333;
                 color: #e0e0e0;
-                border: 1px solid #3d3d3d;
+                border: 1px solid #444444;
                 padding: 5px;
                 border-radius: 3px;
             }

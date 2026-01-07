@@ -131,6 +131,9 @@ class LMDisplayMixin:
             if hasattr(self.cat_layout, 'setBatchMode'):
                 self.cat_layout.setBatchMode(True)
             
+            # Disable updates to prevent flicker and intermediate repaints
+            self.cat_container.setUpdatesEnabled(False)
+            
             for i in range(count):
                 widget = self.cat_layout.itemAt(i).widget()
                 if hasattr(widget, 'set_display_mode'):
@@ -146,6 +149,8 @@ class LMDisplayMixin:
             if hasattr(self.cat_layout, 'setBatchMode'):
                 self.cat_layout.setBatchMode(False)
                 
+            self.cat_container.setUpdatesEnabled(True)
+            
             t_end = time.perf_counter()
             logging.info(f"[DisplayMode] Cat toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
 
@@ -231,15 +236,25 @@ class LMDisplayMixin:
     def _toggle_show_hidden(self):
         """Toggle visibility of hidden folders."""
         self.show_hidden = not self.show_hidden
+        # Update toggle buttons to reflect state
+        if hasattr(self, 'btn_show_hidden'):
+             self.btn_show_hidden.setChecked(self.show_hidden)
+        if hasattr(self, 'btn_trash'):
+             self.btn_trash.setChecked(self.show_hidden)
+             
+        self._set_btn_show_hidden_style()
+        self._apply_card_filters()
+        self._save_last_state()
+
+    def _set_btn_show_hidden_style(self):
+        if not hasattr(self, 'btn_show_hidden'): return
         if self.show_hidden:
             self.btn_show_hidden.setText("👁")
             self.btn_show_hidden.setToolTip(_("Showing hidden Categories/Packages (click to hide)"))
-            self.btn_show_hidden.setStyleSheet(self.btn_selected_style)
+            # ActionButton applies its own checked style, but we maintain the legacy text/tooltip
         else:
             self.btn_show_hidden.setText("=")
             self.btn_show_hidden.setToolTip(_("Show hidden Categories/Packages"))
-            self.btn_show_hidden.setStyleSheet(self.btn_normal_style)
-        self._apply_card_filters()
 
     def _toggle_favorite_filter(self):
         """Toggle filter to show only favorited items."""

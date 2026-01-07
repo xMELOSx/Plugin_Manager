@@ -17,9 +17,11 @@ class FlowLayout(QLayout):
 
     def setBatchMode(self, enabled: bool):
         """Phase 1.0.7: Toggle batch mode to skip doLayout during bulk additions."""
+        if self._batch_mode == enabled:
+            return
         self._batch_mode = enabled
         if not enabled:
-            self.invalidate() # Trigger layout if batch mode disabled
+            self.invalidate()
 
     def __del__(self):
         item = self.takeAt(0)
@@ -109,7 +111,9 @@ class FlowLayout(QLayout):
                 lineHeight = 0
             
             if not testOnly:
-                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+                new_rect = QRect(QPoint(x, y), item.sizeHint())
+                if wid.geometry() != new_rect:
+                    item.setGeometry(new_rect)
             
             x = nextX
             lineHeight = max(lineHeight, item.sizeHint().height())

@@ -665,6 +665,10 @@ class LMScanHandlerMixin:
         if hasattr(self, 'total_link_count_label'):
             self.total_link_count_label.setText(_("Total Links: {count}").format(count=total_link_count))
 
+        # Phase 33/Debug: Ensure newly created cards receive the latest highlight calculations
+        if hasattr(self, '_refresh_tag_visuals'):
+            self._refresh_tag_visuals()
+
         # Phase 28: Also update the local categorization link count (Packages)
         if hasattr(self, 'pkg_link_count_label'):
             local_link_count = 0
@@ -718,6 +722,10 @@ class LMScanHandlerMixin:
             self.logger.info("Manual rebuild complete.")
             self._update_total_link_count()
             self._refresh_current_view() # Refresh UI to show new colors
+            
+            # Phase 28: Also trigger tag visual refresh for library version syncing
+            if hasattr(self, '_refresh_tag_visuals'):
+                self._refresh_tag_visuals()
         except Exception as e:
             self.logger.error(f"Manual rebuild failed: {e}")
 
