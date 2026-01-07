@@ -201,22 +201,41 @@ class LMDeploymentOpsMixin:
         return None
 
     def _deploy_category(self, category_rel_path: str, update_ui: bool = True) -> dict:
-        """Deploy all packages within a category folder.
+        """Deploy the category folder itself (same behavior as deploying a package).
         
         Features:
-        - Validates internal conflicts (same tag, same library) and blocks if found
-        - Unlinks existing category items before deploying
-        - Tracks category-level deployment status
+        - Deploys the CATEGORY FOLDER itself, not individual child packages
+        - Validates internal conflicts (same tag, same library within category) and blocks if found
+        - Detects deployed child packages and offers swap (unlink children, deploy category)
+        - Inherits global conflict tags from all child packages
         - Shows deep blue border for category-deployed state
         
         Returns:
-            dict with keys: 'success' (bool), 'deployed_count' (int), 'errors' (list), 'blocked_reason' (str or None)
+            dict with keys:
+            - 'success' (bool): Whether category was deployed
+            - 'needs_swap' (bool): True if child packages are deployed and need to be swapped
+            - 'deployed_children' (list): List of deployed child rel_paths (for swap dialog)
+            - 'blocked_reason' (str or None): Reason if blocked due to internal conflicts
+            - 'inherited_tags' (list): Global conflict tags inherited from children
+            - 'errors' (list): Error messages
         """
-        result = {'success': False, 'deployed_count': 0, 'errors': [], 'blocked_reason': None}
+        result = {
+            'success': False, 
+            'needs_swap': False,
+            'deployed_children': [],
+            'blocked_reason': None,
+            'inherited_tags': [],
+            'errors': []
+        }
         
         app_data = self.app_combo.currentData()
         if not app_data:
             result['errors'].append("No app selected")
+            return result
+        
+        target_root = app_data.get(self.current_target_key)
+        if not target_root:
+            result['errors'].append("No target directory")
             return result
         
         category_abs = os.path.join(self.storage_root, category_rel_path)
@@ -229,33 +248,34 @@ class LMDeploymentOpsMixin:
         try:
             for item in os.listdir(category_abs):
                 item_path = os.path.join(category_abs, item)
-                if os.path.isdir(item_path) and not item.startswith('.') and item != '_Trash' and item != 'Trash':
+                if os.path.isdir(item_path) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
                     child_rel = os.path.join(category_rel_path, item).replace('\\', '/')
                     child_packages.append(child_rel)
         except Exception as e:
             result['errors'].append(f"Failed to list children: {e}")
             return result
         
-        if not child_packages:
-            result['errors'].append("No packages found in category")
-            return result
-        
-        # Step 2: Validate internal conflicts (same tag within category)
+        # Step 2: Validate internal conflicts (same tag/library within category)
         tag_map = {}  # tag -> list of rel_paths
         library_map = {}  # lib_name -> list of rel_paths
+        all_global_tags = set()  # Inherited from children with global scope
         
         for child_rel in child_packages:
             config = self.db.get_folder_config(child_rel) or {}
             
-            # Check tags
+            # Collect tags for conflict detection
             conflict_scope = config.get('conflict_scope', 'disabled')
-            if conflict_scope != 'disabled':
-                tags_raw = config.get('conflict_tags', '')
-                if tags_raw:
-                    for tag in [t.strip().lower() for t in tags_raw.split(',') if t.strip()]:
+            tags_raw = config.get('conflict_tags', '')
+            if tags_raw:
+                for tag in [t.strip().lower() for t in tags_raw.split(',') if t.strip()]:
+                    if conflict_scope != 'disabled':
                         if tag not in tag_map:
                             tag_map[tag] = []
                         tag_map[tag].append(child_rel)
+                    
+                    # Inherit global scope tags
+                    if conflict_scope == 'global':
+                        all_global_tags.add(tag)
             
             # Check library (same library name within category)
             if config.get('is_library', 0):
@@ -264,6 +284,8 @@ class LMDeploymentOpsMixin:
                     if lib_name not in library_map:
                         library_map[lib_name] = []
                     library_map[lib_name].append(child_rel)
+        
+        result['inherited_tags'] = list(all_global_tags)
         
         # Step 3: Block if internal conflicts exist
         conflicts = []
@@ -279,36 +301,67 @@ class LMDeploymentOpsMixin:
             result['blocked_reason'] = "\n".join(conflicts)
             return result
         
-        # Step 4: Unlink existing category items (if any are linked)
+        # Step 4: Check if any child packages are already deployed (need swap)
+        deployed_children = []
         for child_rel in child_packages:
-            try:
-                self._unlink_single(child_rel, update_ui=False, _cascade=False)
-            except:
-                pass  # Ignore unlink errors
+            child_config = self.db.get_folder_config(child_rel) or {}
+            status = child_config.get('last_known_status', 'none')
+            if status == 'linked':
+                deployed_children.append(child_rel)
         
-        # Step 5: Deploy all packages
-        deployed_count = 0
-        for child_rel in child_packages:
-            try:
-                if self._deploy_single(child_rel, update_ui=False, show_result=False):
-                    deployed_count += 1
-                else:
-                    result['errors'].append(f"Failed to deploy: {os.path.basename(child_rel)}")
-            except Exception as e:
-                result['errors'].append(f"{os.path.basename(child_rel)}: {e}")
+        if deployed_children:
+            result['needs_swap'] = True
+            result['deployed_children'] = deployed_children
+            # Don't auto-deploy - let the handler show swap confirmation
+            return result
         
-        # Step 6: Mark category as deployed in DB
-        self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
+        # Step 5: Deploy the CATEGORY FOLDER ITSELF (same as _deploy_single)
+        try:
+            deploy_success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
+            if deploy_success:
+                # Mark category as deployed
+                self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
+                result['success'] = True
+                self.logger.info(f"[CategoryDeploy] Deployed category: {category_rel_path}")
+            else:
+                result['errors'].append("Failed to deploy category folder")
+        except Exception as e:
+            result['errors'].append(f"Deploy error: {e}")
         
-        result['success'] = deployed_count > 0
-        result['deployed_count'] = deployed_count
-        
-        # Step 7: Update UI
-        if update_ui:
+        # Step 6: Update UI
+        if update_ui and result['success']:
             self._refresh_tag_visuals()
             self._refresh_category_cards()
         
-        self.logger.info(f"[CategoryDeploy] {category_rel_path}: {deployed_count}/{len(child_packages)} deployed")
+        return result
+
+    def _deploy_category_with_swap(self, category_rel_path: str, deployed_children: list, update_ui: bool = True) -> dict:
+        """Deploy category after unlinking deployed child packages (swap operation)."""
+        result = {'success': False, 'errors': []}
+        
+        # Step 1: Unlink all deployed children
+        for child_rel in deployed_children:
+            try:
+                self._unlink_single(child_rel, update_ui=False, _cascade=False)
+            except Exception as e:
+                result['errors'].append(f"Failed to unlink {os.path.basename(child_rel)}: {e}")
+        
+        # Step 2: Deploy the category folder itself
+        try:
+            deploy_success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
+            if deploy_success:
+                self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
+                result['success'] = True
+                self.logger.info(f"[CategoryDeploy+Swap] Deployed: {category_rel_path} (swapped {len(deployed_children)} packages)")
+            else:
+                result['errors'].append("Failed to deploy category folder")
+        except Exception as e:
+            result['errors'].append(f"Deploy error: {e}")
+        
+        # Step 3: Update UI
+        if update_ui and result['success']:
+            self._refresh_tag_visuals()
+            self._refresh_category_cards()
         
         return result
 

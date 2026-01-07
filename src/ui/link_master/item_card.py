@@ -267,6 +267,9 @@ class ItemCard(QFrame):
         self.has_unlinked_children = kwargs.get('has_unlinked', getattr(self, 'has_unlinked_children', False))
         self.has_favorite = kwargs.get('has_favorite', getattr(self, 'has_favorite', False))
         self.has_conflict_children = kwargs.get('has_conflict_children', getattr(self, 'has_conflict_children', False))
+        
+        # Category Deploy Status (Phase: Category Deploy Enhancement)
+        self.category_deploy_status = kwargs.get('category_deploy_status', getattr(self, 'category_deploy_status', None))
 
         # 4. Update Config/Rules
         self.target_override = kwargs.get('target_override', self.target_override)
@@ -708,7 +711,8 @@ class ItemCard(QFrame):
             has_target_conflict=getattr(self, 'has_target_conflict', False),
             has_linked_children=getattr(self, 'has_linked_children', False),
             has_unlinked_children=getattr(self, 'has_unlinked_children', False),
-            has_partial_children=getattr(self, 'has_partial_children', False)
+            has_partial_children=getattr(self, 'has_partial_children', False),
+            category_deploy_status=getattr(self, 'category_deploy_status', None)
         )
 
         # Update name label color for hidden state

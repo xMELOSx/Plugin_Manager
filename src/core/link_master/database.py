@@ -434,7 +434,12 @@ class LinkMasterDB:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_library_alt_version INTEGER DEFAULT 0")
             except: pass
 
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN category_deploy_status TEXT DEFAULT NULL")
+            except: pass
+
             # Create indexes for performance
+
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_lib_name ON lm_folder_config (lib_name)")
             except: pass

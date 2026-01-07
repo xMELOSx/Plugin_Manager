@@ -26,6 +26,7 @@ from src.core.link_master.database import get_lm_registry, get_lm_db
 from src.core.link_master.scanner import Scanner
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.item_card import ItemCard
+from src.ui.styles import DialogStyles
 from src.core.link_master.deployer import Deployer
 from src.ui.link_master.single_folder_proxy import SingleFolderProxyModel
 from src.ui.link_master.explorer_window import ExplorerPanel # Renamed
@@ -3084,65 +3085,85 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             QMenu::item:selected { background-color: #3498db; color: white; }
             QMenu::item:disabled { color: #555; }
         """
+    
+    def _show_styled_message(self, title, text, icon=QMessageBox.Icon.Information, details=None):
+        """Show a styled message box using standard application style."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        msg.setIcon(icon)
+        msg.setText(text)
+        if details:
+            msg.setInformativeText(details)
+        msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
+        return msg.exec()
 
     def _handle_deploy_single(self, rel_path):
         """Deploy a single item from context menu."""
         if not self._deploy_single(rel_path, update_ui=True):
-            QMessageBox.warning(self, "Deploy Error", f"Failed to deploy {rel_path}")
+            self._show_styled_message(_("Deploy Error"), f"Failed to deploy {rel_path}", QMessageBox.Icon.Warning)
 
     def _handle_deploy_category(self, rel_path):
-        """Deploy all packages within a category from context menu."""
-        result = self._deploy_category(rel_path, update_ui=True)
+        """Deploy category folder itself from context menu."""
+        result = self._deploy_category(rel_path, update_ui=False)
         
+        # Case 1: Blocked due to internal conflicts
         if result.get('blocked_reason'):
-            # Show block dialog with reason
-            msg = QMessageBox(self)
-            msg.setWindowTitle(_("Category Deploy Blocked"))
-            msg.setIcon(QMessageBox.Icon.Warning)
-            msg.setText(_("Cannot deploy category due to internal conflicts:"))
-            msg.setInformativeText(result['blocked_reason'])
-            msg.setStyleSheet("""
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            """)
-            msg.exec()
+            self._show_styled_message(
+                _("Category Deploy Blocked"),
+                _("Cannot deploy category due to internal conflicts:"),
+                QMessageBox.Icon.Warning,
+                result['blocked_reason']
+            )
             return
         
+        # Case 2: Needs swap (child packages are deployed)
+        if result.get('needs_swap'):
+            deployed = result.get('deployed_children', [])
+            deployed_names = [os.path.basename(p) for p in deployed]
+            
+            msg = QMessageBox(self)
+            msg.setWindowTitle(_("Swap Required"))
+            msg.setIcon(QMessageBox.Icon.Question)
+            msg.setText(_("The following packages are already deployed:"))
+            msg.setInformativeText("\n".join(deployed_names[:10]) + 
+                                   (f"\n... ({len(deployed)} total)" if len(deployed) > 10 else ""))
+            msg.setDetailedText(_("Deploying the category will unlink these packages and deploy the category folder instead."))
+            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg.button(QMessageBox.StandardButton.Yes).setText(_("Swap (Unlink & Deploy Category)"))
+            msg.button(QMessageBox.StandardButton.No).setText(_("Cancel"))
+            msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
+            
+            if msg.exec() == QMessageBox.StandardButton.Yes:
+                # Perform swap
+                swap_result = self._deploy_category_with_swap(rel_path, deployed, update_ui=True)
+                if swap_result.get('success'):
+                    if hasattr(self, '_show_toast'):
+                        self._show_toast(_("Category deployed (swapped {count} packages)").format(count=len(deployed)))
+                else:
+                    errors = swap_result.get('errors', [])
+                    if errors:
+                        QMessageBox.warning(self, "Category Deploy", "\n".join(errors[:5]))
+            return
+        
+        # Case 3: Direct deploy (no conflicts, no swap needed)
         if result.get('success'):
-            count = result.get('deployed_count', 0)
-            self.logger.info(f"Category deployed: {count} packages")
-            # Show toast or status bar message
+            self.logger.info(f"Category deployed: {rel_path}")
+            # Refresh UI
+            self._refresh_tag_visuals()
+            self._refresh_category_cards()
             if hasattr(self, '_show_toast'):
-                self._show_toast(_("{count} packages deployed").format(count=count))
+                self._show_toast(_("Category deployed"))
         else:
             errors = result.get('errors', [])
             if errors:
-                QMessageBox.warning(self, "Category Deploy", "\n".join(errors[:5]))
+                self._show_styled_message(_("Category Deploy"), _("Errors occurred during deployment:"), QMessageBox.Icon.Warning, "\n".join(errors[:5]))
+
 
     def _handle_unlink_category(self, rel_path):
-        """Unlink all packages within a category."""
-        app_data = self.app_combo.currentData()
-        if not app_data:
-            return
-        
-        category_abs = os.path.join(self.storage_root, rel_path)
-        unlinked_count = 0
-        
+        """Unlink the category folder itself."""
+        # Unlink the category folder (same as unlink single)
         try:
-            for item in os.listdir(category_abs):
-                item_path = os.path.join(category_abs, item)
-                if os.path.isdir(item_path) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
-                    child_rel = os.path.join(rel_path, item).replace('\\', '/')
-                    try:
-                        self._unlink_single(child_rel, update_ui=False, _cascade=False)
-                        unlinked_count += 1
-                    except:
-                        pass
+            self._unlink_single(rel_path, update_ui=False, _cascade=True)
         except Exception as e:
             self.logger.error(f"Unlink category error: {e}")
         
@@ -3154,7 +3175,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._refresh_category_cards()
         
         if hasattr(self, '_show_toast'):
-            self._show_toast(_("{count} packages unlinked").format(count=unlinked_count))
+            self._show_toast(_("Category unlinked"))
+
 
     def _handle_unlink_single(self, rel_path):
 
