@@ -6,11 +6,13 @@ Link Master: Trash Operations Mixin
 Extracted from LinkMasterWindow for modularity.
 """
 import os
-import shutil
 import time
 from PyQt6.QtWidgets import QMessageBox
 from src.core.lang_manager import _
 from src.core.link_master.core_paths import get_trash_dir, get_trash_path_for_item
+from src.core.file_handler import FileHandler
+
+_file_handler = FileHandler()
 
 
 class LMTrashMixin:
@@ -38,7 +40,7 @@ class LMTrashMixin:
         self.tag_bar.clear_selection()
         
         if not os.path.exists(trash_path):
-            try: os.makedirs(trash_path)
+            try: _file_handler.create_directory(trash_path)
             except: pass
         self._load_items_for_path(trash_path)
         self._hide_search_indicator()
@@ -71,7 +73,7 @@ class LMTrashMixin:
             dest = os.path.join(trash_root, f"{name}_{int(time.time())}")
             
         try:
-            shutil.move(path, dest)
+            _file_handler.move_path(path, dest)
             self.logger.info(f"Moved {name} to Trash")
 
             # Store origin for restore
@@ -148,7 +150,7 @@ class LMTrashMixin:
             
             dest_parent = os.path.dirname(dest_abs)
             if not os.path.exists(dest_parent):
-                os.makedirs(dest_parent)
+                _file_handler.create_directory(dest_parent)
             
             if os.path.exists(dest_abs):
                 msg_box = QMessageBox(self)
@@ -204,7 +206,7 @@ class LMTrashMixin:
     def _do_restore_move(self, src_path, dest_abs, rel_path):
         """Actually move the file from trash to original location."""
         try:
-            shutil.move(src_path, dest_abs)
+            _file_handler.move_path(src_path, dest_abs)
             self.logger.info(f"Restored {os.path.basename(src_path)} to {os.path.relpath(dest_abs, self.storage_root)}")
             
             self.db.store_item_origin(rel_path, None)
@@ -222,7 +224,7 @@ class LMTrashMixin:
         if not app_data: return
         unclass_root = os.path.join(app_data['storage_root'], "Unclassified")
         if not os.path.exists(unclass_root):
-            os.makedirs(unclass_root)
+            _file_handler.create_directory(unclass_root)
             self.db.update_folder_display_config("Unclassified", folder_type='package')
             
         name = os.path.basename(path)
@@ -249,7 +251,7 @@ class LMTrashMixin:
              return
              
         try:
-            shutil.move(path, dest)
+            _file_handler.move_path(path, dest)
             self.logger.info(f"Moved {name} to Unclassified")
             self._refresh_current_view()
         except Exception as e:

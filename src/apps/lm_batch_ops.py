@@ -14,6 +14,9 @@ from PyQt6.QtCore import QThread
 from src.core.lang_manager import _
 from .lm_batch_ops_worker import TagConflictWorker
 from src.core.link_master.core_paths import get_trash_dir
+from src.core.file_handler import FileHandler
+
+_file_handler = FileHandler()
 
 
 class LMBatchOpsMixin:
@@ -671,8 +674,7 @@ class LMBatchOpsMixin:
             dest = os.path.join(trash_root, f"{name}_{int(time.time())}")
             
         try:
-            import shutil
-            shutil.move(abs_path, dest)
+            _file_handler.move_path(abs_path, dest)
             self.logger.info(f"Moved {name} to Trash")
 
             # Store origin for restore

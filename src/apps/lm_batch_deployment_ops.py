@@ -11,6 +11,9 @@ from PyQt6.QtCore import QThread, QTimer
 from src.core.lang_manager import _
 from src.core.link_master.deployer import DeploymentCollisionError
 from .lm_batch_ops_worker import TagConflictWorker
+from src.core.file_handler import FileHandler
+
+_file_handler = FileHandler()
 
 class LMDeploymentOpsMixin:
     """Mixin for deployment-related batch operations."""
@@ -197,9 +200,122 @@ class LMDeploymentOpsMixin:
         
         return None
 
+    def _deploy_category(self, category_rel_path: str, update_ui: bool = True) -> dict:
+        """Deploy all packages within a category folder.
+        
+        Features:
+        - Validates internal conflicts (same tag, same library) and blocks if found
+        - Unlinks existing category items before deploying
+        - Tracks category-level deployment status
+        - Shows deep blue border for category-deployed state
+        
+        Returns:
+            dict with keys: 'success' (bool), 'deployed_count' (int), 'errors' (list), 'blocked_reason' (str or None)
+        """
+        result = {'success': False, 'deployed_count': 0, 'errors': [], 'blocked_reason': None}
+        
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            result['errors'].append("No app selected")
+            return result
+        
+        category_abs = os.path.join(self.storage_root, category_rel_path)
+        if not os.path.isdir(category_abs):
+            result['errors'].append(f"Not a directory: {category_rel_path}")
+            return result
+        
+        # Step 1: Collect all child packages (immediate subdirectories)
+        child_packages = []
+        try:
+            for item in os.listdir(category_abs):
+                item_path = os.path.join(category_abs, item)
+                if os.path.isdir(item_path) and not item.startswith('.') and item != '_Trash' and item != 'Trash':
+                    child_rel = os.path.join(category_rel_path, item).replace('\\', '/')
+                    child_packages.append(child_rel)
+        except Exception as e:
+            result['errors'].append(f"Failed to list children: {e}")
+            return result
+        
+        if not child_packages:
+            result['errors'].append("No packages found in category")
+            return result
+        
+        # Step 2: Validate internal conflicts (same tag within category)
+        tag_map = {}  # tag -> list of rel_paths
+        library_map = {}  # lib_name -> list of rel_paths
+        
+        for child_rel in child_packages:
+            config = self.db.get_folder_config(child_rel) or {}
+            
+            # Check tags
+            conflict_scope = config.get('conflict_scope', 'disabled')
+            if conflict_scope != 'disabled':
+                tags_raw = config.get('conflict_tags', '')
+                if tags_raw:
+                    for tag in [t.strip().lower() for t in tags_raw.split(',') if t.strip()]:
+                        if tag not in tag_map:
+                            tag_map[tag] = []
+                        tag_map[tag].append(child_rel)
+            
+            # Check library (same library name within category)
+            if config.get('is_library', 0):
+                lib_name = (config.get('lib_name') or os.path.basename(child_rel)).strip().lower()
+                if lib_name:
+                    if lib_name not in library_map:
+                        library_map[lib_name] = []
+                    library_map[lib_name].append(child_rel)
+        
+        # Step 3: Block if internal conflicts exist
+        conflicts = []
+        for tag, paths in tag_map.items():
+            if len(paths) > 1:
+                conflicts.append(f"Tag '{tag}': {', '.join([os.path.basename(p) for p in paths])}")
+        
+        for lib, paths in library_map.items():
+            if len(paths) > 1:
+                conflicts.append(f"Library '{lib}': {', '.join([os.path.basename(p) for p in paths])}")
+        
+        if conflicts:
+            result['blocked_reason'] = "\n".join(conflicts)
+            return result
+        
+        # Step 4: Unlink existing category items (if any are linked)
+        for child_rel in child_packages:
+            try:
+                self._unlink_single(child_rel, update_ui=False, _cascade=False)
+            except:
+                pass  # Ignore unlink errors
+        
+        # Step 5: Deploy all packages
+        deployed_count = 0
+        for child_rel in child_packages:
+            try:
+                if self._deploy_single(child_rel, update_ui=False, show_result=False):
+                    deployed_count += 1
+                else:
+                    result['errors'].append(f"Failed to deploy: {os.path.basename(child_rel)}")
+            except Exception as e:
+                result['errors'].append(f"{os.path.basename(child_rel)}: {e}")
+        
+        # Step 6: Mark category as deployed in DB
+        self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
+        
+        result['success'] = deployed_count > 0
+        result['deployed_count'] = deployed_count
+        
+        # Step 7: Update UI
+        if update_ui:
+            self._refresh_tag_visuals()
+            self._refresh_category_cards()
+        
+        self.logger.info(f"[CategoryDeploy] {category_rel_path}: {deployed_count}/{len(child_packages)} deployed")
+        
+        return result
+
     def _deploy_single(self, rel_path, update_ui=True, show_result=False):
         """Deploy a single item by relative path. Core method for all deploy operations."""
         app_data = self.app_combo.currentData()
+
         if not app_data: return False
         target_root = app_data.get(self.current_target_key)
         if not target_root: return False
@@ -617,7 +733,7 @@ class LMDeploymentOpsMixin:
                     try:
                         if not os.listdir(curr):
                             self.logger.info(f"[Pruning] Removing empty directory: {curr}")
-                            os.rmdir(curr)
+                            _file_handler.remove_empty_dir(curr)
                             curr = os.path.dirname(curr)
                         else:
                             break
@@ -688,7 +804,7 @@ class LMDeploymentOpsMixin:
                 target_file = os.path.join(target_dir, f)
                 if os.path.exists(target_file) and not os.path.islink(target_file):
                     try:
-                        os.remove(target_file)
+                        _file_handler.remove_path(target_file)
                         deleted_count += 1
                         self.logger.debug(f"Deleted file: {target_file}")
                     except Exception as e:
@@ -712,7 +828,7 @@ class LMDeploymentOpsMixin:
                 try:
                     # Only remove if EMPTY
                     if not os.listdir(d):
-                        os.rmdir(d)
+                        _file_handler.remove_empty_dir(d)
                         deleted_count += 1
                         self.logger.debug(f"Pruned empty dir: {d}")
                 except Exception as e:

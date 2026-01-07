@@ -673,7 +673,9 @@ class LinkMasterDB:
                       'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
                       'lib_folder_id',
                       'has_logical_conflict', 'is_library_alt_version',
-                      'size_bytes', 'scanned_at']
+                      'size_bytes', 'scanned_at',
+                      'category_deploy_status']  # Phase: Category Deploy Enhancement
+
         updates = []
         params = []
         for k, v in kwargs.items():

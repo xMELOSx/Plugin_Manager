@@ -3090,7 +3090,74 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if not self._deploy_single(rel_path, update_ui=True):
             QMessageBox.warning(self, "Deploy Error", f"Failed to deploy {rel_path}")
 
+    def _handle_deploy_category(self, rel_path):
+        """Deploy all packages within a category from context menu."""
+        result = self._deploy_category(rel_path, update_ui=True)
+        
+        if result.get('blocked_reason'):
+            # Show block dialog with reason
+            msg = QMessageBox(self)
+            msg.setWindowTitle(_("Category Deploy Blocked"))
+            msg.setIcon(QMessageBox.Icon.Warning)
+            msg.setText(_("Cannot deploy category due to internal conflicts:"))
+            msg.setInformativeText(result['blocked_reason'])
+            msg.setStyleSheet("""
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            """)
+            msg.exec()
+            return
+        
+        if result.get('success'):
+            count = result.get('deployed_count', 0)
+            self.logger.info(f"Category deployed: {count} packages")
+            # Show toast or status bar message
+            if hasattr(self, '_show_toast'):
+                self._show_toast(_("{count} packages deployed").format(count=count))
+        else:
+            errors = result.get('errors', [])
+            if errors:
+                QMessageBox.warning(self, "Category Deploy", "\n".join(errors[:5]))
+
+    def _handle_unlink_category(self, rel_path):
+        """Unlink all packages within a category."""
+        app_data = self.app_combo.currentData()
+        if not app_data:
+            return
+        
+        category_abs = os.path.join(self.storage_root, rel_path)
+        unlinked_count = 0
+        
+        try:
+            for item in os.listdir(category_abs):
+                item_path = os.path.join(category_abs, item)
+                if os.path.isdir(item_path) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
+                    child_rel = os.path.join(rel_path, item).replace('\\', '/')
+                    try:
+                        self._unlink_single(child_rel, update_ui=False, _cascade=False)
+                        unlinked_count += 1
+                    except:
+                        pass
+        except Exception as e:
+            self.logger.error(f"Unlink category error: {e}")
+        
+        # Clear category deploy status
+        self.db.update_folder_display_config(rel_path, category_deploy_status=None)
+        
+        # Refresh UI
+        self._refresh_tag_visuals()
+        self._refresh_category_cards()
+        
+        if hasattr(self, '_show_toast'):
+            self._show_toast(_("{count} packages unlinked").format(count=unlinked_count))
+
     def _handle_unlink_single(self, rel_path):
+
         """Unlink a single item from context menu."""
         self._unlink_single(rel_path, update_ui=True)
 

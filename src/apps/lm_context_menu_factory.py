@@ -112,11 +112,37 @@ def create_item_context_menu(window, rel_path):
             status_res = window.deployer.get_link_status(target_link, expected_source=full_src, expected_transfer_mode=tm)
             status = status_res.get('status', 'none')
 
+            # Phase: Detect if this is a Category (has subfolders with packages)
+            is_category = False
+            child_count = 0
+            try:
+                for item in os.listdir(full_src):
+                    if os.path.isdir(os.path.join(full_src, item)) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
+                        child_count += 1
+                        if child_count > 0:
+                            is_category = True
+                            break
+            except:
+                pass
             
             # Phase 28: Check Tag Conflict
             tag_conflict = window._check_tag_conflict(rel_path, config, app_data)
             
-            if status == 'linked':
+            if is_category:
+                # Category-specific menu
+                category_status = config.get('category_deploy_status')
+                if category_status == 'deployed':
+                    act_unlink_cat = menu.addAction(_("🔗 Unlink Category (Unlink All)"))
+                    act_unlink_cat.triggered.connect(lambda: window._handle_unlink_category(rel_path))
+                else:
+                    act_dep_cat = menu.addAction(_("📦 Deploy Category (All Packages)"))
+                    act_dep_cat.triggered.connect(lambda: window._handle_deploy_category(rel_path))
+                    
+                    # Also offer normal deploy for compatibility
+                    act_dep = menu.addAction(_("🚀 Deploy Link"))
+                    act_dep.triggered.connect(lambda: window._handle_deploy_single(rel_path))
+            elif status == 'linked':
+
                 act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))
                 act_rem.triggered.connect(lambda: window._handle_unlink_single(rel_path))
             elif status == 'conflict':
