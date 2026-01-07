@@ -282,68 +282,78 @@ class LMFileOpsMixin:
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
                 app_pkg_style_default=app_data.get('default_package_style', 'image')
             )
-            if dialog.exec():
-                data = dialog.get_data()
-                LINK_AFFECTING_KEYS = {
-                    'folder_type', 'deploy_type', 'conflict_policy', 
-                    'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
-                }
-                impacts_link = any(k in data and data[k] != current_config.get(k) for k in LINK_AFFECTING_KEYS)
-                
-                self.db.update_folder_display_config(rel, **data)
-                
-                abs_norm = path.replace('\\', '/')
-                card = self._get_active_card_by_path(abs_norm)
-                if card:
-                    card.update_data(**data)
-                    if card.link_status == 'linked' and impacts_link:
-                        self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
-                        self._deploy_single(rel)
-                
-                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
-                if any(k in data for k in TAG_AFFECTING_KEYS):
-                     self._refresh_tag_visuals()
+            # Phase 35: Standardize on Non-modal for all property edits
+            dialog.config_saved.connect(lambda data: self._on_property_dialog_saved(data, rel, path, current_config))
+            self._active_prop_dialog = dialog # Prevent GC
+            dialog.show()
+            
         else:
             # Batch Mode
             dialog = FolderPropertiesDialog(
                 parent=self, 
-                folder_path="",
-                current_config={},
-                batch_mode=True, 
+                batch_mode=True,
                 app_name=app_data['name'],
-                storage_root=app_data.get('storage_root'),
+                storage_root=storage_root,
                 thumbnail_manager=self.thumbnail_manager,
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image')
+                app_pkg_style_default=app_data.get('default_package_style', 'image'),
+                app_skip_levels_default=app_data.get('default_skip_levels', 0)
             )
             
-            if dialog.exec():
-                data = dialog.get_data()
-                storage_root = app_data.get('storage_root')
-                batch_updates = {k: v for k, v in data.items() if v is not None}
-                if not batch_updates: return
-                
-                for path in self.selected_paths:
-                    try:
-                        rel = os.path.relpath(path, storage_root).replace('\\', '/')
-                        if rel == ".": rel = ""
-                        self.db.update_folder_display_config(rel, **batch_updates)
-                        
-                        abs_norm = path.replace('\\', '/')
-                        card = self._get_active_card_by_path(abs_norm)
-                        if card:
-                            card.update_data(**batch_updates)
-                            if card.link_status == 'linked' and any(k in batch_updates for k in {'deploy_type', 'conflict_policy', 'deployment_rules'}):
-                                self.logger.info(f"Auto-syncing batch item {rel}...")
-                                self._deploy_single(rel)
-                    except Exception as e:
-                        self.logger.error(f"Batch update failed for {path}: {e}")
-                
-                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
-                if any(k in batch_updates for k in TAG_AFFECTING_KEYS):
-                     self._refresh_tag_visuals()
+            # Phase 35: Use signal for batch save too
+            dialog.config_saved.connect(self._on_batch_property_dialog_saved)
+            self._active_prop_dialog = dialog
+            dialog.show()
+
+    def _on_property_dialog_saved(self, data, rel, path, current_config):
+        """Asynchronous callback for property save in non-modal mode."""
+        LINK_AFFECTING_KEYS = {
+            'folder_type', 'deploy_type', 'conflict_policy', 
+            'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
+        }
+        impacts_link = any(k in data and data[k] != current_config.get(k) for k in LINK_AFFECTING_KEYS)
+        
+        self.db.update_folder_display_config(rel, **data)
+        
+        abs_norm = path.replace('\\', '/')
+        card = self._get_active_card_by_path(abs_norm)
+        if card:
+            card.update_data(**data)
+            if card.link_status == 'linked' and impacts_link:
+                self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
+                self._deploy_single(rel)
+        
+        TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+        if any(k in data for k in TAG_AFFECTING_KEYS):
+             self._refresh_tag_visuals()
+
+    def _on_batch_property_dialog_saved(self, data):
+        """Asynchronous callback for batch property save."""
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        
+        # Filter out None/No Change items in batch mode
+        clean_data = {k: v for k, v in data.items() if v != "KEEP"}
+        if not clean_data: return
+
+        for path in self.selected_paths:
+            try:
+                rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                if rel == ".": rel = ""
+            except: continue
+            
+            self.db.update_folder_display_config(rel, **clean_data)
+            
+            abs_norm = path.replace('\\', '/')
+            card = self._get_active_card_by_path(abs_norm)
+            if card:
+                card.update_data(**clean_data)
+        
+        self._refresh_tag_visuals()
+        self.logger.info(f"Batch updated properties for {len(self.selected_paths)} items asynchronously.")
 
     def _set_visibility_single(self, rel_path, visible: bool, update_ui=True):
         """Set visibility for a single item."""

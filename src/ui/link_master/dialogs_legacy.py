@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                              QGroupBox, QCheckBox, QWidget, QListWidget, QListWidgetItem,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
-                             QRadioButton, QButtonGroup)
+                             QRadioButton, QButtonGroup, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
@@ -572,6 +572,10 @@ class AppRegistrationDialog(QDialog):
 
 class FolderPropertiesDialog(QDialog, OptionsMixin):
     """Dialog to configure folder-specific display properties."""
+    
+    # Phase 35: Signal for non-modal save
+    config_saved = pyqtSignal(dict)
+
     def __init__(self, parent=None, folder_path: str = "", current_config: dict = None, 
                  batch_mode: bool = False, app_name: str = None, storage_root: str = None,
                  thumbnail_manager = None, app_deploy_default: str = "folder", 
@@ -1217,13 +1221,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             if old_type == 'flatten': curr_rule = 'files'
             elif old_type: curr_rule = old_type
 
-        # Phase 34: Resolve Effective Rule for Display Label
+        # Fix Phase 35: Use correct def_idx logic (index 0 is KEEP in batch mode)
+        def_idx = 1 if self.batch_mode else 0
         if not curr_rule or curr_rule == 'inherit':
             effective_rule = self.app_deploy_default
-            # Localize the rule value (folder, files, tree)
             loc_rule = _(effective_rule)
-            self.deploy_rule_override_combo.setItemText(0, _("Target Default (Inherit: {rule})").format(rule=loc_rule))
-            # Normalize to match data in findData
+            self.deploy_rule_override_combo.setItemText(def_idx, _("Target Default (Inherit: {rule})").format(rule=loc_rule))
             if not curr_rule: curr_rule = 'inherit'
         
         idx = self.deploy_rule_override_combo.findData(curr_rule)
@@ -1232,7 +1235,46 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         elif self.batch_mode:
             self.deploy_rule_override_combo.setCurrentIndex(0)
             
-        adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
+        # Help Button + Sticky Note (Phase 35)
+        help_btn = QPushButton("❔")
+        help_btn.setFixedSize(24, 24)
+        help_btn.setToolTip(_("Deployment Rule Help"))
+        help_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: transparent; border: 1px solid #555; color: #aaa; border-radius: 12px; font-weight: bold; 
+            }
+            QPushButton:hover { background-color: #444; color: #fff; border-color: #3498db; }
+        """)
+        
+        rule_row = QHBoxLayout()
+        rule_row.addWidget(self.deploy_rule_override_combo, 1)
+        rule_row.addWidget(help_btn)
+        adv_form.addRow(_("Deploy Rule:"), rule_row)
+
+        # Help Note (The "Sticky Note")
+        self.help_panel = QFrame()
+        self.help_panel.setVisible(False)
+        self.help_panel.setStyleSheet("""
+            QFrame { 
+                background-color: #2c3e50; border: 1px solid #3498db; border-radius: 6px; 
+                margin: 5px 0px; padding: 8px;
+            }
+            QLabel { color: #ecf0f1; font-size: 11px; }
+        """)
+        help_layout = QVBoxLayout(self.help_panel)
+        help_layout.setContentsMargins(5, 5, 5, 5)
+        
+        help_text = QLabel(
+            _("<b>whole folder</b>: Keeps the folder structure as-is. Good for most mods.") + "<br><br>" +
+            _("<b>all files</b>: Flattens the folder, placing all files directly into the target. Useful for 'resource pack' style folders.") + "<br><br>" +
+            _("<b>tree</b>: Maintains partial structure starting from a specific depth. Advanced use only.") + "<br><br>" +
+            _("More detailed overrides (individual file redirections, excludes, etc.) can be managed via the <b>Edit Individual Redirections</b> button below.")
+        )
+        help_text.setWordWrap(True)
+        help_layout.addWidget(help_text)
+        adv_form.addRow("", self.help_panel)
+        
+        help_btn.clicked.connect(lambda: self.help_panel.setVisible(not self.help_panel.isVisible()))
 
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
@@ -1414,17 +1456,21 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
         # Actions - Add to Root Layout
         btn_layout = QHBoxLayout()
-        self.ok_btn = QPushButton(_("Save (Alt + Enter)"))
-        self.ok_btn.setObjectName("save_btn")
-        # Removed setDefault(True) - Use Alt+Enter instead
-        self.ok_btn.clicked.connect(self.accept)
-        
         # Phase 28: Use Alt+Enter for save to prevent accidental submissions
         from PyQt6.QtGui import QKeySequence, QShortcut
         self.save_shortcut = QShortcut(QKeySequence("Alt+Return"), self)
         self.save_shortcut.activated.connect(self.accept)
         self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self) # Support numpad
         self.save_shortcut_win.activated.connect(self.accept)
+        
+        # Phase 35: Set non-modal to allow concurrent FM operation
+        self.setModal(False)
+        
+    def accept(self):
+        """Override accept to emit signal for non-modal use."""
+        data = self.get_data()
+        self.config_saved.emit(data)
+        super().accept()
         
         # Button Styling & Layout (Unified)
         self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")

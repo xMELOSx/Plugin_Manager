@@ -175,3 +175,19 @@ msgstr "実態"
 
 msgid "Target"
 msgstr "ターゲット"
+
+# Help Panel / Sticky Note
+msgid "Deployment Rule Help"
+msgstr "展開ルールのヘルプ"
+
+msgid "<b>whole folder</b>: Keeps the folder structure as-is. Good for most mods."
+msgstr "<b>階層を維持</b>: フォルダ階層をそのまま維持します。通常の配布形式に適しています。"
+
+msgid "<b>all files</b>: Flattens the folder, placing all files directly into the target. Useful for 'resource pack' style folders."
+msgstr "<b>ファイルを展開</b>: フォルダを解除し、中のファイルを直接ターゲットに配置します。リソースパック等に適しています。"
+
+msgid "<b>tree</b>: Maintains partial structure starting from a specific depth. Advanced use only."
+msgstr "<b>構造を維持</b>: 特定の階層から構造を維持します。高度な設定用です。"
+
+msgid "More detailed overrides (individual file redirections, excludes, etc.) can be managed via the <b>Edit Individual Redirections</b> button below."
+msgstr "個別のファイル転送先や除外設定などは、下部にある<b>「個別に転送先を編集」</b>ボタンからさらに詳細に設定可能です。"

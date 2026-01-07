@@ -323,8 +323,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         """)
 
     def _init_ui(self):
-        content = QWidget(self)
-        main_layout = QVBoxLayout(content)
+        # Phase 35: Use inherited layout from FramelessDialog instead of detached QWidget
+        main_layout = self.content_layout
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(12)
         
@@ -478,14 +478,15 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         tree_sub_layout.addWidget(self.tree)
         
         main_content_layout.addWidget(self.tree_container, 1)
-        main_layout.addLayout(main_content_layout)
-
         # Toolbar / Quick Actions - Reorganized per user request
         tools_frame = QFrame(self)
         tools_frame.setObjectName("ToolsFrame")  # For CSS #ToolsFrame selector
         tools_layout = QVBoxLayout(tools_frame)
         tools_layout.setSpacing(12)
+        main_content_layout.addWidget(tools_frame) # Integrate tools_frame into main_content_layout
         
+        main_layout.addLayout(main_content_layout) # Add the combined main_content_layout to main_layout
+
         LABEL_WIDTH = 110 # For alignment - defined here for batch header
 
         # Section Header: 一括設定 - Aligned with デフォルト button left edge
