@@ -580,17 +580,21 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # ... (ommited for brevity)
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #ffffff; }
-            QLineEdit, QComboBox { background-color: #2b2b2b; color: #fff; border: 1px solid #444; }
+            QLineEdit, QComboBox, QSpinBox { background-color: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
             QComboBox { background: #333; }
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 12px; }
+            QPushButton:hover { background-color: #4a4a4a; }
         """)
     
     def accept(self):
-        # Save logic (assumed)
+        # ... logic to save settings ...
         super().accept()
+        # Phase 29: Toast Notification on Success
         Toast(self.parent(), _("Settings Saved Successfully")).show()
 
     def reject(self):
         super().reject()
+        # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
         Toast(self.parent(), _("Changes Cancelled")).show()
         self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing

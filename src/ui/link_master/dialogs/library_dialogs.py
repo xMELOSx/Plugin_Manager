@@ -370,9 +370,18 @@ class DependentPackagesDialog(QDialog):
         # Force focus back to list or maintain dialog focus
         self.setFocus()
     
+    def _get_app_data(self):
+        """Find the main window and get current app data."""
+        curr = self.parent()
+        while curr:
+            if hasattr(curr, 'app_combo'):
+                return curr.app_combo.currentData()
+            curr = curr.parent()
+        return None
+
     def _update_item_status(self, item):
         rel_path = item.data(0, Qt.ItemDataRole.UserRole)
-        app_data = self.parent().app_combo.currentData()
+        app_data = self._get_app_data()
         target_root = app_data.get('target_root') if app_data else None
         
         is_linked = False
@@ -408,6 +417,12 @@ class DependentPackagesDialog(QDialog):
             
             if was_focused:
                 toggle_btn.setFocus()
+        
+        # Phase 32 Fix: Ensure focus is not lost from the dialog itself or the last interaction
+        # if no button was focused, keep the tree focused.
+        else:
+            if not self.hasFocus():
+                self.tree.setFocus()
 
     def _deploy_pkg(self, rel_path: str):
         self.request_deploy.emit(rel_path)

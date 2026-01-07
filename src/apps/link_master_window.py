@@ -3045,7 +3045,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.logger.info("Resetting all folder attributes for current app.")
         self.db.reset_app_folder_configs()
         self._refresh_current_view()
-        QMessageBox.information(self, "Success", "All folder attributes have been reset.")
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Success"))
+        msg.setText(_("All folder attributes have been reset."))
+        msg.setIcon(QMessageBox.Icon.Information)
+        styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+            QLabel { color: white; }
+            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        """
+        msg.setStyleSheet(styled_msg_box)
+        msg.exec()
 
     def _export_hierarchy_current(self):
         """Export properties starting from the current view level."""
@@ -3070,7 +3081,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'current_path') and self.current_path:
              self._load_package_contents(self.current_path)
              
-        QMessageBox.information(self, "Manual Rebuild", "再構築が完了しました。")
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Manual Rebuild"))
+        msg.setText(_("再構築が完了しました。"))
+        msg.setIcon(QMessageBox.Icon.Information)
+        styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+            QLabel { color: white; }
+            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        """
+        msg.setStyleSheet(styled_msg_box)
+        msg.exec()
 
 
     def _update_exe_links(self, app_data: dict):

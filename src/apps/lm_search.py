@@ -385,15 +385,17 @@ class LMSearchMixin:
             if exclude_tags & effective_tags:
                 tag_match = False
         
-        # Text matching - search BOTH folder name AND tags
+        # Text matching - search BOTH folder name AND tags AND display name
         text_match = True
         name_lower = name.lower()
-        tags_str = " ".join(effective_tags)
-        author_lower = (config.get('author') or "").lower()
-        searchable_text = f"{name_lower} {author_lower} {tags_str}"
+        # Phase 33: Add safety check for config
+        display_name_lower = (config.get('display_name') or "").lower() if config else ""
+        tags_str = " ".join(effective_tags).lower()
+        author_lower = (config.get('author') or "").lower() if config else ""
+        searchable_text = f"{name_lower} {display_name_lower} {author_lower} {tags_str}"
         
         if terms:
-            # Match if term is in name OR in any tag
+            # Match if term is in name OR in display name OR in tags
             text_match = all(term in searchable_text for term in terms)
         
         if not_terms and text_match:
@@ -516,12 +518,8 @@ class LMSearchMixin:
     
     def _on_search_text_changed(self, text):
         """Handle search bar text change with 300ms debounce."""
-        # Filter global search characters (*, ?)
-        filtered_text = "".join([c for c in text if c not in ('*', '?')])
-        if filtered_text != text:
-            # Set text back and move cursor to end to prevent recursive loops if possible
-            # or simply use the filtered text for the worker
-            pass
+        self._search_timer.stop()
+        self._search_timer.start(300)
             
         self._search_timer.stop()
         self._search_timer.start(300)
@@ -541,7 +539,6 @@ class LMSearchMixin:
         if hasattr(self, 'current_view_path') and self.current_view_path:
             self._load_items_for_path(self.current_view_path, force=True)
             
-            # Delay category selection to allow scanner to complete
-            if saved_category:
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(300, lambda: self._on_category_selected(saved_category))
+            # Phase 7 Fix: Always restore category selection (even if None/Home) to refresh bottom area
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(300, lambda: self._on_category_selected(saved_category, force=True))

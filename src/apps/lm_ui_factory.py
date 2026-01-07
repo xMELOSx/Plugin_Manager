@@ -52,6 +52,11 @@ def setup_ui(window):
         QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
         QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
         QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
+        
+        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+        QMessageBox QLabel { color: #fff; }
+        QMessageBox QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 15px; min-width: 60px; }
+        QMessageBox QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
     """)
     
     main_layout = QVBoxLayout(main_widget)

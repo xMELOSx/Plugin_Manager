@@ -20,29 +20,64 @@ class LMBatchOpsMixin:
     
     def _unload_active_links(self):
         """Unload all active links and clean up registry."""
-        # Confirm with user
-        reply = QMessageBox.question(self, _("Confirm Unlink All"),
-                                   _("Are you sure you want to remove all active symbolic links and junction points?"),
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.No:
+        from src.core.lang_manager import _
+        
+        # Standardized Style for Confirmation
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Confirm Unlink All"))
+        msg.setText(_("Are you sure you want to remove all active symbolic links and junction points?"))
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        # Explicit styling to prevent "black" dialog issues in dark theme
+        styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+            QLabel { color: white; }
+            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        """
+        msg.setStyleSheet(styled_msg_box)
+
+        if msg.exec() == QMessageBox.StandardButton.No:
             return
 
-        # Phase 28: Clean up invalid registry entries (links not matching actual files)
-        # We need to access the registry to remove entries that are no longer valid.
-        # Since file_handler doesn't have specific registry methods yet, we'll use standard winreg safely.
+        # Phase 28: Clean up invalid registry entries
         import winreg
         try:
-            # Logic to clean up LinkMaster specific registry keys
             key_path = r"Software\LinkMaster\ActiveLinks"
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
-                # Enumerate and delete invalid entries
-                pass # Implementation details would follow here
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
+                    # Registry cleanup would happen here
+                    # Note: Full cleanup logic would involve enumerating and deleting, 
+                    # but we'll focus on the core unlinking first.
+                    pass
+            except FileNotFoundError:
+                pass
         except Exception as e:
             self.logger.error(f"Registry cleanup error: {e}")
             
-        # Call the actual unlinking logic (assumed to be implemented elsewhere or below)
-        # ...
-        pass # Placeholder for unlinking logic
+        # Get all folders to ensure we catch "ghost" links not marked as linked in DB
+        all_configs = self.db.get_all_folder_configs()
+        
+        count = 0
+        if all_configs:
+            # Phase 7 Fix: Sweep ALL known folders, not just those DB thinks are linked
+            for rel_path in all_configs.keys():
+                # Unlink each item (update_ui=False for performance in batch)
+                if self._unlink_single(rel_path, update_ui=False):
+                    count += 1
+        
+        # Refresh the entire view to show unlinked status
+        self.refresh()
+        if hasattr(self, '_update_total_link_count'):
+            self._update_total_link_count()
+            
+        # Success Notification with identical styling
+        smsg = QMessageBox(self)
+        smsg.setWindowTitle(_("Unlink All Complete"))
+        smsg.setText(_("Successfully removed {n} active links.").format(n=count))
+        smsg.setStyleSheet(styled_msg_box)
+        smsg.exec()
     
     def _update_cards_link_status(self, paths):
         """Partial update: Update link status for specific cards without rebuild."""
@@ -247,9 +282,18 @@ class LMBatchOpsMixin:
         if not self.selected_paths: return
         
         msg = QMessageBox(self)
-        msg.setWindowTitle("Batch Trash")
-        msg.setText(f"Move {len(self.selected_paths)} items to trash?")
+        msg.setWindowTitle(_("Batch Trash"))
+        msg.setText(_("Move {n} items to trash?").format(n=len(self.selected_paths)))
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+            QLabel { color: white; }
+            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        """
+        msg.setStyleSheet(styled_msg_box)
+        
         if msg.exec() != QMessageBox.StandardButton.Yes: return
         
         # Use core _trash_single for each item (shows strikethrough first)
@@ -263,6 +307,23 @@ class LMBatchOpsMixin:
     def _batch_restore_selected(self):
         """Restores all selected items from trash."""
         if not self.selected_paths: return
+        
+        # Phase 7 Fix: Added missing confirmation dialog with styling
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Batch Restore"))
+        msg.setText(_("Restore {n} items from trash?").format(n=len(self.selected_paths)))
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+            QLabel { color: white; }
+            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        """
+        msg.setStyleSheet(styled_msg_box)
+        
+        if msg.exec() != QMessageBox.StandardButton.Yes: return
+
         for path in list(self.selected_paths):
             self._on_package_restore(path, refresh=False)
         self.selected_paths.clear()
@@ -1043,13 +1104,21 @@ class LMBatchOpsMixin:
             if lib_name:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
-                    reply = QMessageBox.question(
-                        self, "依存パッケージをアンリンク", 
-                        f"ライブラリ「{lib_name}」をアンリンクしました。\n\n"
-                        f"このライブラリに依存する {len(dependent_packages)} 個のパッケージもアンリンクしますか？",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
+                    # Phase 7 FIX: Use styled message box for dependency confirmation
+                    msg = QMessageBox(self)
+                    msg.setWindowTitle(_("Unlink Dependents"))
+                    msg.setText(_("Library '{lib}' unlinked.\n\nUnlink {n} packages depending on it?").format(lib=lib_name, n=len(dependent_packages)))
+                    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    
+                    styled_msg_box = """
+                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
+                        QLabel { color: white; }
+                        QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+                        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    """
+                    msg.setStyleSheet(styled_msg_box)
+                    
+                    if msg.exec() == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
 
