@@ -649,8 +649,17 @@ class LinkMasterDB:
         with self.get_connection() as conn:
             # Phase 33/BugFix: Set all items with any link status to unlinked.
             # This ensures parents (categories) don't show borders for non-existent links/partials.
-            conn.execute("UPDATE lm_folder_config SET last_known_status = 'unlinked' WHERE last_known_status != 'none'")
+            # Phase 34/BugFix: Also reset has_logical_conflict and is_library_alt_version flags
+            # to prevent red borders persisting after physical sweep.
+            conn.execute("""
+                UPDATE lm_folder_config 
+                SET last_known_status = 'unlinked',
+                    has_logical_conflict = 0,
+                    is_library_alt_version = 0
+                WHERE last_known_status != 'none'
+            """)
             conn.commit()
+
 
     def update_folder_display_config(self, rel_path: str, **kwargs):
         """Update display config for a folder (Upsert)."""

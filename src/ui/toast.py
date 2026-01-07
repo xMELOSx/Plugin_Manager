@@ -29,7 +29,7 @@ class Toast(QLabel):
         'error': '#e74c3c',   # Red
     }
     
-    def __init__(self, parent, text="", duration=2000, y_offset=60):
+    def __init__(self, parent, text="", duration=2000, y_offset=100):
         super().__init__(text, parent)
         self._duration = duration
         self._y_offset = y_offset  # Vertical position from parent top

@@ -1552,12 +1552,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         super().accept()
         # Phase 29: Toast Notification on Success
-        Toast(self.parent(), _("Settings Saved Successfully")).show()
+        Toast(self.parent(), _("Settings Saved Successfully")).show_message()
 
     def reject(self):
         super().reject()
         # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
-        Toast(self.parent(), _("Changes Cancelled")).show()
+        Toast(self.parent(), _("Changes Cancelled")).show_message()
 
     def keyPressEvent(self, event):
         """Phase 28: Handle global hotkeys for the dialog."""
