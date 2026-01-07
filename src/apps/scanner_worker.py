@@ -326,7 +326,20 @@ class ScannerWorker(QObject):
 
         t_link_start = time.perf_counter()
         target_override = item_config.get('target_override')
-        target_link = target_override or os.path.join(self.target_root, item['name'])
+        
+        # Determine deploy rule for target resolving
+        deploy_rule = item_config.get('deploy_rule')
+        if not deploy_rule or deploy_rule in ('default', 'inherit'):
+            deploy_rule = self.app_data.get('deployment_rule', 'folder')
+        if deploy_rule == 'flatten': deploy_rule = 'files'
+
+        # target_link calculation must match ItemCard._check_link_status
+        if target_override:
+            target_link = target_override
+        elif deploy_rule == 'files':
+            target_link = self.target_root
+        else:
+            target_link = os.path.join(self.target_root, item['name'])
         
         # Phase 33: Categories derive status from children, NOT from physical symlink check
         # Matching ItemCard logic at L396

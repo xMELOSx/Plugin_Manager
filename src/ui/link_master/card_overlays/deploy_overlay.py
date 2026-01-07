@@ -40,12 +40,12 @@ class DeployOverlay(QPushButton):
         """Update button appearance based on link status."""
         self._current_status = link_status
         
-        if link_status == 'linked':
+        if link_status in ('linked', 'partial'):
             icon_pixmap = self._get_emoji_pixmap("🔗", 16)
             base_color = f"rgba(39, 174, 96, {opacity})"
             hover_color = "rgba(46, 204, 113, 0.95)"
             border_color = "#1e8449"
-            self.setToolTip(_("Linked (Unlink)"))
+            self.setToolTip(_("Linked (Unlink)") if link_status == 'linked' else _("Partially Linked (Unlink)"))
         elif link_status == 'conflict':
             icon_pixmap = self._get_emoji_pixmap("⚠", 16)
             base_color = f"rgba(231, 76, 60, {opacity})"

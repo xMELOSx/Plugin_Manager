@@ -1211,6 +1211,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             if old_type == 'flatten': curr_rule = 'files'
             elif old_type: curr_rule = old_type
 
+        # Phase 34: Resolve Effective Rule for Display Label
+        if not curr_rule or curr_rule == 'inherit':
+            effective_rule = self.app_deploy_default
+            self.deploy_rule_override_combo.setItemText(0, _("Target Default (Inherit: {rule})").format(rule=effective_rule))
+            # Normalize to match data in findData
+            if not curr_rule: curr_rule = 'inherit'
+        
         idx = self.deploy_rule_override_combo.findData(curr_rule)
         if idx >= 0 and not self.batch_mode:
             self.deploy_rule_override_combo.setCurrentIndex(idx)
@@ -1253,6 +1260,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.transfer_mode_override_combo.addItem(_("Physical Copy"), "copy")
         
         curr_mode = self.current_config.get('transfer_mode')
+        # Phase 34: Resolve Effective Mode for Display Label
+        if not curr_mode or curr_mode == 'KEEP' or curr_mode == 'inherit':
+            effective_mode = app_default_mode
+            # Item 1 is 'App Default' (index 0 is KEEP in batch, else Item 0 is App Default)
+            def_idx = 1 if self.batch_mode else 0
+            self.transfer_mode_override_combo.setItemText(def_idx, _("App Default (Inherit: {mode})").format(mode=effective_mode))
+
         idx = self.transfer_mode_override_combo.findData(curr_mode)
         if idx >= 0 and not self.batch_mode:
             self.transfer_mode_override_combo.setCurrentIndex(idx)
@@ -1272,6 +1286,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.conflict_override_combo.addItem(_("Overwrite"), "overwrite")
         
         curr_conflict = self.current_config.get('conflict_policy')
+        # Phase 34: Resolve Effective Conflict Policy for Display Label
+        if not curr_conflict or curr_conflict == 'KEEP' or curr_conflict == 'inherit':
+            effective_conflict = self.app_conflict_default
+            def_idx = 1 if self.batch_mode else 0
+            self.conflict_override_combo.setItemText(def_idx, _("App Default (Inherit: {policy})").format(policy=effective_conflict))
 
         idx = self.conflict_override_combo.findData(curr_conflict)
         if idx >= 0 and not self.batch_mode:

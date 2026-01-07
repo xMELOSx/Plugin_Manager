@@ -23,6 +23,7 @@ import os
 import time
 from src.core.lang_manager import _
 from src.ui.link_master.item_card import ItemCard
+from PyQt6.QtWidgets import QApplication
 import re # Phase 33: Natural Sort
 
 
@@ -572,6 +573,7 @@ class LMScanHandlerMixin:
                             cat_status = card_config.get('category_deploy_status')
                             
                             card.update_data(
+                                is_package=False,
                                 has_linked=has_linked, 
                                 has_conflict_children=has_conflict, 
                                 has_partial_children=has_partial, 
@@ -581,6 +583,9 @@ class LMScanHandlerMixin:
         
         t_cat_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
+        
+        # Phase 34: Ensure UI processing
+        QApplication.processEvents()
         
         # Also refresh package card borders (green for linked, red for conflict)
         self._refresh_package_cards()
@@ -677,8 +682,11 @@ class LMScanHandlerMixin:
                 deployed_cats = [r[0] for r in cur.fetchall()]
                 
                 # For each deployed category, count its top-level contents
+                storage_root = getattr(self, 'storage_root', None)
+                if not storage_root: return # Cannot proceed without storage root
+                
                 for cat_rel in deployed_cats:
-                    cat_abs = os.path.join(self.storage_root, cat_rel)
+                    cat_abs = os.path.join(storage_root, cat_rel)
                     if os.path.isdir(cat_abs):
                         try:
                             children = [d for d in os.listdir(cat_abs) if os.path.isdir(os.path.join(cat_abs, d)) and not d.startswith('.') and d not in ('_Trash', 'Trash')]

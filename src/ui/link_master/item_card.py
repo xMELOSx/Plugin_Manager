@@ -271,6 +271,18 @@ class ItemCard(QFrame):
         # Category Deploy Status (Phase: Category Deploy Enhancement)
         self.category_deploy_status = kwargs.get('category_deploy_status', getattr(self, 'category_deploy_status', None))
 
+        # Phase 14/33 Fix: For categories, derive link_status from hierarchical children status
+        # This ensures the Unlink button/Direct actions update immediately during UI refresh
+        if not getattr(self, 'is_package', True):
+            if self.has_conflict_children:
+                self.link_status = 'conflict'
+            elif self.has_partial_children:
+                self.link_status = 'partial'
+            elif self.has_linked_children:
+                self.link_status = 'linked'
+            else:
+                self.link_status = 'none'
+
         # 4. Update Config/Rules
         self.target_override = kwargs.get('target_override', self.target_override)
         self.deployment_rules = kwargs.get('deployment_rules', self.deployment_rules)
@@ -385,8 +397,14 @@ class ItemCard(QFrame):
         if hasattr(self, 'score_dial'):
             self.score_dial.setValue(self.score)
 
+        # Phase 34: Invalidate style cache to ensure immediate visual refresh
+        if hasattr(self, '_last_style_state'):
+            del self._last_style_state
+            
         self._update_style()
         self._update_icon_overlays()
+        # Phase 34: Physical update call
+        self.update()
 
     def _check_link_status(self):
         if not self.deployer: return
