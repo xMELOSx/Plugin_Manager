@@ -321,6 +321,7 @@ class LMScanHandlerMixin:
             lib_name=item_config.get('lib_name', ''),
             is_library=r.get('is_library', 0),
             is_library_alt_version=r.get('is_library_alt_version', False),
+            category_deploy_status=item_config.get('category_deploy_status'), # Phase: Category Deploy Fix
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
@@ -565,7 +566,18 @@ class LMScanHandlerMixin:
                             cat_count += 1
                             # Pass cache
                             has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                            card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
+                            
+                            # Phase: Category Deploy Fix - Also refresh the category's OWN deployment status
+                            card_config = cached_configs.get(card.rel_path) or {}
+                            cat_status = card_config.get('category_deploy_status')
+                            
+                            card.update_data(
+                                has_linked=has_linked, 
+                                has_conflict_children=has_conflict, 
+                                has_partial_children=has_partial, 
+                                has_unlinked_children=has_unlinked,
+                                category_deploy_status=cat_status
+                            )
         
         t_cat_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
@@ -654,11 +666,24 @@ class LMScanHandlerMixin:
             # This is vastly faster than a recursive disk scan.
             with self.db.get_connection() as conn:
                 cur = conn.cursor()
-                # Count ALL types (Categories and Packages) as requested
-                sql = "SELECT COUNT(*) FROM lm_folder_config WHERE last_known_status IN ('linked', 'partial')"
-                cur.execute(sql)
-                res = cur.fetchone()
-                total_link_count = res[0] if res else 0
+                # Count PACKAGES that are directly linked or partial
+                sql_pkgs = "SELECT COUNT(*) FROM lm_folder_config WHERE last_known_status IN ('linked', 'partial') AND folder_type = 'package'"
+                cur.execute(sql_pkgs)
+                total_link_count = cur.fetchone()[0]
+
+                # Count CHILDREN of CATEGORIES that are marked as 'deployed'
+                sql_cats = "SELECT rel_path FROM lm_folder_config WHERE category_deploy_status = 'deployed'"
+                cur.execute(sql_cats)
+                deployed_cats = [r[0] for r in cur.fetchall()]
+                
+                # For each deployed category, count its top-level contents
+                for cat_rel in deployed_cats:
+                    cat_abs = os.path.join(self.storage_root, cat_rel)
+                    if os.path.isdir(cat_abs):
+                        try:
+                            children = [d for d in os.listdir(cat_abs) if os.path.isdir(os.path.join(cat_abs, d)) and not d.startswith('.') and d not in ('_Trash', 'Trash')]
+                            total_link_count += len(children)
+                        except: pass
         except Exception as e:
             self.logger.warning(f"Fast total count query failed: {e}")
             

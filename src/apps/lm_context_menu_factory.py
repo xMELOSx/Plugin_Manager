@@ -137,10 +137,6 @@ def create_item_context_menu(window, rel_path):
                 else:
                     act_dep_cat = menu.addAction(_("📦 Deploy Category (All Packages)"))
                     act_dep_cat.triggered.connect(lambda: window._handle_deploy_category(rel_path))
-                    
-                    # Also offer normal deploy for compatibility
-                    act_dep = menu.addAction(_("🚀 Deploy Link"))
-                    act_dep.triggered.connect(lambda: window._handle_deploy_single(rel_path))
             elif status == 'linked':
 
                 act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))

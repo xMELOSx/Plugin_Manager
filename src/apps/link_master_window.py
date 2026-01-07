@@ -3129,7 +3129,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                                    (f"\n... ({len(deployed)} total)" if len(deployed) > 10 else ""))
             msg.setDetailedText(_("Deploying the category will unlink these packages and deploy the category folder instead."))
             msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            msg.button(QMessageBox.StandardButton.Yes).setText(_("Swap (Unlink & Deploy Category)"))
+            msg.button(QMessageBox.StandardButton.Yes).setText(_("Swap (Unlink and Deploy Category)"))
             msg.button(QMessageBox.StandardButton.No).setText(_("Cancel"))
             msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             

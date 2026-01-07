@@ -382,6 +382,36 @@ class LMDeploymentOpsMixin:
         
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path)
+
+        # Phase: Category-to-Package Swap Detection
+        parent_rel = os.path.dirname(rel_path).replace('\\', '/')
+        if parent_rel:
+            parent_config = self.db.get_folder_config(parent_rel) or {}
+            if parent_config.get('category_deploy_status') == 'deployed':
+                msg = _("The parent category '{parent_name}' is currently deployed.\n\n"
+                        "Deploying this package individually will require unlinking the entire category.\n"
+                        "Do you want to unlink the category and deploy this package instead?").format(parent_name=os.path.basename(parent_rel))
+                
+                # Check if _show_styled_message is available
+                box = QMessageBox(self)
+                box.setWindowTitle(_("Category Swap Check"))
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setText(msg)
+                box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                box.button(QMessageBox.StandardButton.Yes).setText(_("Unlink Category & Deploy"))
+                box.button(QMessageBox.StandardButton.No).setText(_("Cancel"))
+                from src.ui.styles import DialogStyles
+                box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
+                
+                if box.exec() == QMessageBox.StandardButton.Yes:
+                     # Unlink category (we use _handle_unlink_category if available on self)
+                     if hasattr(self, '_handle_unlink_category'):
+                         self._handle_unlink_category(parent_rel)
+                     else:
+                         # Fallback to direct logic
+                         self.db.update_folder_display_config(parent_rel, category_deploy_status=None)
+                else:
+                     return False 
         
         # Phase 5: Resolve Deployment Rule and Transfer Mode
         deploy_rule = config.get('deploy_rule')
@@ -746,7 +776,14 @@ class LMDeploymentOpsMixin:
         # This was causing "Target not found" warnings and massive filesystem overhead.
         # self.deployer.remove_links_pointing_to(search_roots, full_src) 
         self.logger.debug(f"Unlink complete for: {rel_path} (targeted roots only)")
-        self.db.update_folder_display_config(rel_path, last_known_status='unlinked')
+        self.db.update_folder_display_config(
+            rel_path, 
+            last_known_status='unlinked',
+            has_logical_conflict=0,
+            has_name_conflict=0,
+            has_target_conflict=0,
+            is_library_alt_version=0
+        )
 
         if update_ui:
             self._update_card_by_path(full_src)
