@@ -192,7 +192,7 @@ class LMNavigationMixin:
         menu.setStyleSheet("QMenu { background-color: #2b2b2b; color: #ddd; border: 1px solid #444; } "
                            "QMenu::item:selected { background-color: #3d4a59; }")
         
-        open_explorer_act = QAction(_("Open in Explorer"), self)
+        open_explorer_act = QAction(_("📁 Open in Explorer"), self)
         open_explorer_act.triggered.connect(lambda: os.startfile(trash_path))
         menu.addAction(open_explorer_act)
         

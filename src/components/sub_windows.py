@@ -284,6 +284,17 @@ class OptionsWindow(FramelessWindow):
                     self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
                     if self.parent_debug_window:
                         self.parent_debug_window.set_pin_state(True)
+                
+                # Sync slider values from parent's ACTUAL opacity state (not just saved config)
+                if self.parent_debug_window and hasattr(self.parent_debug_window, '_bg_opacity'):
+                    actual_bg = int(self.parent_debug_window._bg_opacity * 100)
+                    self.bg_opacity_slider.setValue(actual_bg)
+                    self.bg_opacity_spin.setValue(actual_bg)
+                if self.parent_debug_window and hasattr(self.parent_debug_window, '_content_opacity'):
+                    actual_text = int(self.parent_debug_window._content_opacity * 100)
+                    self.text_opacity_slider.setValue(actual_text)
+                    self.text_opacity_spin.setValue(actual_text)
+
             
             # Load language setting
             saved_lang = all_config.get('language', 'system')
@@ -419,8 +430,55 @@ class OptionsWindow(FramelessWindow):
 
     def showEvent(self, event):
         """Update sliders to current parent window dimensions when shown."""
-        self._sync_size_from_parent()
+        self._sync_all_from_parent()
+        
+        # Start polling timer for real-time sync
+        if not hasattr(self, '_sync_timer'):
+            from PyQt6.QtCore import QTimer
+            self._sync_timer = QTimer(self)
+            self._sync_timer.timeout.connect(self._sync_all_from_parent)
+        self._sync_timer.start(200)  # Poll every 200ms
+        
         super().showEvent(event)
+    
+    def hideEvent(self, event):
+        """Stop polling timer when hidden."""
+        if hasattr(self, '_sync_timer') and self._sync_timer.isActive():
+            self._sync_timer.stop()
+        super().hideEvent(event)
+    
+    def _sync_all_from_parent(self):
+        """Sync all values (size + opacity) from parent window."""
+        self._sync_size_from_parent()
+        self._sync_opacity_from_parent()
+    
+    def _sync_opacity_from_parent(self):
+        """Sync opacity sliders with parent window's actual opacity."""
+        if not self.parent_debug_window:
+            return
+            
+        # Background Opacity
+        if hasattr(self.parent_debug_window, '_bg_opacity'):
+            actual_bg = int(self.parent_debug_window._bg_opacity * 100)
+            if self.bg_opacity_slider.value() != actual_bg:
+                self.bg_opacity_slider.blockSignals(True)
+                self.bg_opacity_spin.blockSignals(True)
+                self.bg_opacity_slider.setValue(actual_bg)
+                self.bg_opacity_spin.setValue(actual_bg)
+                self.bg_opacity_slider.blockSignals(False)
+                self.bg_opacity_spin.blockSignals(False)
+        
+        # Text/Content Opacity
+        if hasattr(self.parent_debug_window, '_content_opacity'):
+            actual_text = int(self.parent_debug_window._content_opacity * 100)
+            if self.text_opacity_slider.value() != actual_text:
+                self.text_opacity_slider.blockSignals(True)
+                self.text_opacity_spin.blockSignals(True)
+                self.text_opacity_slider.setValue(actual_text)
+                self.text_opacity_spin.setValue(actual_text)
+                self.text_opacity_slider.blockSignals(False)
+                self.text_opacity_spin.blockSignals(False)
+
     
     def _sync_size_from_parent(self):
         """Sync width/height sliders with parent window dimensions."""

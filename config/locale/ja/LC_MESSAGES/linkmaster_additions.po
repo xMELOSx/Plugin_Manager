@@ -36,6 +36,9 @@ msgstr "エラー"
 msgid "Open in Explorer"
 msgstr "エクスプローラーで開く"
 
+msgid "📁 Open in Explorer"
+msgstr "📁 エクスプローラーで開く"
+
 msgid "Unlink All Complete"
 msgstr "全解除完了"
 
