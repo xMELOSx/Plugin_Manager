@@ -25,6 +25,7 @@ import urllib.error
 from PyQt6.QtCore import pyqtSignal, Qt, QUrl, QTimer
 from src.ui.link_master.dialogs.library_dialogs import LibrarySettingsDialog, DependentPackagesDialog
 from src.ui.common_widgets import StyledComboBox
+from src.ui.flow_layout import FlowLayout
 
 
 class LibraryItemDelegate(QStyledItemDelegate):
@@ -270,13 +271,13 @@ class LibraryPanel(QWidget):
                 node_type = data.get('type')
                 if item.isExpanded():
                     if node_type == 'folder':
-                        expanded_folders.add(data.get('folder_id'))
+                        expanded_folders.add(data.get('id'))
                     elif node_type == 'library':
                         expanded_libs.add(data.get('name'))
                 
                 if item.isSelected():
                     if node_type == 'folder':
-                        selected_nodes.append(('folder', data.get('folder_id')))
+                        selected_nodes.append(('folder', data.get('id')))
                     elif node_type == 'library':
                         selected_nodes.append(('library', data.get('name')))
             iterator += 1
@@ -328,7 +329,7 @@ class LibraryPanel(QWidget):
                     continue
                 
                 item.setText(0, f"📁 {f['name']}")
-                item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'folder_id': f['id'], 'name': f['name']})
+                item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'id': f['id'], 'name': f['name']})
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
                 # Note: item.setExpanded is handled at the end by state restoration if possible, 
                 # but we keep the DB state as default.
@@ -339,7 +340,7 @@ class LibraryPanel(QWidget):
                 for f in deferred:
                     item = QTreeWidgetItem(self.lib_tree)
                     item.setText(0, f"📁 {f['name']}")
-                    item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'folder_id': f['id'], 'name': f['name']})
+                    item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'folder', 'id': f['id'], 'name': f['name']})
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled)
                     item.setExpanded(bool(f.get('is_expanded', 1)))
                     folder_items[f['id']] = item
@@ -436,7 +437,7 @@ class LibraryPanel(QWidget):
             if data:
                 node_type = data.get('type')
                 if node_type == 'folder':
-                    fid = data.get('folder_id') or data.get('id')
+                    fid = data.get('id')
                     if fid in expanded_folders:
                         item.setExpanded(True)
                     if ('folder', fid) in selected_nodes:
@@ -687,11 +688,24 @@ class LibraryPanel(QWidget):
         path = data.get('priority_path')
         if not path:
             return
-        confirm = QMessageBox.question(
-            self, _("Unregister Library"), 
-            _("Are you sure you want to remove the selected version from the library?"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(_("Unregister Library"))
+        msg_box.setText(_("Are you sure you want to remove the selected version from the library?"))
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        confirm = msg_box.exec()
         if confirm == QMessageBox.StandardButton.Yes:
             self.db.update_folder_display_config(path, is_library=0, lib_name=None, lib_version=None)
             self.refresh()

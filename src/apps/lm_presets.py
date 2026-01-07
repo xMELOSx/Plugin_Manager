@@ -4,6 +4,7 @@ Extracted from LinkMasterWindow for modularity.
 """
 import os
 from PyQt6.QtWidgets import QMessageBox, QInputDialog
+from src.core.lang_manager import _
 
 
 class LMPresetsMixin:
@@ -57,7 +58,23 @@ class LMPresetsMixin:
             self.logger.error(f"Failed to scan target for links: {e}")
 
         if count == 0:
-            QMessageBox.warning(self, "Empty", "No active links found to save.")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Empty"))
+            msg_box.setText(_("No active links found to save."))
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
             return
 
         # UI for Name only (Folder and Description skipped for now)
@@ -71,10 +88,31 @@ class LMPresetsMixin:
             
         try:
             self.db.create_preset(name, item_ids)
-            QMessageBox.information(self, "成功", f"プリセット '{name}' を {count} アイテムで作成しました！")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("成功"))
+            msg_box.setText(_("プリセット '{name}' を {count} アイテムで作成しました！").format(name=name, count=count))
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
             self.presets_panel.refresh()
         except Exception as e:
-            QMessageBox.critical(self, "エラー", str(e))
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("エラー"))
+            msg_box.setText(str(e))
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
 
     def _load_preset(self, preset_id):
         items = self.db.get_preset_items(preset_id)
@@ -94,6 +132,16 @@ class LMPresetsMixin:
         btn_append = msg_box.addButton("Append / Add", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = msg_box.addButton(QMessageBox.StandardButton.Cancel)
         
+        msg_box.setStyleSheet("""
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 100px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """)
         msg_box.exec()
         
         clicked = msg_box.clickedButton()
@@ -136,7 +184,23 @@ class LMPresetsMixin:
             if error_count > 0:
                 self.logger.error(f"Preset load had {error_count} errors.")
                 
-        QMessageBox.information(self, "Deployed", f"Deployed {success_count}/{len(items)} items from preset.")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(_("Deployed"))
+        msg_box.setText(_("Deployed {success}/{total} items from preset.").format(success=success_count, total=len(items)))
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        msg_box.exec()
         
         self.preset_filter_mode = True
         self.preset_filter_paths = preset_paths
@@ -196,7 +260,23 @@ class LMPresetsMixin:
             self.db.delete_preset(preset_id)
             self.presets_panel.refresh()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Error"))
+            msg_box.setText(_("Failed to delete: {error}").format(error=e))
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
 
     def _clear_preset_filter(self):
         """Clear preset filter mode and show all items."""
@@ -208,41 +288,71 @@ class LMPresetsMixin:
         self._rebuild_current_view()
 
     def _unload_active_links(self):
-        """Removes all symlinks in target directory that belong to current app/storage."""
+        """Removes all symlinks in all target directories that belong to current app/storage.
+        Reinforced with physical sweep for 'ghost' links.
+        """
         app_data = self.app_combo.currentData()
         if not app_data: return
-        target_root = app_data.get(self.current_target_key)
         storage_root = app_data.get('storage_root')
-        if not target_root or not storage_root: return
+        if not storage_root: return
+        
+        # Determine all target roots for this app
+        search_roots = []
+        if 'target_root' in app_data: search_roots.append(app_data['target_root'])
+        if 'target_root_2' in app_data: search_roots.append(app_data['target_root_2'])
+        if 'target_root_3' in app_data: search_roots.append(app_data['target_root_3'])
+        
+        if not search_roots: return
         
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Unload Links")
-        msg_box.setText("Are you sure you want to remove ALL active symlinks for this app?")
+        msg_box.setWindowTitle(_("Unlink All (Physical Sweep)"))
+        msg_box.setText(_("Are you sure you want to remove ALL active symlinks for this app?\n\n"
+                          "This will perform an exhaustive sweep of all target folders to remove "
+                          "any links pointing to this app's storage, including 'ghost' links."))
+        msg_box.setIcon(QMessageBox.Icon.Warning)
         msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
         
-        # Style to match dark theme and ensure visibility
-        msg_box.setStyleSheet("""
-            QMessageBox { background-color: #2b2b2b; }
-            QLabel { color: #ffffff; }
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
             QPushButton { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; border-radius: 4px; padding: 4px 12px;
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
             }
-            QPushButton:hover { background-color: #4a4a4a; }
-        """)
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg_box.setStyleSheet(enhanced_styled_msg_box)
         
-        reply = msg_box.exec()
-        
-        if reply == QMessageBox.StandardButton.Yes:
+        if msg_box.exec() == QMessageBox.StandardButton.Yes:
             try:
-                self.deployer.cleanup_links_in_target(target_root, storage_root)
-                QMessageBox.information(self, "Success", "All links unloaded.")
-                self._on_app_changed(self.app_combo.currentIndex()) # Refresh view
+                # 1. Physical exhaustive sweep
+                self.logger.info(f"Unload All: Starting physical sweep in {len(search_roots)} targets...")
+                self.deployer.remove_links_pointing_to(search_roots, storage_root)
                 
-                # Phase 28/Debug: Explicitly clear all highlight borders after bulk unlink
+                # 2. Update DB status for all items in this app
+                self.db.unlink_all_for_app(app_data['id'])
+                
+                # 3. Success Message
+                success_box = QMessageBox(self)
+                success_box.setWindowTitle(_("Success"))
+                success_box.setText(_("Exhaustive unlink complete. All identified links have been removed."))
+                success_box.setIcon(QMessageBox.Icon.Information)
+                success_box.setStyleSheet(enhanced_styled_msg_box)
+                success_box.exec()
+                
+                # 4. Refresh view
+                self._on_app_changed(self.app_combo.currentIndex())
+                
                 if hasattr(self, '_refresh_tag_visuals'):
                     self._refresh_tag_visuals()
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Unload failed: {e}")
+                self.logger.error(f"Unlink All failed: {e}")
+                error_box = QMessageBox(self)
+                error_box.setWindowTitle(_("Error"))
+                error_box.setText(_("Unlink failed: {error}").format(error=e))
+                error_box.setIcon(QMessageBox.Icon.Critical)
+                error_box.setStyleSheet(enhanced_styled_msg_box)
+                error_box.exec()
 

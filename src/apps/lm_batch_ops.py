@@ -11,6 +11,7 @@ import time
 from PyQt6.QtWidgets import QMessageBox
 from src.ui.link_master.item_card import ItemCard
 from PyQt6.QtCore import QThread
+from src.core.lang_manager import _
 from .lm_batch_ops_worker import TagConflictWorker
 from src.core.link_master.core_paths import get_trash_dir
 
@@ -25,18 +26,23 @@ class LMBatchOpsMixin:
         # Standardized Style for Confirmation
         msg = QMessageBox(self)
         msg.setWindowTitle(_("Confirm Unlink All"))
-        msg.setText(_("Are you sure you want to remove all active symbolic links and junction points?"))
+        msg.setText(_("Are you sure you want to remove all active symbolic links and perform a full physical sweep of the target folders?"))
+        msg.setInformativeText(_("This will also remove 'ghost' links not tracked by the database."))
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         # Explicit styling to prevent "black" dialog issues in dark theme
-        styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-            QLabel { color: white; }
-            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
             QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
         """
-        msg.setStyleSheet(styled_msg_box)
+        msg.setStyleSheet(enhanced_styled_msg_box)
 
         if msg.exec() == QMessageBox.StandardButton.No:
             return
@@ -59,24 +65,51 @@ class LMBatchOpsMixin:
         # Get all folders to ensure we catch "ghost" links not marked as linked in DB
         all_configs = self.db.get_all_folder_configs()
         
+        # Phase 7 Fix: Sweep ALL known folders, then perform a physical sweep of search roots
         count = 0
         if all_configs:
-            # Phase 7 Fix: Sweep ALL known folders, not just those DB thinks are linked
             for rel_path in all_configs.keys():
-                # Unlink each item (update_ui=False for performance in batch)
                 if self._unlink_single(rel_path, update_ui=False):
                     count += 1
         
-        # Refresh the entire view to show unlinked status
+        # Physical Sweep for "Ghost Links" not in DB
+        app_data = self.app_combo.currentData()
+        if app_data:
+            storage_root = app_data.get('storage_root')
+            search_roots = []
+            for k in ['target_root', 'target_root_2', 'target_root_3']:
+                root = app_data.get(k)
+                if root and os.path.isdir(root):
+                    search_roots.append(root)
+            
+            if storage_root and search_roots:
+                self.logger.info(f"Performing physical sweep for orphaned links pointing to: {storage_root}")
+                # Use deployer's sweep method
+                self.deployer.remove_links_pointing_to(search_roots, storage_root)
+
+        # Refresh the entire view
         self.refresh()
         if hasattr(self, '_update_total_link_count'):
             self._update_total_link_count()
             
-        # Success Notification with identical styling
+        # Success Notification with enhanced styling (Main Background + White Text focus)
         smsg = QMessageBox(self)
         smsg.setWindowTitle(_("Unlink All Complete"))
-        smsg.setText(_("Successfully removed {n} active links.").format(n=count))
-        smsg.setStyleSheet(styled_msg_box)
+        smsg.setText(_("Successfully removed {n} active links and performed a physical cleanup.").format(n=count))
+        smsg.setIcon(QMessageBox.Icon.Information)
+        
+        # More comprehensive styling for all components of the message box
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        smsg.setStyleSheet(enhanced_styled_msg_box)
         smsg.exec()
     
     def _update_cards_link_status(self, paths):
@@ -281,18 +314,23 @@ class LMBatchOpsMixin:
         """Moves all selected items to trash. Uses core _trash_single."""
         if not self.selected_paths: return
         
+        # Phase 7 FIX: Enhanced styling for Batch Trash
         msg = QMessageBox(self)
         msg.setWindowTitle(_("Batch Trash"))
         msg.setText(_("Move {n} items to trash?").format(n=len(self.selected_paths)))
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
-        styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-            QLabel { color: white; }
-            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
             QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
         """
-        msg.setStyleSheet(styled_msg_box)
+        msg.setStyleSheet(enhanced_styled_msg_box)
         
         if msg.exec() != QMessageBox.StandardButton.Yes: return
         
@@ -309,18 +347,23 @@ class LMBatchOpsMixin:
         if not self.selected_paths: return
         
         # Phase 7 Fix: Added missing confirmation dialog with styling
+        # Phase 7 FIX: Enhanced styling for Batch Restore
         msg = QMessageBox(self)
         msg.setWindowTitle(_("Batch Restore"))
         msg.setText(_("Restore {n} items from trash?").format(n=len(self.selected_paths)))
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
-        styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-            QLabel { color: white; }
-            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
             QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
         """
-        msg.setStyleSheet(styled_msg_box)
+        msg.setStyleSheet(enhanced_styled_msg_box)
         
         if msg.exec() != QMessageBox.StandardButton.Yes: return
 
@@ -733,17 +776,19 @@ class LMBatchOpsMixin:
         # Connect signals
         self._tag_sync_thread.started.connect(self._tag_sync_worker.run)
         self._tag_sync_worker.finished.connect(self._on_tag_refresh_finished)
+        
+        # Phase 7 FIX: Ensure absolute cleanup of QThread and Worker to prevent "hanging" workers
         self._tag_sync_worker.finished.connect(self._tag_sync_thread.quit)
         self._tag_sync_worker.finished.connect(self._tag_sync_worker.deleteLater)
         self._tag_sync_thread.finished.connect(self._tag_sync_thread.deleteLater)
-        # Cleanup python reference
         self._tag_sync_thread.finished.connect(self._cleanup_tag_thread)
         
         self._tag_sync_thread.start()
     
     def _cleanup_tag_thread(self):
-        """Clean up the Python reference to the thread."""
+        """Clean up the Python reference to the thread and worker to allow GC."""
         self._tag_sync_thread = None
+        self._tag_sync_worker = None
 
     def _on_card_deployment_requested(self, path):
         """Phase 30: Handle direct deployment toggle from card overlay button."""
@@ -1110,13 +1155,17 @@ class LMBatchOpsMixin:
                     msg.setText(_("Library '{lib}' unlinked.\n\nUnlink {n} packages depending on it?").format(lib=lib_name, n=len(dependent_packages)))
                     msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                     
-                    styled_msg_box = """
-                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-                        QLabel { color: white; }
-                        QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+                    enhanced_styled_msg_box = """
+                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                        QLabel { color: white; font-size: 13px; background: transparent; }
+                        QPushButton { 
+                            background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                            padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                        }
                         QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                        QPushButton:pressed { background-color: #2980b9; }
                     """
-                    msg.setStyleSheet(styled_msg_box)
+                    msg.setStyleSheet(enhanced_styled_msg_box)
                     
                     if msg.exec() == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:

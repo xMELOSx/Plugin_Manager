@@ -296,9 +296,25 @@ class LMDeploymentOpsMixin:
                                     name=lib_name, old_ver=old_ver, new_ver=new_ver
                                 )
                         
-                        reply = QMessageBox.question(self, _("Library Switch"), msg,
-                                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                        if reply == QMessageBox.StandardButton.Yes:
+                        msg_box = QMessageBox(self)
+                        msg_box.setWindowTitle(_("Library Switch"))
+                        msg_box.setText(msg)
+                        msg_box.setIcon(QMessageBox.Icon.Question)
+                        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        
+                        enhanced_styled_msg_box = """
+                            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                            QLabel { color: white; font-size: 13px; background: transparent; }
+                            QPushButton { 
+                                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                            }
+                            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                            QPushButton:pressed { background-color: #2980b9; }
+                        """
+                        msg_box.setStyleSheet(enhanced_styled_msg_box)
+                        
+                        if msg_box.exec() == QMessageBox.StandardButton.Yes:
                             self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
                         else:
@@ -325,10 +341,25 @@ class LMDeploymentOpsMixin:
                        scope=conflict_data['scope'], new_name=folder_name
                    )
             
-            reply = QMessageBox.warning(self, _("Conflict Swap"), msg, 
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Conflict Swap"))
+            msg_box.setText(msg)
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             
-            if reply == QMessageBox.StandardButton.Yes:
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            
+            if msg_box.exec() == QMessageBox.StandardButton.Yes:
                 self.logger.info(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
                 self._unlink_single(conflict_data['path'], update_ui=True)
                 self._refresh_tag_visuals(target_tag=conflict_data.get('tag'))
@@ -362,7 +393,23 @@ class LMDeploymentOpsMixin:
                 detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
                 count += 1
                 
-            QMessageBox.critical(self.window(), _("Deployment Collision"), detail_txt)
+            msg_box = QMessageBox(self.window())
+            msg_box.setWindowTitle(_("Deployment Collision"))
+            msg_box.setText(detail_txt)
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
             return False
         
         if success:
@@ -376,7 +423,23 @@ class LMDeploymentOpsMixin:
                     p = os.path.basename(act.get('path'))
                     if t == 'backup': msg += _("- Backup created for {path}\n").format(path=p)
                     elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
-                QMessageBox.information(self, _("Conflict Handled"), msg)
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Conflict Handled"))
+                msg_box.setText(msg)
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
 
              # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
              self._update_card_by_path(full_src)
@@ -418,13 +481,25 @@ class LMDeploymentOpsMixin:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
                     # Phase 1.1.25: Preventative confirmation (centralized)
-                    reply = QMessageBox.question(
-                        self, 
-                        _("Cascaded Unlink Confirmation"), 
-                        _("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)),
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle(_("Cascaded Unlink Confirmation"))
+                    msg_box.setText(_("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)))
+                    msg_box.setIcon(QMessageBox.Icon.Question)
+                    msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    
+                    enhanced_styled_msg_box = """
+                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                        QLabel { color: white; font-size: 13px; background: transparent; }
+                        QPushButton { 
+                            background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                            padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                        }
+                        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                        QPushButton:pressed { background-color: #2980b9; }
+                    """
+                    msg_box.setStyleSheet(enhanced_styled_msg_box)
+                    
+                    if msg_box.exec() == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
 
@@ -646,7 +721,23 @@ class LMDeploymentOpsMixin:
         
         for rel in rel_paths:
             if not self._deploy_single(rel, update_ui=False, show_result=False):
-                QMessageBox.warning(self, _("Deploy Error"), _("Failed to deploy {rel}").format(rel=rel))
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Deploy Error"))
+                msg_box.setText(_("Failed to deploy {rel}").format(rel=rel))
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
                 break
         
         if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
@@ -658,7 +749,24 @@ class LMDeploymentOpsMixin:
                 summary = _("Batch deployment finished with actions:\n")
                 if backups: summary += _("- Backups created: {count} items\n").format(count=len(backups))
                 if overwrites: summary += _("- Files overwritten: {count} items\n").format(count=len(overwrites))
-                QMessageBox.information(self, _("Batch Deployment Summary"), summary)
+                
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Batch Deployment Summary"))
+                msg_box.setText(summary)
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
 
         if not skip_refresh:
             abs_paths = [os.path.join(self.storage_root, rel) for rel in rel_paths]

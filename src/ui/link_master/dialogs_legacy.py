@@ -577,26 +577,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         super().__init__(parent)
         self.folder_path = folder_path
         self.current_config = current_config or {}
-        # ... (ommited for brevity)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #ffffff; }
-            QLineEdit, QComboBox, QSpinBox { background-color: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QComboBox { background: #333; }
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 12px; }
-            QPushButton:hover { background-color: #4a4a4a; }
-        """)
-    
-    def accept(self):
-        # ... logic to save settings ...
-        super().accept()
-        # Phase 29: Toast Notification on Success
-        Toast(self.parent(), _("Settings Saved Successfully")).show()
-
-    def reject(self):
-        super().reject()
-        # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
-        Toast(self.parent(), _("Changes Cancelled")).show()
-        self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing
         self.app_name = app_name
         self.registry = getattr(parent, 'registry', None)
@@ -654,14 +634,15 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         title = _("Batch Edit Properties") if batch_mode else _("Properties: {name}").format(name=self.original_name)
         self.setWindowTitle(title)
 
+        # Style to match Link Master overall dark theme
         self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ffffff; }
+            QDialog { background-color: #1e1e1e; color: #ffffff; }
+            QLineEdit, QComboBox, QSpinBox { background-color: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
+            QComboBox { background: #333; }
+            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 12px; }
+            QPushButton:hover { background-color: #4a4a4a; }
             QLabel { color: #cccccc; }
             QCheckBox { color: #cccccc; }
-            QPushButton {
-                background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #555; }
             QGroupBox { 
                 color: #ddd; 
                 border: 1px solid #555; 
@@ -684,7 +665,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         # Phase 32: Restore Size
         self.load_options("folder_properties")
-
+    
     def closeEvent(self, event):
         """Save window geometry on close."""
         self.save_options("folder_properties")
@@ -1501,6 +1482,59 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         os.makedirs(thumb_dir, exist_ok=True)
         return thumb_dir
 
+    def get_data(self):
+        """Gather all data from UI widgets into a directory for the database."""
+        manual_tags = [t.strip() for t in self.tags_edit.text().split(',') if t.strip()]
+        quick_tags = [n for n, btn in self.tag_buttons.items() if btn.isChecked()]
+        all_tags = sorted(list(set(manual_tags + quick_tags)))
+
+        data = {
+            "display_name": self.name_edit.text(),
+            "score": self.score_dial.value(),
+            "image_path": self.image_edit.text() if self.image_edit.text() != " [ Clipboard Image ] " else self.pending_icon_path,
+            "description": self.description_edit.toPlainText(),
+            "author": self.author_edit.text(),
+            "url_list": self.url_list_edit.text(),
+            "folder_type": self.type_combo.currentData(),
+            "display_style": self.style_combo.currentData(),
+            "display_style_package": self.style_combo_pkg.currentData(),
+            "is_visible": 0 if self.hide_checkbox.isChecked() else 1,
+            "inherit_tags": 1 if self.inherit_tags_chk.isChecked() else 0,
+            "conflict_tag": self.conflict_tag_edit.text(),
+            "conflict_scope": self.conflict_scope_combo.currentData(),
+            "transfer_mode": self.transfer_mode_override_combo.currentData(),
+            "conflict_policy": self.conflict_override_combo.currentData(),
+            "tags": ", ".join(all_tags)
+        }
+
+        # Target Override calculation
+        t_data = self.target_combo.currentData()
+        if t_data == "KEEP":
+            pass # Handle KEEP logic if batch (caller should handle based on data being present)
+        elif t_data == 0: # App Default
+            data["target_override"] = None
+        elif t_data == 4: # Custom
+            data["target_override"] = self.target_override_edit.text()
+        else: # Roots 1, 2, 3
+            idx = t_data - 1
+            if idx < len(self.target_roots):
+                data["target_override"] = self.target_roots[idx]
+        
+        # Deploy Rule + Skip Levels
+        data["deploy_rule"] = self.deploy_rule_override_combo.currentData()
+        
+        # Deployment Rules JSON
+        import json
+        rules_text = self.rules_edit.toPlainText() or '{}'
+        try:
+            current_rules = json.loads(rules_text)
+        except:
+            current_rules = {}
+        current_rules['skip_levels'] = self.skip_levels_spin.value()
+        data["deployment_rules"] = json.dumps(current_rules)
+
+        return data
+
     def accept(self):
         """Override accept to save clipboard image and Stage/Finalize icon path."""
         import uuid
@@ -1517,6 +1551,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 return
 
         super().accept()
+        # Phase 29: Toast Notification on Success
+        Toast(self.parent(), _("Settings Saved Successfully")).show()
+
+    def reject(self):
+        super().reject()
+        # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
+        Toast(self.parent(), _("Changes Cancelled")).show()
 
     def keyPressEvent(self, event):
         """Phase 28: Handle global hotkeys for the dialog."""

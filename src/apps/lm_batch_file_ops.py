@@ -101,7 +101,20 @@ class LMFileOpsMixin:
         msg = QMessageBox(self)
         msg.setWindowTitle(_("Batch Trash"))
         msg.setText(_("Move {count} items to trash?").format(count=len(self.selected_paths)))
+        msg.setIcon(QMessageBox.Icon.Warning)
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg.setStyleSheet(enhanced_styled_msg_box)
         if msg.exec() != QMessageBox.StandardButton.Yes: return
         
         for path in list(self.selected_paths):

@@ -1488,7 +1488,23 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if target_root and os.path.isdir(target_root):
             os.startfile(target_root)
         else:
-            QMessageBox.warning(self, "Error", f"Invalid target folder: {target_root}")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Error"))
+            msg_box.setText(_("Invalid target folder: {path}").format(path=target_root))
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
 
     def _load_apps(self):
         apps = self.registry.get_apps()
@@ -1702,6 +1718,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.size_worker = SizeScannerWorker(self.db, self.storage_root)
         self.size_worker.progress.connect(self._on_size_scan_progress)
         self.size_worker.all_finished.connect(self._on_size_scan_finished)
+        # Phase 7 FIX: Ensure thread is deleted after completion
+        self.size_worker.finished.connect(self.size_worker.deleteLater)
         self.size_worker.start()
 
     def _on_size_scan_progress(self, current, total):
@@ -1718,8 +1736,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.tools_panel.set_last_check_time(now_str)
         
         self._refresh_current_view()
+        # Phase 7 FIX: Clear Python reference for GC
+        self.size_worker = None
+        
         from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "完了", "全てのパッケージ容量チェックが完了しました。")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(_("完了"))
+        msg_box.setText(_("全てのパッケージ容量チェックが完了しました。"))
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        msg_box.exec()
 
     def _auto_register_folders(self, storage_root):
         """Auto-register folders to ensure they exist in DB, but let dynamic logic handle types."""
@@ -1933,7 +1970,23 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         """Registers all currently selected items as libraries (requires metadata)."""
         if not self.selected_paths:
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Library", "Please select one or more items to register.")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Library"))
+            msg_box.setText(_("Please select one or more items to register."))
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
             return
         
         # Create registration dialog with existing library dropdown
@@ -1959,8 +2012,23 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
         if self.library_panel:
             self.library_panel.refresh()
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Library", f"Registered {count} item(s) to library: {name}")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(_("Library"))
+        msg_box.setText(_("Registered {count} item(s) to library: {name}").format(count=count, name=name))
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
+        """
+        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        msg_box.exec()
 
 
     def _update_notes_path(self):
@@ -2673,10 +2741,25 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             # Phase 32: Handle Unregister/Delete Request
             if data.get('is_unregister'):
-                reply = QMessageBox.warning(self, _("Final Confirmation"),
-                                          _("This will permanently delete the database for '{name}'.\n"
-                                            "Are you absolutely sure?").format(name=app_data['name']),
-                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Final Confirmation"))
+                msg_box.setText(_("This will permanently delete the database for '{name}'.\n"
+                                  "Are you absolutely sure?").format(name=app_data['name']))
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                reply = msg_box.exec()
                 if reply == QMessageBox.StandardButton.Yes:
                     # 1. Remove from Registry
                     self.registry.delete_app(self.current_app_id)
@@ -3049,13 +3132,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         msg.setWindowTitle(_("Success"))
         msg.setText(_("All folder attributes have been reset."))
         msg.setIcon(QMessageBox.Icon.Information)
-        styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-            QLabel { color: white; }
-            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
             QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
         """
-        msg.setStyleSheet(styled_msg_box)
+        msg.setStyleSheet(enhanced_styled_msg_box)
         msg.exec()
 
     def _export_hierarchy_current(self):
@@ -3085,13 +3173,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         msg.setWindowTitle(_("Manual Rebuild"))
         msg.setText(_("再構築が完了しました。"))
         msg.setIcon(QMessageBox.Icon.Information)
-        styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-            QLabel { color: white; }
-            QPushButton { background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px; min-width: 70px; border-radius: 4px; }
+        
+        enhanced_styled_msg_box = """
+            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+            QLabel { color: white; font-size: 13px; background: transparent; }
+            QPushButton { 
+                background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+            }
             QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:pressed { background-color: #2980b9; }
         """
-        msg.setStyleSheet(styled_msg_box)
+        msg.setStyleSheet(enhanced_styled_msg_box)
         msg.exec()
 
 

@@ -1,0 +1,12 @@
+
+> src\ui\link_master\dialogs_legacy.py:30:class TagIconLineEdit(StyledLineEdit):
+> src\ui\link_master\dialogs_legacy.py:50:class ImageDropLabel(QLabel):
+> src\ui\link_master\dialogs_legacy.py:87:class AppRegistrationDialog(QDialog):
+> src\ui\link_master\dialogs_legacy.py:567:class FolderPropertiesDialog(QDialog, OptionsMixin):
+> src\ui\link_master\dialogs_legacy.py:1971:class TagManagerDialog(QDialog):
+> src\ui\link_master\dialogs_legacy.py:2473:class TagCreationDialog(QDialog):
+> src\ui\link_master\dialogs_legacy.py:2634:class CropLabel(QLabel):
+> src\ui\link_master\dialogs_legacy.py:2733:class IconCropDialog(QDialog):
+> src\ui\link_master\dialogs_legacy.py:2836:class ImportTypeDialog(QDialog):
+> src\ui\link_master\dialogs_legacy.py:2938:class PresetPropertiesDialog(QDialog):
+

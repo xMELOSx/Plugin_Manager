@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 from PyQt6.QtWidgets import QMessageBox
+from src.core.lang_manager import _
 from src.core.link_master.core_paths import get_trash_dir, get_trash_path_for_item
 
 
@@ -91,7 +92,23 @@ class LMTrashMixin:
                 self._remove_card_by_path(path)
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not move to trash: {e}")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Error"))
+            msg_box.setText(_("Could not move to trash: {error}").format(error=e))
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
 
     def _on_package_restore(self, path, refresh=True):
         """Restore an item from Trash to its original location.
@@ -108,7 +125,23 @@ class LMTrashMixin:
             
             origin_rel = self.db.get_item_origin(rel_path)
             if not origin_rel:
-                QMessageBox.warning(self, "Restore Failed", "Original location not known for this item.")
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Restore Failed"))
+                msg_box.setText(_("Original location not known for this item."))
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
                 return
             
             dest_abs = os.path.join(storage_root, origin_rel)
@@ -118,7 +151,23 @@ class LMTrashMixin:
                 os.makedirs(dest_parent)
             
             if os.path.exists(dest_abs):
-                QMessageBox.warning(self, "Conflict", f"Restore failed: {dest_abs} already exists.")
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Conflict"))
+                msg_box.setText(_("Restore failed: {path} already exists.").format(path=dest_abs))
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
                 return
             
             if refresh:
@@ -134,7 +183,23 @@ class LMTrashMixin:
             
         except Exception as e:
             self.logger.error(f"Restore Error: {e}")
-            QMessageBox.critical(self, "Error", f"Could not restore: {e}")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Error"))
+            msg_box.setText(_("Could not restore: {error}").format(error=e))
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()
     
     def _do_restore_move(self, src_path, dest_abs, rel_path):
         """Actually move the file from trash to original location."""
@@ -164,7 +229,23 @@ class LMTrashMixin:
         dest = os.path.join(unclass_root, name)
         
         if os.path.exists(dest):
-             QMessageBox.warning(self, "Conflict", f"Target {dest} already exists.")
+             msg_box = QMessageBox(self)
+             msg_box.setWindowTitle(_("Conflict"))
+             msg_box.setText(_("Target {path} already exists.").format(path=dest))
+             msg_box.setIcon(QMessageBox.Icon.Warning)
+             
+             enhanced_styled_msg_box = """
+                 QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                 QLabel { color: white; font-size: 13px; background: transparent; }
+                 QPushButton { 
+                     background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                     padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                 }
+                 QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                 QPushButton:pressed { background-color: #2980b9; }
+             """
+             msg_box.setStyleSheet(enhanced_styled_msg_box)
+             msg_box.exec()
              return
              
         try:
@@ -172,4 +253,20 @@ class LMTrashMixin:
             self.logger.info(f"Moved {name} to Unclassified")
             self._refresh_current_view()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not move: {e}")
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Error"))
+            msg_box.setText(_("Could not move: {error}").format(error=e))
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            
+            enhanced_styled_msg_box = """
+                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                QLabel { color: white; font-size: 13px; background: transparent; }
+                QPushButton { 
+                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                }
+                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                QPushButton:pressed { background-color: #2980b9; }
+            """
+            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.exec()

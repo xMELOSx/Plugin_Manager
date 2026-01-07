@@ -159,7 +159,23 @@ class LMImportMixin:
                     zip_ref.extractall(dest_path)
                 self.logger.info(f"Extracted {source_path} to {dest_path}")
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to extract zip: {error}").format(error=e))
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Error"))
+                msg_box.setText(_("Failed to extract zip: {error}").format(error=e))
+                msg_box.setIcon(QMessageBox.Icon.Critical)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
                 return
         # Handle Folder
         elif os.path.isdir(source_path):
@@ -174,7 +190,23 @@ class LMImportMixin:
                 shutil.copytree(source_path, dest_path)
                 self.logger.info(f"Copied folder {source_path} to {dest_path}")
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to copy folder: {error}").format(error=e))
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(_("Error"))
+                msg_box.setText(_("Failed to copy folder: {error}").format(error=e))
+                msg_box.setIcon(QMessageBox.Icon.Critical)
+                
+                enhanced_styled_msg_box = """
+                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+                    QLabel { color: white; font-size: 13px; background: transparent; }
+                    QPushButton { 
+                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
+                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
+                    }
+                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+                    QPushButton:pressed { background-color: #2980b9; }
+                """
+                msg_box.setStyleSheet(enhanced_styled_msg_box)
+                msg_box.exec()
                 return
         else:
             return
