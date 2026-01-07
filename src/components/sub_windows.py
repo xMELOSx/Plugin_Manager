@@ -10,9 +10,15 @@ class OptionsWindow(FramelessWindow):
     closed = pyqtSignal()  # Signal emitted when window is closed via X button
     
     def __init__(self, parent=None, db=None):
-        # Pass parent properly - double transparency bug now fixed in paintEvent
-        super().__init__(parent)
+        # IMPORTANT: Pass None to super() to AVOID Qt parent-child relationship
+        # which causes double transparency (opacity stacking) artifacts.
+        # The 'parent' is stored as 'parent_debug_window' for applying settings only.
+        super().__init__(None)
         self.setObjectName("OptionsWindow")
+        
+        # Store parent reference for applying settings (NOT Qt parenting)
+        self.parent_debug_window = parent
+        self.db = db  # Database for settings persistence
 
         # Sync opacity from parent link_master window if available
         if parent and hasattr(parent, '_bg_opacity'):
@@ -23,11 +29,10 @@ class OptionsWindow(FramelessWindow):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
         self.resize(300, 240)
 
-        self.parent_debug_window = parent
-        self.db = db  # Database for settings persistence
         self.set_resizable(False) 
         self._init_ui()
         self._load_settings()
+
 
     def _init_ui(self):
         content = QWidget() # Create without parent, set_content_widget will handle ownership
@@ -285,16 +290,7 @@ class OptionsWindow(FramelessWindow):
                     if self.parent_debug_window:
                         self.parent_debug_window.set_pin_state(True)
                 
-                # Sync slider values from parent's ACTUAL opacity state (not just saved config)
-                if self.parent_debug_window and hasattr(self.parent_debug_window, '_bg_opacity'):
-                    actual_bg = int(self.parent_debug_window._bg_opacity * 100)
-                    self.bg_opacity_slider.setValue(actual_bg)
-                    self.bg_opacity_spin.setValue(actual_bg)
-                if self.parent_debug_window and hasattr(self.parent_debug_window, '_content_opacity'):
-                    actual_text = int(self.parent_debug_window._content_opacity * 100)
-                    self.text_opacity_slider.setValue(actual_text)
-                    self.text_opacity_spin.setValue(actual_text)
-
+                # Note: Slider sync from parent's actual opacity is done in showEvent -> _sync_all_from_parent()
             
             # Load language setting
             saved_lang = all_config.get('language', 'system')

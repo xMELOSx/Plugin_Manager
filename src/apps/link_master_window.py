@@ -2597,8 +2597,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 import time
                 t_opt = time.perf_counter()
                 from src.components.sub_windows import OptionsWindow
-                self.options_window = OptionsWindow(None, self.db)
+                # Pass 'self' as parent for reference, NOT for Qt parenting (which causes double transparency)
+                # OptionsWindow stores it as parent_debug_window for applying settings
+                self.options_window = OptionsWindow(self, self.db)
                 self.logger.info(f"[Profile] OptionsWindow (Lazy) init took {time.perf_counter()-t_opt:.3f}s")
+
                 # Removed setParent to prevent darkening artifacts (Double Transparency)
                 # self.options_window.setParent(self, self.options_window.windowFlags())
                 self.options_window.closed.connect(self._on_options_window_closed)
