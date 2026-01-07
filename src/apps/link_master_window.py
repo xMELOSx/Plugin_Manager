@@ -2311,6 +2311,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Phase 28: Save last state on every navigation for startup restoration
         self._save_last_state()
         
+        # Phase 36: Synchronize Trash button state during navigation
+        if hasattr(self, 'btn_trash'):
+            from src.core.link_master.core_paths import get_trash_dir
+            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
+            if app_data:
+                trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
+                target_norm = os.path.normpath(path).replace('\\', '/')
+                self.btn_trash.setChecked(target_norm == trash_path)
+
         self._update_breadcrumbs(path)
         
         # Phase 28: Use pooling instead of destruction

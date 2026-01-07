@@ -696,7 +696,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
 
         
-        self.set_content_widget(content)
+        # Phase 35: Layout is already in self.content_layout, no need for set_content_widget
         
         # Double click on Tree
         self.setStyleSheet("""

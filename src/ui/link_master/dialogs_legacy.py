@@ -1208,7 +1208,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
         # New Rule Options
-        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit)"), "inherit")
+        # Phase 36: Updated localized inheritance text
+        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit: 真上のターゲットに基く設定)"), "inherit")
         self.deploy_rule_override_combo.addItem(_("whole folder"), "folder")
         self.deploy_rule_override_combo.addItem(_("all files"), "files")
         self.deploy_rule_override_combo.addItem(_("tree"), "tree")
@@ -1224,9 +1225,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Fix Phase 35: Use correct def_idx logic (index 0 is KEEP in batch mode)
         def_idx = 1 if self.batch_mode else 0
         if not curr_rule or curr_rule == 'inherit':
-            effective_rule = self.app_deploy_default
-            loc_rule = _(effective_rule)
-            self.deploy_rule_override_combo.setItemText(def_idx, _("Target Default (Inherit: {rule})").format(rule=loc_rule))
+            # Phase 36: Simplified localized text for inheritance
+            self.deploy_rule_override_combo.setItemText(def_idx, _("Target Default (Inherit: 真上のターゲットに基く設定)"))
             if not curr_rule: curr_rule = 'inherit'
         
         idx = self.deploy_rule_override_combo.findData(curr_rule)
@@ -1235,13 +1235,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         elif self.batch_mode:
             self.deploy_rule_override_combo.setCurrentIndex(0)
             
-        # Help Button + Sticky Note (Phase 35)
-        help_btn = QPushButton("❔")
+        # Help Button + Sticky Note (Phase 35) - Use text button "?" instead of emoji
+        help_btn = QPushButton("?")
         help_btn.setFixedSize(24, 24)
         help_btn.setToolTip(_("Deployment Rule Help"))
         help_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; border: 1px solid #555; color: #aaa; border-radius: 12px; font-weight: bold; 
+                background-color: transparent; border: 1px solid #555; color: #aaa; border-radius: 4px; font-weight: bold; 
             }
             QPushButton:hover { background-color: #444; color: #fff; border-color: #3498db; }
         """)
@@ -1268,6 +1268,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             _("<b>whole folder</b>: Keeps the folder structure as-is. Good for most mods.") + "<br><br>" +
             _("<b>all files</b>: Flattens the folder, placing all files directly into the target. Useful for 'resource pack' style folders.") + "<br><br>" +
             _("<b>tree</b>: Maintains partial structure starting from a specific depth. Advanced use only.") + "<br><br>" +
+            _("<b>JSO (Joint Storage Organization)</b>: Advanced rule for shared storage structures. Controls how files are merged across targets.") + "<br><br>" +
             _("More detailed overrides (individual file redirections, excludes, etc.) can be managed via the <b>Edit Individual Redirections</b> button below.")
         )
         help_text.setWordWrap(True)
@@ -1454,7 +1455,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                     self.image_edit.setText(first_preview[0])
                     self._update_preview(first_preview[0])
             
-        # Actions - Add to Root Layout
+        # Phase 35: Set non-modal to allow concurrent FM operation
+        self.setModal(False)
+        
+        # Actions - Add to Root Layout (Phase 36: Restored missing buttons)
         btn_layout = QHBoxLayout()
         # Phase 28: Use Alt+Enter for save to prevent accidental submissions
         from PyQt6.QtGui import QKeySequence, QShortcut
@@ -1462,21 +1466,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.save_shortcut.activated.connect(self.accept)
         self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self) # Support numpad
         self.save_shortcut_win.activated.connect(self.accept)
-        
-        # Phase 35: Set non-modal to allow concurrent FM operation
-        self.setModal(False)
-        
-    def accept(self):
-        """Override accept to emit signal for non-modal use."""
-        data = self.get_data()
-        self.config_saved.emit(data)
-        super().accept()
-        
-        # Button Styling & Layout (Unified)
-        self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
+
+        self.ok_btn = QPushButton(_("Save"))
+        self.ok_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; border-radius: 4px; padding: 6px;")
         self.ok_btn.setFixedWidth(160)
+        self.ok_btn.clicked.connect(self.accept)
         
         self.cancel_btn = QPushButton(_("Cancel"))
+        self.cancel_btn.setStyleSheet("background-color: #444; color: white; border: 1px solid #555; border-radius: 4px; padding: 6px;")
         self.cancel_btn.setFixedWidth(160)
         self.cancel_btn.clicked.connect(self.reject)
         
@@ -1485,6 +1482,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         btn_layout.addWidget(self.ok_btn)
         
         self.root_layout.addLayout(btn_layout)
+
+    def accept(self):
+        """Override accept to emit signal for non-modal use."""
+        data = self.get_data()
+        self.config_saved.emit(data)
+        super().accept()
     
     def _open_actual_folder(self):
         """Open the folder in Explorer."""
@@ -1745,6 +1748,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
     def _on_target_choice_changed(self, *args):
         choice = self.target_combo.currentData()
         self.manual_path_container.setVisible(choice == 4)
+        
+        # Phase 36: If Custom is chosen and current text is empty, pre-fill with primary target
+        if choice == 4 and not self.target_override_edit.text():
+            primary_root = self.target_roots[0] if self.target_roots else None
+            if primary_root:
+                self.target_override_edit.setText(primary_root)
 
     def _get_selected_target_path(self):
         choice = self.target_combo.currentData()

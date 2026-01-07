@@ -178,11 +178,12 @@ def _setup_header(window, main_layout, main_widget):
     window.search_mode.setFixedWidth(150)
     header_layout.addWidget(window.search_mode)
     
-    window.search_btn = ActionButton("🔍", main_widget)
+    window.search_btn = ActionButton("🔍", main_widget, is_toggle=True)
     window.search_btn.setObjectName("header_search_btn")
     window.search_btn.setFixedSize(32, 28)
     window.search_btn.clicked.connect(window._perform_search)
     window.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    window.search_btn.setToolTip(_("Execute Search (Toggle)"))
     header_layout.addWidget(window.search_btn)
     
     window.clear_search_btn = ActionButton("✕", main_widget)

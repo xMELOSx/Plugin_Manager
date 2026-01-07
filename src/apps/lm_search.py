@@ -177,6 +177,8 @@ class LMSearchMixin:
         
         # If no active filter, just refresh current path normally
         if not query and not selected_tags:
+            if hasattr(self, 'search_btn'):
+                self.search_btn.setChecked(False)  # Reset toggle if empty
             if hasattr(self, 'current_view_path') and self.current_view_path:
                 self._load_items_for_path(self.current_view_path)
             elif storage_root:
@@ -185,6 +187,8 @@ class LMSearchMixin:
             self.non_inheritable_tags = self._get_non_inheritable_tags_from_json()
             return
 
+        if hasattr(self, 'search_btn'):
+            self.search_btn.setChecked(True)  # Keep highlighted
         self._show_search_indicator()
         
         folder_configs = self.db.get_all_folder_configs()
@@ -528,6 +532,8 @@ class LMSearchMixin:
         """Clear search and restore normal view."""
         self.search_bar.clear()
         self.tag_bar.clear_selection()  # Also clear tag selection
+        if hasattr(self, 'search_btn'):
+            self.search_btn.setChecked(False)
         
         self.cat_result_label.setText("")
         self.pkg_result_label.setText("")
