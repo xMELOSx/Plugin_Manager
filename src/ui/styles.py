@@ -211,12 +211,16 @@ class DialogStyles:
     
     # Enhanced dark QMessageBox style with wider buttons
     ENHANCED_MSG_BOX = """
-        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-        QLabel { color: white; font-size: 13px; background: transparent; }
+        QMessageBox { background-color: #1e1e1e; color: #ffffff; }
+        QLabel { color: #ffffff; font-size: 14px; }
         QPushButton { 
-            background-color: #3b3b3b; color: white; border: 1px solid #555; 
-            padding: 6px 16px; min-width: 100px; border-radius: 4px; font-weight: bold;
+            background-color: #333333; 
+            color: #ffffff; 
+            border: 1px solid #555555; 
+            padding: 8px 16px; 
+            min-width: 140px; 
+            border-radius: 4px;
         }
-        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-        QPushButton:pressed { background-color: #2980b9; }
+        QPushButton:hover { background-color: #444444; border: 1px solid #777777; }
+        QPushButton:pressed { background-color: #222222; }
     """

@@ -1,0 +1,43 @@
+
+# Dynamic Navigation
+msgid "Trash"
+msgstr "ごみ箱"
+
+# URL utils fallback
+msgid "Force Open"
+msgstr "強制的に開く"
+
+msgid "Open URL Manager"
+msgstr "URLマネージャーを開く"
+
+msgid "Could not connect to registered URLs"
+msgstr "登録済みURLへの接続に失敗しました"
+
+msgid "What would you like to do?"
+msgstr "どうしますか？"
+
+# Unlink All dialog
+msgid "Unlink All (Physical Sweep)"
+msgstr "全解除 (物理スイープ)"
+
+msgid "Are you sure you want to remove ALL active symlinks for this app?\n\nThis will perform an exhaustive sweep of all target folders to remove any links pointing to this app's storage, including 'ghost' links."
+msgstr "このアプリの全てのアクティブなシンボリックリンクを解除しますか？\n\nアプリのストレージを指しているゴーストリンクも含む、全てのターゲットフォルダの徹底的なスイープを実行します。"
+
+msgid "Exhaustive unlink complete. All identified links have been removed."
+msgstr "徹底的な解除が完了しました。特定された全てのリンクが削除されました。"
+
+msgid "Success"
+msgstr "成功"
+
+msgid "Error"
+msgstr "エラー"
+
+# Context Menu
+msgid "Open in Explorer"
+msgstr "エクスプローラーで開く"
+
+msgid "Unlink All Complete"
+msgstr "全解除完了"
+
+msgid "Successfully removed {n} active links and performed a physical cleanup."
+msgstr "{n} 個のアクティブなリンクを削除し、物理的なクリーンアップを完了しました。"

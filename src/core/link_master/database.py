@@ -647,7 +647,9 @@ class LinkMasterDB:
         # Note: app_id is accepted for compatibility with the call site, 
         # but since this DB is app-specific, we apply it to the whole DB.
         with self.get_connection() as conn:
-            conn.execute("UPDATE lm_folder_config SET last_known_status = 'unlinked' WHERE last_known_status = 'linked'")
+            # Phase 33/BugFix: Set all items with any link status to unlinked.
+            # This ensures parents (categories) don't show borders for non-existent links/partials.
+            conn.execute("UPDATE lm_folder_config SET last_known_status = 'unlinked' WHERE last_known_status != 'none'")
             conn.commit()
 
     def update_folder_display_config(self, rel_path: str, **kwargs):

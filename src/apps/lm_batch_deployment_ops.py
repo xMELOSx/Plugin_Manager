@@ -584,6 +584,11 @@ class LMDeploymentOpsMixin:
             if hasattr(self, '_update_total_link_count'):
                 self._update_total_link_count()
             
+            # Phase 33 BugFix: Ensure parent category borders (orange/partial) are refreshed
+            # when a single item is unlinked.
+            if hasattr(self, '_refresh_category_cards'):
+                self._refresh_category_cards()
+
             if hasattr(self, 'library_panel') and self.library_panel:
                 self.library_panel.refresh()
             
