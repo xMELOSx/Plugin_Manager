@@ -468,6 +468,17 @@ class ItemCard(QFrame):
         status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
         self.link_status = status.get('status', 'none')
         
+        # Phase: Category Proxy Check - REMOVED to allow individual deployment switching (Swap)
+        self.is_parent_deployed = False
+        if self.db:
+            try:
+                rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
+                p_rel = os.path.dirname(rel).replace('\\', '/')
+                if p_rel and p_rel != '.':
+                    p_cfg = self.db.get_folder_config(p_rel) or {}
+                    self.is_parent_deployed = (p_cfg.get('category_deploy_status') == 'deployed')
+            except: pass
+        
         # Debug: Log detection result (commented out for performance)
         # import logging
         # logging.getLogger("ItemCard").debug(f"[CheckLink] {self.folder_name}: target={target_link}, tm={transfer_mode}, status={self.link_status}")
@@ -482,6 +493,8 @@ class ItemCard(QFrame):
         old_status = getattr(self, '_prev_link_status', 'none')
         if self.link_status != old_status:
              self._prev_link_status = self.link_status
+             self._update_style()
+             self._update_icon_overlays()
              self.deploy_changed.emit()
 
         # Phase 28: is_partial logic MUST match ScannerWorker

@@ -652,16 +652,19 @@ class LinkMasterDB:
         # Note: app_id is accepted for compatibility with the call site, 
         # but since this DB is app-specific, we apply it to the whole DB.
         with self.get_connection() as conn:
-            # Phase 33/BugFix: Set all items with any link status to unlinked.
-            # This ensures parents (categories) don't show borders for non-existent links/partials.
-            # Phase 34/BugFix: Also reset has_logical_conflict and is_library_alt_version flags
-            # to prevent red borders persisting after physical sweep.
+            # Phase 33/34 Enhanced Reset: Clear ALL status and conflict flags.
+            # This ensures parents (categories) don't show red borders for non-existent links/partials/logical conflicts.
             conn.execute("""
                 UPDATE lm_folder_config 
-                SET last_known_status = 'unlinked',
+                SET last_known_status = 'none',
                     has_logical_conflict = 0,
-                    is_library_alt_version = 0
-                WHERE last_known_status != 'none'
+                    has_target_conflict = 0,
+                    has_name_conflict = 0,
+                    is_library_alt_version = 0,
+                    category_deploy_status = NULL,
+                    conflict_tag = NULL,
+                    conflict_scope = NULL
+                WHERE last_known_status != 'none' OR has_logical_conflict = 1 OR category_deploy_status IS NOT NULL
             """)
             conn.commit()
 

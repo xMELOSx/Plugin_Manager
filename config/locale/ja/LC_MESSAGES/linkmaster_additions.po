@@ -43,4 +43,47 @@ msgid "Unlink All Complete"
 msgstr "全解除完了"
 
 msgid "Successfully removed {n} active links and performed a physical cleanup."
-msgstr "{n} 個のアクティブなリンクを削除し、物理的なクリーンアップを完了しました。"
+msgstr "{n} 個のアクティブなリンクを解除し、物理的なクリーンアップを完了しました。"
+
+# Category Deployment
+msgid "Category Deploy Blocked"
+msgstr "カテゴリデプロイがブロックされました"
+
+msgid "Cannot deploy category due to internal conflicts:"
+msgstr "内部競合のため、カテゴリをデプロイできません:"
+
+msgid "Swap Required"
+msgstr "入れ替えが必要です"
+
+msgid "The following packages are already deployed:"
+msgstr "以下のパッケージが既にデプロイされています:"
+
+msgid "Deploying the category will unlink these packages and deploy the category folder instead."
+msgstr "カテゴリをデプロイすると、これらのパッケージのリンクを解除し、代わりにカテゴリフォルダをデプロイします。"
+
+msgid "Swap (Unlink and Deploy Category)"
+msgstr "入れ替え（リンク解除してカテゴリをデプロイ）"
+
+msgid "Category deployed (swapped {count} packages)"
+msgstr "カテゴリをデプロイしました（{count} 個のパッケージを入れ替え）"
+
+msgid "Category Deploy"
+msgstr "カテゴリデプロイ"
+
+msgid "Errors occurred during deployment:"
+msgstr "デプロイ中にエラーが発生しました:"
+
+msgid "Category deployed"
+msgstr "カテゴリをデプロイしました"
+
+msgid "Category unlinked"
+msgstr "カテゴリのリンクを解除しました"
+
+msgid "The parent category '{parent_name}' is currently deployed.\n\nDeploying this package individually will require unlinking the entire category.\nDo you want to unlink the category and deploy this package instead?"
+msgstr "親カテゴリ '{parent_name}' が現在デプロイされています。\n\nこのパッケージを個別にデプロイするには、カテゴリ全体の解除が必要です。\nカテゴリを解除して、このパッケージを個別にデプロイしますか？"
+
+msgid "Category Swap Check"
+msgstr "カテゴリスワップ確認"
+
+msgid "Unlink Category & Deploy"
+msgstr "カテゴリ解除してデプロイ"

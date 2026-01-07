@@ -315,12 +315,31 @@ class ScannerWorker(QObject):
         t_auto_end = time.perf_counter()
 
         # 2. Link Status - ALWAYS check for all items (reverted from package-only)
-        # The item type detection is unreliable for many mod types, so we must check link status for everything.
+        # Reverted faked status for children. We keep the flag for reference.
+        is_parent_deployed = False
+        try:
+            parent_rel = os.path.dirname(item_rel).replace('\\', '/')
+            if parent_rel and parent_rel != '.':
+                parent_cfg = folder_configs.get(parent_rel, {})
+                is_parent_deployed = (parent_cfg.get('category_deploy_status') == 'deployed')
+        except: pass
+
         t_link_start = time.perf_counter()
         target_override = item_config.get('target_override')
         target_link = target_override or os.path.join(self.target_root, item['name'])
-        status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
-        link_status = status_info.get('status', 'none')
+        
+        # Phase 33: Categories derive status from children, NOT from physical symlink check
+        # Matching ItemCard logic at L396
+        if is_actually_package:
+            status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
+            link_status = status_info.get('status', 'none')
+        else:
+            link_status = 'none'
+        
+        # Override logic REMOVED to allow individual deployment switching (Swap)
+        # if is_parent_deployed and link_status == 'none':
+        #     link_status = 'linked'
+            
         t_link_end = time.perf_counter()
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)

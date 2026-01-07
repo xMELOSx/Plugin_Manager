@@ -3099,7 +3099,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _handle_deploy_single(self, rel_path):
         """Deploy a single item from context menu."""
-        if not self._deploy_single(rel_path, update_ui=True):
+        if self._deploy_single(rel_path, update_ui=True):
+             # Refresh Link Master global count
+             if hasattr(self, '_update_total_link_count'):
+                 self._update_total_link_count()
+        else:
             self._show_styled_message(_("Deploy Error"), f"Failed to deploy {rel_path}", QMessageBox.Icon.Warning)
 
     def _handle_deploy_category(self, rel_path):
@@ -3139,10 +3143,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 if swap_result.get('success'):
                     if hasattr(self, '_show_toast'):
                         self._show_toast(_("Category deployed (swapped {count} packages)").format(count=len(deployed)))
+                    if hasattr(self, '_update_total_link_count'):
+                        self._update_total_link_count()
                 else:
                     errors = swap_result.get('errors', [])
                     if errors:
-                        QMessageBox.warning(self, "Category Deploy", "\n".join(errors[:5]))
+                        self._show_styled_message(_("Category Deploy"), _("Errors occurred during deployment:"), QMessageBox.Icon.Warning, "\n".join(errors[:5]))
             return
         
         # Case 3: Direct deploy (no conflicts, no swap needed)
@@ -3151,6 +3157,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Refresh UI
             self._refresh_tag_visuals()
             self._refresh_category_cards()
+            if hasattr(self, '_update_total_link_count'):
+                self._update_total_link_count()
             if hasattr(self, '_show_toast'):
                 self._show_toast(_("Category deployed"))
         else:
@@ -3173,6 +3181,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Refresh UI
         self._refresh_tag_visuals()
         self._refresh_category_cards()
+        if hasattr(self, '_update_total_link_count'):
+            self._update_total_link_count()
         
         if hasattr(self, '_show_toast'):
             self._show_toast(_("Category unlinked"))

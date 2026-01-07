@@ -218,8 +218,8 @@ class DialogStyles:
             background-color: #3b3b3b; 
             color: #ffffff; 
             border: 1px solid #555555; 
-            padding: 8px 20px; 
-            min-width: 220px; 
+            padding: 8px 24px; 
+            min-width: 260px; 
             border-radius: 4px;
             font-weight: bold;
         }

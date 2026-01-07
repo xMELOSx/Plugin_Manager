@@ -64,6 +64,11 @@ class LMBatchOpsMixin:
             for rel_path in all_configs.keys():
                 if self._unlink_single(rel_path, update_ui=False):
                     count += 1
+            
+            # Phase: Nuclear Reset - Clear ALL logical conflict flags for the current app context in DB
+            try:
+                self.db.clear_all_conflict_flags()
+            except: pass
         
         # Physical Sweep for "Ghost Links" not in DB
         app_data = self.app_combo.currentData()
@@ -85,25 +90,13 @@ class LMBatchOpsMixin:
         if hasattr(self, '_update_total_link_count'):
             self._update_total_link_count()
             
-        # Success Notification with enhanced styling (Main Background + White Text focus)
-        smsg = QMessageBox(self)
-        smsg.setWindowTitle(_("Unlink All Complete"))
-        smsg.setText(_("Successfully removed {n} active links and performed a physical cleanup.").format(n=count))
-        smsg.setIcon(QMessageBox.Icon.Information)
-        
-        # More comprehensive styling for all components of the message box
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        smsg.setStyleSheet(enhanced_styled_msg_box)
-        smsg.exec()
+        # Success Notification with shared styling
+        from src.ui.styles import DialogStyles
+        self._show_styled_message(
+            _("Unlink All Complete"),
+            _("Successfully removed {n} active links and performed a physical cleanup.").format(n=count),
+            QMessageBox.Icon.Information
+        )
     
     def _update_cards_link_status(self, paths):
         """Partial update: Update link status for specific cards without rebuild."""
