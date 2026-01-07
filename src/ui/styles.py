@@ -204,3 +204,19 @@ class TooltipStyles:
         current = widget.styleSheet() or ""
         if "QToolTip" not in current:
             widget.setStyleSheet(current + TooltipStyles.DARK)
+
+
+class DialogStyles:
+    """Reusable dialog stylesheet templates."""
+    
+    # Enhanced dark QMessageBox style with wider buttons
+    ENHANCED_MSG_BOX = """
+        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
+        QLabel { color: white; font-size: 13px; background: transparent; }
+        QPushButton { 
+            background-color: #3b3b3b; color: white; border: 1px solid #555; 
+            padding: 6px 16px; min-width: 100px; border-radius: 4px; font-weight: bold;
+        }
+        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+        QPushButton:pressed { background-color: #2980b9; }
+    """

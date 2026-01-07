@@ -5,6 +5,7 @@ Extracted from LinkMasterWindow for modularity.
 import os
 from PyQt6.QtWidgets import QMessageBox, QInputDialog
 from src.core.lang_manager import _
+from src.ui.styles import DialogStyles
 
 
 class LMPresetsMixin:
@@ -63,17 +64,7 @@ class LMPresetsMixin:
             msg_box.setText(_("No active links found to save."))
             msg_box.setIcon(QMessageBox.Icon.Warning)
             
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             msg_box.exec()
             return
 
@@ -92,18 +83,7 @@ class LMPresetsMixin:
             msg_box.setWindowTitle(_("成功"))
             msg_box.setText(_("プリセット '{name}' を {count} アイテムで作成しました！").format(name=name, count=count))
             msg_box.setIcon(QMessageBox.Icon.Information)
-            
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             msg_box.exec()
             self.presets_panel.refresh()
         except Exception as e:
@@ -111,7 +91,7 @@ class LMPresetsMixin:
             msg_box.setWindowTitle(_("エラー"))
             msg_box.setText(str(e))
             msg_box.setIcon(QMessageBox.Icon.Critical)
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             msg_box.exec()
 
     def _load_preset(self, preset_id):
@@ -131,17 +111,7 @@ class LMPresetsMixin:
         btn_replace = msg_box.addButton("Replace All", QMessageBox.ButtonRole.DestructiveRole)
         btn_append = msg_box.addButton("Append / Add", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = msg_box.addButton(QMessageBox.StandardButton.Cancel)
-        
-        msg_box.setStyleSheet("""
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 100px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """)
+        msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
         msg_box.exec()
         
         clicked = msg_box.clickedButton()
@@ -189,17 +159,7 @@ class LMPresetsMixin:
         msg_box.setText(_("Deployed {success}/{total} items from preset.").format(success=success_count, total=len(items)))
         msg_box.setIcon(QMessageBox.Icon.Information)
         
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
         msg_box.exec()
         
         self.preset_filter_mode = True
@@ -265,17 +225,7 @@ class LMPresetsMixin:
             msg_box.setText(_("Failed to delete: {error}").format(error=e))
             msg_box.setIcon(QMessageBox.Icon.Critical)
             
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             msg_box.exec()
 
     def _clear_preset_filter(self):
@@ -313,17 +263,7 @@ class LMPresetsMixin:
         msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
         
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg_box.setStyleSheet(enhanced_styled_msg_box)
+        msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
         
         if msg_box.exec() == QMessageBox.StandardButton.Yes:
             try:
@@ -338,8 +278,7 @@ class LMPresetsMixin:
                 success_box = QMessageBox(self)
                 success_box.setWindowTitle(_("Success"))
                 success_box.setText(_("Exhaustive unlink complete. All identified links have been removed."))
-                success_box.setIcon(QMessageBox.Icon.Information)
-                success_box.setStyleSheet(enhanced_styled_msg_box)
+                success_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
                 success_box.exec()
                 
                 # 4. Refresh view
@@ -352,7 +291,5 @@ class LMPresetsMixin:
                 error_box = QMessageBox(self)
                 error_box.setWindowTitle(_("Error"))
                 error_box.setText(_("Unlink failed: {error}").format(error=e))
-                error_box.setIcon(QMessageBox.Icon.Critical)
-                error_box.setStyleSheet(enhanced_styled_msg_box)
+                error_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
                 error_box.exec()
-

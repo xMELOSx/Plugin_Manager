@@ -18,6 +18,8 @@ from src.ui.title_bar_button import TitleBarButton
 from src.ui.action_button import ActionButton
 from src.ui.common_widgets import StyledComboBox
 
+from src.ui.styles import DialogStyles
+
 def setup_ui(window):
     """Factory entry point to build the LinkMasterWindow UI.
     🚨 厳守ルール: ファイル操作禁止 🚨

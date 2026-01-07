@@ -48,6 +48,7 @@ from src.apps.lm_card_settings import LMCardSettingsMixin
 from src.apps.lm_display import LMDisplayMixin
 from src.apps.lm_navigation import LMNavigationMixin
 from src.apps.lm_scan_handler import LMScanHandlerMixin
+from src.ui.styles import DialogStyles
 from src.apps.lm_import import LMImportMixin
 from src.apps.lm_tags import LMTagsMixin
 from src.apps.lm_card_pool import LMCardPoolMixin
@@ -1493,17 +1494,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             msg_box.setText(_("Invalid target folder: {path}").format(path=target_root))
             msg_box.setIcon(QMessageBox.Icon.Warning)
             
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
+            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
             msg_box.exec()
 
     def _load_apps(self):

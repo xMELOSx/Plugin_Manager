@@ -642,6 +642,14 @@ class LinkMasterDB:
             conn.execute("DELETE FROM lm_items") # Reset link states too
             conn.commit()
 
+    def unlink_all_for_app(self, app_id=None):
+        """Set all linked items in this app to unlinked in the database."""
+        # Note: app_id is accepted for compatibility with the call site, 
+        # but since this DB is app-specific, we apply it to the whole DB.
+        with self.get_connection() as conn:
+            conn.execute("UPDATE lm_folder_config SET last_known_status = 'unlinked' WHERE last_known_status = 'linked'")
+            conn.commit()
+
     def update_folder_display_config(self, rel_path: str, **kwargs):
         """Update display config for a folder (Upsert)."""
         # Normalize path to forward slashes for consistent DB storage

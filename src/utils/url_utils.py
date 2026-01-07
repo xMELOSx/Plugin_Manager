@@ -143,6 +143,10 @@ def _show_fallback_dialog(parent, message: str, first_url: str = None):
     cancel_btn = msg_box.addButton(_("Cancel"), QMessageBox.ButtonRole.RejectRole)
     
     msg_box.setDefaultButton(manage_btn)
+    
+    from src.ui.styles import DialogStyles
+    msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
+    
     msg_box.exec()
     
     clicked = msg_box.clickedButton()
