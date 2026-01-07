@@ -73,7 +73,7 @@ def setup_ui(window):
     window.retranslate_ui()
     window._restore_ui_state()
     
-    window.logger.info(f"[Profile] setup_ui took {time.perf_counter()-t_start:.3f}s")
+    window.logger.debug(f"[Profile] setup_ui took {time.perf_counter()-t_start:.3f}s")
 
 def _setup_header(window, main_layout, main_widget):
     t_start = time.perf_counter()
@@ -198,7 +198,7 @@ def _setup_header(window, main_layout, main_widget):
             combo.view().window().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
     main_layout.addLayout(header_layout)
-    window.logger.info(f"[Profile] _setup_header took {time.perf_counter()-t_start:.3f}s")
+    window.logger.debug(f"[Profile] _setup_header took {time.perf_counter()-t_start:.3f}s")
 
 def _setup_content_area(window, main_layout, main_widget):
     window.content_wrapper = QWidget(main_widget)

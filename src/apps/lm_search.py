@@ -470,7 +470,7 @@ class LMSearchMixin:
         self._refresh_category_cards()
         
         if hasattr(self, 'logger'):
-            self.logger.info(f"[Profile] Search display finished.")
+            self.logger.debug(f"[Profile] Search display finished.")
     
     def _show_search_indicator(self):
         """Show floating search indicator overlay with animated dots."""

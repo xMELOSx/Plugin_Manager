@@ -77,7 +77,7 @@ class ImageLoader(QObject):
         if path in ImageLoader._cache:
             # Move to end (most recently used)
             ImageLoader._cache.move_to_end(path)
-            logging.getLogger("ImageLoader").info(f"[CacheHit] {os.path.basename(path)}")
+            logging.getLogger("ImageLoader").debug(f"[CacheHit] {os.path.basename(path)}")
             
             # Phase 33: Stagger callbacks across multiple event loop cycles
             # Every BATCH_SIZE images, add 1ms delay to allow UI breathing room
@@ -103,7 +103,7 @@ class ImageLoader(QObject):
             QTimer.singleShot(delay, deferred_callback)
             return
 
-        logging.getLogger("ImageLoader").info(f"[CacheMiss] Loading: {os.path.basename(path)}")
+        logging.getLogger("ImageLoader").debug(f"[CacheMiss] Loading: {os.path.basename(path)}")
         # Cache miss - load asynchronously
         worker = ImageLoadWorker(path, target_size)
         
@@ -114,7 +114,7 @@ class ImageLoader(QObject):
             
             # Validate request is still valid (card hasn't been reused for different item)
             if request_validator and not request_validator():
-                logging.getLogger("ImageLoader").info(f"[Stale] Ignoring: {os.path.basename(loaded_path)}")
+                logging.getLogger("ImageLoader").debug(f"[Stale] Ignoring: {os.path.basename(loaded_path)}")
                 return  # Request is stale, don't set image
             
             # Add to cache
