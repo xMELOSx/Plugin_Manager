@@ -1,3 +1,6 @@
+""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を経由すること。
+"""
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, 
                              QMessageBox, QFrame, QHBoxLayout, QSpinBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal

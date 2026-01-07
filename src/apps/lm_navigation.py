@@ -1,3 +1,6 @@
+""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を経由すること。
+"""
 """
 Link Master: Navigation Mixin
 パンくずリストとパスナビゲーションのロジック。
@@ -33,7 +36,7 @@ class LMNavigationMixin:
         if not curr or not root:
             return ""
         try:
-            rel = os.relpath(curr, root).replace('\\', '/')
+            rel = os.path.relpath(curr, root).replace('\\', '/')
             return "" if rel == "." else rel
         except:
             return ""
@@ -71,7 +74,7 @@ class LMNavigationMixin:
         trail_rel = ""
         target_rel = ""
         
-        if not path or path == self.storage_root:
+        if path == "" or path == self.storage_root:
             if active_selection and active_selection != self.storage_root:
                 try:
                     trail_rel = os.path.relpath(active_selection, self.storage_root).replace('\\', '/')

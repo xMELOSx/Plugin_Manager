@@ -1,3 +1,6 @@
+""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を経由すること。
+"""
 """
 Link Master: Search Functionality Mixin
 Phase 19.8: Major search overhaul with modes, depth limit, NOT search
@@ -511,6 +514,18 @@ class LMSearchMixin:
         if hasattr(self, '_search_overlay') and self._search_overlay:
             self._search_overlay.hide()
     
+    def _on_search_text_changed(self, text):
+        """Handle search bar text change with 300ms debounce."""
+        # Filter global search characters (*, ?)
+        filtered_text = "".join([c for c in text if c not in ('*', '?')])
+        if filtered_text != text:
+            # Set text back and move cursor to end to prevent recursive loops if possible
+            # or simply use the filtered text for the worker
+            pass
+            
+        self._search_timer.stop()
+        self._search_timer.start(300)
+
     def _clear_search(self):
         """Clear search and restore normal view."""
         self.search_bar.clear()

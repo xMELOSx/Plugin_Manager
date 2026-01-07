@@ -3,6 +3,7 @@
 """
 
 import os
+import sys
 import json
 import logging
 import copy
@@ -91,7 +92,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Initialize Thumbnail Manager (resource/app in Project Root)
         # Initialize Thumbnail Manager (resource/app in Project Root)
-        import sys
         if getattr(sys, 'frozen', False):
             project_root = os.path.dirname(sys.executable)
         else:
@@ -718,6 +718,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         if hasattr(self, 'pkg_title_lbl'): self.pkg_title_lbl.setText(_("<b>Packages</b>"))
         if hasattr(self, 'btn_import_pkg'): self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
+        
+        # Sync trash button state
+        if hasattr(self, 'btn_trash'):
+            from src.core.link_master.core_paths import get_trash_dir
+            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
+            if app_data and self.current_path: # Ensure current_path is defined
+                trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
+                # Compare current_path with trash_path to set button state
+                self.btn_trash.setChecked(self.current_path.replace('\\', '/') == trash_path)
         
         if hasattr(self, 'total_link_count_label'):
             self.total_link_count_label.setToolTip(_("Total Link Count"))

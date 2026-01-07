@@ -1,3 +1,6 @@
+""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を経由すること。
+"""
 """
 Link Master: Trash Operations Mixin
 Extracted from LinkMasterWindow for modularity.
@@ -38,6 +41,10 @@ class LMTrashMixin:
             except: pass
         self._load_items_for_path(trash_path)
         self._hide_search_indicator()
+        
+        # Sync trash button state
+        if hasattr(self, 'btn_trash'):
+            self.btn_trash.setChecked(True)
 
     def _on_package_move_to_trash(self, path, refresh=True):
         """Move a package/folder to the _Trash folder.

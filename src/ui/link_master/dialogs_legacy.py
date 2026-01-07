@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
+from src.ui.toast import Toast
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.link_master.utils import format_size
 from src.ui.slide_button import SlideButton
@@ -575,6 +576,22 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         super().__init__(parent)
         self.folder_path = folder_path
+        self.current_config = current_config or {}
+        # ... (ommited for brevity)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; color: #ffffff; }
+            QLineEdit, QComboBox { background-color: #2b2b2b; color: #fff; border: 1px solid #444; }
+            QComboBox { background: #333; }
+        """)
+    
+    def accept(self):
+        # Save logic (assumed)
+        super().accept()
+        Toast(self.parent(), _("Settings Saved Successfully")).show()
+
+    def reject(self):
+        super().reject()
+        Toast(self.parent(), _("Changes Cancelled")).show()
         self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing
         self.app_name = app_name

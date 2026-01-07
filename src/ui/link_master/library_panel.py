@@ -121,95 +121,47 @@ class LibraryPanel(QWidget):
         
         layout.addWidget(self.lib_tree, 1)
         
-        # Row 1: Deploy/Unlink + URL + Settings
-        row1 = QHBoxLayout()
-        row1.setSpacing(5)
+        # Use FlowLayout for all buttons to prevent overlap on narrow panels
+        button_container = QWidget(self)
+        button_layout = FlowLayout(button_container, margin=0, spacing=5)
         
         self.btn_deploy_unlink = QPushButton(_("🚀 Deploy"), self)
-        self.btn_deploy_unlink.setStyleSheet("""
-            QPushButton { background-color: #27ae60; color: white; }
-            QPushButton:hover { background-color: #2ecc71; }
-        """)
         self.btn_deploy_unlink.clicked.connect(self._toggle_deploy)
-        row1.addWidget(self.btn_deploy_unlink)
+        button_layout.addWidget(self.btn_deploy_unlink)
         
         self.btn_url = QPushButton(_("🌐 URL"), self)
-        self.btn_url.setToolTip(_("Open URL in Browser"))
-        self.btn_url.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
         self.btn_url.clicked.connect(self._open_url)
-        row1.addWidget(self.btn_url)
+        button_layout.addWidget(self.btn_url)
         
         self.btn_settings = QPushButton(_("⚙ Settings"), self)
-        self.btn_settings.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
         self.btn_settings.clicked.connect(self._open_lib_settings)
-        row1.addWidget(self.btn_settings)
+        button_layout.addWidget(self.btn_settings)
         
-        layout.addLayout(row1)
-        
-        # Row 2: Properties + Deps + Unregister
-        row2 = QHBoxLayout()
-        row2.setSpacing(5)
-        
-        self.btn_props = QPushButton(_("📋 Properties"), self)
-        self.btn_props.setToolTip(_("Open properties of priority version"))
-        self.btn_props.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.btn_props = QPushButton(_("📋 Props"), self) # Shortened text
         self.btn_props.clicked.connect(self._open_priority_props)
-        row2.addWidget(self.btn_props)
+        button_layout.addWidget(self.btn_props)
         
-        self.btn_deps = QPushButton(_("📦 Check Deps"), self)
-        self.btn_deps.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.btn_deps = QPushButton(_("📦 Deps"), self) # Shortened text
         self.btn_deps.clicked.connect(self._open_dep_packages)
-        row2.addWidget(self.btn_deps)
+        button_layout.addWidget(self.btn_deps)
         
-        self.btn_unregister = QPushButton(_("🗑 Unregister"), self)
-        self.btn_unregister.setToolTip(_("Unregister selected version from library"))
+        self.btn_unregister = QPushButton(_("🗑 Unreg"), self) # Shortened text
         self.btn_unregister.clicked.connect(self._unregister_selected)
-        row2.addWidget(self.btn_unregister)
-        
-        layout.addLayout(row2)
-        
-        # Row 3: Hide/Show + Register
-        row3 = QHBoxLayout()
-        row3.setSpacing(5)
+        button_layout.addWidget(self.btn_unregister)
         
         self.btn_hide = QPushButton(_("👁 Hide"), self)
-        self.btn_hide.setToolTip(_("Hide from library list"))
-        self.btn_hide.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
         self.btn_hide.clicked.connect(self._toggle_visibility)
-        row3.addWidget(self.btn_hide)
+        button_layout.addWidget(self.btn_hide)
 
-        self.btn_new_folder = QPushButton(_("📁 New Folder"), self)
-        self.btn_new_folder.setToolTip(_("Create a new library folder"))
-        self.btn_new_folder.setStyleSheet("""
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.btn_new_folder = QPushButton(_("📁 New"), self) # Shortened text
         self.btn_new_folder.clicked.connect(lambda: self._create_new_folder())
-        row3.addWidget(self.btn_new_folder)
+        button_layout.addWidget(self.btn_new_folder)
         
-        self.btn_reg = QPushButton(_("🏷 Register Selected Package"), self)
-        self.btn_reg.setToolTip(_("Register the selected folder as a library."))
-        self.btn_reg.setStyleSheet("""
-            QPushButton { background-color: #2980b9; color: white; padding: 5px; }
-            QPushButton:hover { background-color: #3498db; }
-        """)
+        self.btn_reg = QPushButton(_("🏷 Register Package"), self) # Shortened text
         self.btn_reg.clicked.connect(self.request_register_library.emit)
-        row3.addWidget(self.btn_reg)
+        button_layout.addWidget(self.btn_reg)
+        
+        layout.addWidget(button_container)
         
         self.btn_refresh = QPushButton("🔄", self)
         self.btn_refresh.setFixedWidth(30)

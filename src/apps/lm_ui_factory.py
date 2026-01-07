@@ -19,7 +19,11 @@ from src.ui.action_button import ActionButton
 from src.ui.common_widgets import StyledComboBox
 
 def setup_ui(window):
-    """Factory entry point to build the LinkMasterWindow UI."""
+    """Factory entry point to build the LinkMasterWindow UI.
+    🚨 厳守ルール: ファイル操作禁止 🚨
+    ファイルI/Oは、必ず src.core.file_handler を経由すること。
+    Link Master: UI Factory
+    """
     t_start = time.perf_counter()
     main_widget = QWidget(window)
     main_widget.setStyleSheet("""
@@ -445,6 +449,12 @@ def _setup_navigation_bar(window, right_layout):
     window.btn_unlink_all.setFixedSize(28, 26)
     window.btn_unlink_all.setToolTip(_("Unlink All Active Links"))
     window.btn_unlink_all.setStyleSheet(unlink_btn_style)
+    # Ensure search/clear buttons are not checkable (reset if inherited from ActionButton)
+    if hasattr(window, 'search_btn'):
+        window.search_btn.setCheckable(False)
+    if hasattr(window, 'clear_search_btn'):
+        window.clear_search_btn.setCheckable(False)
+    
     window.btn_unlink_all.clicked.connect(window._unload_active_links)
     window.btn_unlink_all.setCursor(Qt.CursorShape.PointingHandCursor)
     nav_bar_layout.addWidget(window.btn_unlink_all)

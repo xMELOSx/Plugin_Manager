@@ -239,7 +239,12 @@ class BackupFilterProxyModel(QSortFilterProxyModel):
         if file_name in ["_Backup", ".lm_deploy_info.json", "desktop.ini"]:
             return False
         return True
-
+""" 🚨 厳守ルール: ファイル操作禁止 🚨
+ファイルI/Oは、必ず src.core.file_handler を経由すること。
+"""
+"""
+Link Master: File Management Dialog
+"""
 class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
     ファイル単位の高度な構成（ターゲットパス編集、シンボリック切替、バックアップ）を行うダイアログ。
@@ -642,6 +647,12 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         self.set_content_widget(content)
         
+        # Double click on Tree
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; border: 1px solid #444; }
+            QTreeView { background-color: #1e1e1e; border: 1px solid #444; color: #ddd; }
+            QLineEdit { background-color: #2b2b2b; color: #fff; border: 1px solid #555; }
+        """)
         # Double click on Tree
         self.tree.doubleClicked.connect(self._on_tree_double_clicked)
 
