@@ -161,30 +161,36 @@ class AppRegistrationDialog(QDialog):
         defaults_group.setStyleSheet("QGroupBox { border: 1px solid #444; margin-top: 10px; padding-top: 10px; color: #aaa; }")
         defaults_form = QFormLayout()
         
-        # Default Tree Skip (Relocated to top of group)
+        # Tree Skip (Redundant 'Default' removed from labels inside group)
         self.default_skip_levels_spin = StyledSpinBox()
         self.default_skip_levels_spin.setRange(0, 5)
         self.default_skip_levels_spin.setSuffix(_(" levels"))
-        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
+        defaults_form.addRow(_("Tree Skip:"), self.default_skip_levels_spin)
 
         # Transfer Mode
         self.transfer_mode_combo = StyledComboBox()
-        self.transfer_mode_combo.addItem(_("Symbolic Link (recommended)"), "symlink")
-        self.transfer_mode_combo.addItem(_("Physical Copy (slower)"), "copy")
-        defaults_form.addRow(_("Default Transfer Mode:"), self.transfer_mode_combo)
+        self.transfer_mode_combo.addItem(_("Symbolic Link"), "symlink")
+        self.transfer_mode_combo.addItem(_("Physical Copy"), "copy")
+        defaults_form.addRow(_("Transfer Mode:"), self.transfer_mode_combo)
 
         # Conflict Policy
         self.conflict_combo = StyledComboBox()
-        self.conflict_combo.addItems(["backup", "skip", "overwrite"])
-        defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
+        self.conflict_combo.addItem(_("backup"), "backup")
+        self.conflict_combo.addItem(_("skip"), "skip")
+        self.conflict_combo.addItem(_("overwrite"), "overwrite")
+        defaults_form.addRow(_("Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
-        self.cat_style_combo.addItems(["image", "text", "image_text"])
+        self.cat_style_combo.addItem(_("image"), "image")
+        self.cat_style_combo.addItem(_("text"), "text")
+        self.cat_style_combo.addItem(_("image_text"), "image_text")
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
         self.pkg_style_combo = StyledComboBox()
-        self.pkg_style_combo.addItems(["image", "text", "image_text"])
+        self.pkg_style_combo.addItem(_("image"), "image")
+        self.pkg_style_combo.addItem(_("text"), "text")
+        self.pkg_style_combo.addItem(_("image_text"), "image_text")
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
         
         defaults_group.setLayout(defaults_form)
@@ -1200,8 +1206,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # New Rule Options
         self.deploy_rule_override_combo.addItem(_("Target Default (Inherit)"), "inherit")
         self.deploy_rule_override_combo.addItem(_("whole folder"), "folder")
-        self.deploy_rule_override_combo.addItem(_("all files (flatten)"), "files")
-        self.deploy_rule_override_combo.addItem(_("tree (relative)"), "tree")
+        self.deploy_rule_override_combo.addItem(_("all files"), "files")
+        self.deploy_rule_override_combo.addItem(_("tree"), "tree")
         self.deploy_rule_override_combo.addItem(_("Custom (Individual Settings)"), "custom")
         
         curr_rule = self.current_config.get('deploy_rule')
@@ -1214,7 +1220,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Phase 34: Resolve Effective Rule for Display Label
         if not curr_rule or curr_rule == 'inherit':
             effective_rule = self.app_deploy_default
-            self.deploy_rule_override_combo.setItemText(0, _("Target Default (Inherit: {rule})").format(rule=effective_rule))
+            # Localize the rule value (folder, files, tree)
+            loc_rule = _(effective_rule)
+            self.deploy_rule_override_combo.setItemText(0, _("Target Default (Inherit: {rule})").format(rule=loc_rule))
             # Normalize to match data in findData
             if not curr_rule: curr_rule = 'inherit'
         
@@ -1255,7 +1263,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.transfer_mode_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
         app_default_mode = getattr(self, 'app_transfer_mode', 'symlink')
-        self.transfer_mode_override_combo.addItem(_("App Default ({default})").format(default=app_default_mode), None)
+        self.transfer_mode_override_combo.addItem(_("App Default (Inherit)"), "inherit")
         self.transfer_mode_override_combo.addItem(_("Symbolic Link"), "symlink")
         self.transfer_mode_override_combo.addItem(_("Physical Copy"), "copy")
         
@@ -1263,9 +1271,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Phase 34: Resolve Effective Mode for Display Label
         if not curr_mode or curr_mode == 'KEEP' or curr_mode == 'inherit':
             effective_mode = app_default_mode
+            loc_mode = _("Symbolic Link") if effective_mode == 'symlink' else _("Physical Copy")
             # Item 1 is 'App Default' (index 0 is KEEP in batch, else Item 0 is App Default)
             def_idx = 1 if self.batch_mode else 0
-            self.transfer_mode_override_combo.setItemText(def_idx, _("App Default (Inherit: {mode})").format(mode=effective_mode))
+            self.transfer_mode_override_combo.setItemText(def_idx, _("App Default (Inherit: {mode})").format(mode=loc_mode))
+            if not curr_mode: curr_mode = 'inherit'
 
         idx = self.transfer_mode_override_combo.findData(curr_mode)
         if idx >= 0 and not self.batch_mode:
@@ -1280,17 +1290,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.conflict_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
-        self.conflict_override_combo.addItem(_("App Default ({default})").format(default=self.app_conflict_default), None)
-        self.conflict_override_combo.addItem(_("Backup"), "backup")
-        self.conflict_override_combo.addItem(_("Skip"), "skip")
-        self.conflict_override_combo.addItem(_("Overwrite"), "overwrite")
+        self.conflict_override_combo.addItem(_("App Default (Inherit)"), "inherit")
+        self.conflict_override_combo.addItem(_("backup"), "backup")
+        self.conflict_override_combo.addItem(_("skip"), "skip")
+        self.conflict_override_combo.addItem(_("overwrite"), "overwrite")
         
         curr_conflict = self.current_config.get('conflict_policy')
         # Phase 34: Resolve Effective Conflict Policy for Display Label
         if not curr_conflict or curr_conflict == 'KEEP' or curr_conflict == 'inherit':
             effective_conflict = self.app_conflict_default
+            loc_policy = _(effective_conflict)
             def_idx = 1 if self.batch_mode else 0
-            self.conflict_override_combo.setItemText(def_idx, _("App Default (Inherit: {policy})").format(policy=effective_conflict))
+            self.conflict_override_combo.setItemText(def_idx, _("App Default (Inherit: {policy})").format(policy=loc_policy))
+            if not curr_conflict: curr_conflict = 'inherit'
 
         idx = self.conflict_override_combo.findData(curr_conflict)
         if idx >= 0 and not self.batch_mode:

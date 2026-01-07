@@ -87,3 +87,91 @@ msgstr "カテゴリスワップ確認"
 
 msgid "Unlink Category & Deploy"
 msgstr "カテゴリ解除してデプロイ"
+
+# Technical Terms & Dialog Labels
+msgid "backup"
+msgstr "バックアップ"
+
+msgid "skip"
+msgstr "スキップ"
+
+msgid "overwrite"
+msgstr "上書き"
+
+msgid "image"
+msgstr "画像"
+
+msgid "text"
+msgstr "テキスト"
+
+msgid "image_text"
+msgstr "画像とテキスト"
+
+msgid "whole folder"
+msgstr "階層を維持"
+
+msgid "all files"
+msgstr "ファイルを展開"
+
+msgid "tree"
+msgstr "構造を維持"
+
+msgid "folder"
+msgstr "階層を維持"
+
+msgid "files"
+msgstr "ファイルを展開"
+
+msgid "category"
+msgstr "カテゴリ"
+
+msgid "package"
+msgstr "パッケージ"
+
+msgid "library"
+msgstr "ライブラリ"
+
+msgid "Inherit"
+msgstr "継承"
+
+msgid "Target Default (Inherit: {rule})"
+msgstr "ターゲットデフォルト (継承: {rule})"
+
+msgid "App Default (Inherit: {mode})"
+msgstr "アプリデフォルト (継承: {mode})"
+
+msgid "App Default (Inherit: {policy})"
+msgstr "アプリデフォルト (継承: {policy})"
+
+msgid "App Default (Inherit: {root})"
+msgstr "アプリデフォルト (継承: {root})"
+
+msgid "Target Default"
+msgstr "ターゲットデフォルト"
+
+msgid "App Default"
+msgstr "アプリデフォルト"
+
+msgid "Other Default Settings"
+msgstr "その他のデフォルト設定"
+
+msgid "Default Tree Skip:"
+msgstr "ツリー階層スキップ:"
+
+msgid "Default Transfer Mode:"
+msgstr "転送モード:"
+
+msgid "Default Conflict Policy:"
+msgstr "競合時のポリシー:"
+
+msgid "Category Style:"
+msgstr "カテゴリの表示形式:"
+
+msgid "Package Style:"
+msgstr "パッケージの表示形式:"
+
+msgid "Source"
+msgstr "実態"
+
+msgid "Target"
+msgstr "ターゲット"

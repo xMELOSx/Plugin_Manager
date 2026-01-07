@@ -365,7 +365,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         legend_layout.addStretch()
         main_layout.addLayout(legend_layout)
 
-        # Main Tree
+        # Main Tree Initialization
         self.model = CheckableFileModel(self.folder_path, self.storage_root, self.rules, 
                                         self.primary_target, self.secondary_target, self.tertiary_target, self.app_name)
         self.model.setRootPath(self.folder_path)
@@ -427,8 +427,58 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             if self.tree.columnWidth(0) < 50: # Fail-safe
                 self.tree.setColumnWidth(0, 320)
                 self.tree.setColumnWidth(3, 400)
+
+        # Sidebar + Tree Layout
+        main_content_layout = QHBoxLayout()
+        main_content_layout.setContentsMargins(0, 0, 0, 0)
+        main_content_layout.setSpacing(10)
+
+        # Sidebar View Toggle
+        sidebar_frame = QFrame()
+        sidebar_frame.setFixedWidth(100)
+        sidebar_frame.setStyleSheet("background-color: #252525; border-right: 1px solid #333;")
+        sidebar_layout = QVBoxLayout(sidebar_frame)
+        sidebar_layout.setContentsMargins(5, 10, 5, 10)
+        sidebar_layout.setSpacing(12)
+
+        self.btn_view_source = QPushButton(_("Source"))
+        self.btn_view_source.setCheckable(True)
+        self.btn_view_source.setChecked(True)
+        self.btn_view_source.setStyleSheet("""
+            QPushButton { 
+                background-color: #333; color: white; border: none; padding: 10px; border-radius: 4px; 
+                text-align: center; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #444; }
+            QPushButton:checked { background-color: #3498db; }
+        """)
+        self.btn_view_source.clicked.connect(self._switch_to_source)
+        sidebar_layout.addWidget(self.btn_view_source)
+
+        self.btn_view_target = QPushButton(_("Target"))
+        self.btn_view_target.setCheckable(True)
+        self.btn_view_target.setStyleSheet("""
+            QPushButton { 
+                background-color: #333; color: white; border: none; padding: 10px; border-radius: 4px; 
+                text-align: center; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #444; }
+            QPushButton:checked { background-color: #e67e22; }
+        """)
+        self.btn_view_target.clicked.connect(self._switch_to_target)
+        sidebar_layout.addWidget(self.btn_view_target)
         
-        main_layout.addWidget(self.tree)
+        sidebar_layout.addStretch()
+        main_content_layout.addWidget(sidebar_frame)
+
+        # Tree Wrap (To separate it from sidebar and tools)
+        self.tree_container = QWidget()
+        tree_sub_layout = QVBoxLayout(self.tree_container)
+        tree_sub_layout.setContentsMargins(0, 0, 0, 0)
+        tree_sub_layout.addWidget(self.tree)
+        
+        main_content_layout.addWidget(self.tree_container, 1)
+        main_layout.addLayout(main_content_layout)
 
         # Toolbar / Quick Actions - Reorganized per user request
         tools_frame = QFrame(self)
@@ -798,6 +848,29 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         # Enable actions only if something is selected
         if hasattr(self, 'btn_backup'): self.btn_backup.setEnabled(has_selection)
         if hasattr(self, 'btn_restore'): self.btn_restore.setEnabled(has_selection)
+
+    def _switch_to_source(self):
+        """Switch TreeView to Source (Storage) folder."""
+        self.btn_view_source.setChecked(True)
+        self.btn_view_target.setChecked(False)
+        self.model.setRootPath(self.folder_path)
+        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.folder_path)))
+
+    def _switch_to_target(self):
+        """Switch TreeView to Target (Symlink) folder if it exists."""
+        target_path = self.primary_target
+        if not target_path or not os.path.exists(target_path):
+             QMessageBox.information(self, _("ターゲット"), _("ターゲットパスが未設定、または存在しません。"))
+             self.btn_view_source.setChecked(True)
+             self.btn_view_target.setChecked(False)
+             return
+             
+        self.btn_view_source.setChecked(False)
+        self.btn_view_target.setChecked(True)
+        self.model.setRootPath(target_path)
+        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(target_path)))
+
+    def _on_tree_double_clicked(self, proxy_idx):
         if hasattr(self, 'btn_apply_redir'): self.btn_apply_redir.setEnabled(has_selection)
         if hasattr(self, 'btn_toggle_mode'): self.btn_toggle_mode.setEnabled(has_selection)
 
