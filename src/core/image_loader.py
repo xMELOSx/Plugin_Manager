@@ -103,7 +103,7 @@ class ImageLoader(QObject):
             QTimer.singleShot(delay, deferred_callback)
             return
 
-        logging.getLogger("ImageLoader").info(f"[CacheMiss] Loading: {os.path.basename(path)}")
+        logging.getLogger("ImageLoader").debug(f"[CacheMiss] Loading: {os.path.basename(path)}")
         # Cache miss - load asynchronously
         worker = ImageLoadWorker(path, target_size)
         

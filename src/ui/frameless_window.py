@@ -177,7 +177,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             }}
             QLabel {{ color: {text_color_rgba}; background: transparent; }}
             
-            QLineEdit, QComboBox, QAbstractItemView {{
+            QLineEdit, QComboBox, QAbstractItemView, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0;
                 background-color: #252525;
                 border: 1px solid #555;
@@ -185,6 +185,37 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 padding: 4px;
             }}
             
+            QSpinBox::up-button, QDoubleSpinBox::up-button,
+            QSpinBox::down-button, QDoubleSpinBox::down-button {{
+                background-color: #333;
+                border-left: 1px solid #555;
+                width: 20px;
+                border-radius: 0px;
+            }}
+            QSpinBox::up-button {{ border-top-right-radius: 4px; }}
+            QSpinBox::down-button {{ border-bottom-right-radius: 4px; border-top: 1px solid #555; }}
+            
+            QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+            QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+                background-color: #444;
+            }}
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 4px solid #eee;
+                width: 0; height: 0;
+                margin-bottom: 1px;
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid #eee;
+                width: 0; height: 0;
+                margin-top: 1px;
+            }}
+
             QScrollBar:vertical {{
                 background: #2b2b2b;
                 width: 12px;
@@ -218,7 +249,11 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         
         # 2. Draw Background
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-        bg_alpha = int(self._bg_opacity * 255)
+        # Maximized Alpha Boost: Compensate for missing OS shadow by darkening background (+0.15 alpha)
+        alpha_val = self._bg_opacity
+        if self.isMaximized():
+            alpha_val = min(1.0, alpha_val + 0.15)
+        bg_alpha = int(alpha_val * 255)
         # Base Color: (35, 35, 35) as preferred by user
         bg_color = QColor(35, 35, 35, bg_alpha)
         painter.setBrush(QBrush(bg_color))
@@ -348,10 +383,10 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 info = ctypes.cast(msg.lParam, ctypes.POINTER(MINMAXINFO)).contents
                 r = self.devicePixelRatioF()
                 screen = self.screen().availableGeometry()
-                info.ptMaxTrackSize.x = int(screen.width() * r)
-                info.ptMaxTrackSize.y = int(screen.height() * r)
-                info.ptMaxSize.x = int(screen.width() * r)
-                info.ptMaxSize.y = int(screen.height() * r)
+                info.ptMaxTrackSize.x = int(screen.width() * r) - 2
+                info.ptMaxTrackSize.y = int(screen.height() * r) - 2
+                info.ptMaxSize.x = int(screen.width() * r) - 2
+                info.ptMaxSize.y = int(screen.height() * r) - 2
                 return True, 0
             except: pass
             
@@ -379,9 +414,9 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 if ly > h - margin: return True, 15
             
             child = self.childAt(local_pos)
-            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider
-            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView)
-            interactive_names = ["Sidebar", "ItemCard", "QuickTagPanel", "title_bar_controls", "BreadcrumbContainer", "SearchBar"]
+            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractSpinBox
+            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox)
+            interactive_names = ["Sidebar", "ItemCard", "QuickTagPanel", "title_bar_controls", "BreadcrumbContainer", "SearchBar", "deploy_mode_indicator", "titlebar_icon"]
             
             curr = child
             while curr:
@@ -495,8 +530,13 @@ class FramelessDialog(QDialog, Win32Mixin):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         radius = self.border_radius if not self.isMaximized() else 0
         rect = self.rect()
+        # 2. Draw Background
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-        bg_alpha = int(self._bg_opacity * 255)
+        # Maximized Alpha Boost: Compensate for missing OS shadow by darkening background (+0.15 alpha)
+        alpha_val = self._bg_opacity
+        if self.isMaximized():
+            alpha_val = min(1.0, alpha_val + 0.15)
+        bg_alpha = int(alpha_val * 255)
         bg_color = QColor(35, 35, 35, bg_alpha)
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
@@ -505,8 +545,69 @@ class FramelessDialog(QDialog, Win32Mixin):
         painter.end()
 
     def _update_stylesheet(self):
+        # Ensure the Dialog is transparent
         self.setStyleSheet("background: transparent;")
-        self.container.setStyleSheet(f"QWidget#FramelessContainer {{ border: 1px solid #444; border-radius: {self.border_radius}px; }}")
+        
+        # Calculate RGBA for text (Dialogs default to 1.0 opacity for now)
+        text_color_rgba = "rgba(221, 221, 221, 1.0)"
+        
+        self.container.setStyleSheet(f"""
+            QWidget#FramelessContainer {{
+                background-color: transparent;
+                border: 1px solid #444;
+                border-radius: {self.border_radius}px;
+            }}
+            QLabel {{ color: {text_color_rgba}; background: transparent; }}
+            
+            QLineEdit, QComboBox, QAbstractItemView, QSpinBox, QDoubleSpinBox {{
+                color: #e0e0e0;
+                background-color: #252525;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            
+            QSpinBox::up-button, QDoubleSpinBox::up-button,
+            QSpinBox::down-button, QDoubleSpinBox::down-button {{
+                background-color: #333;
+                border-left: 1px solid #555;
+                width: 20px;
+                border-radius: 0px;
+            }}
+            QSpinBox::up-button {{ border-top-right-radius: 4px; }}
+            QSpinBox::down-button {{ border-bottom-right-radius: 4px; border-top: 1px solid #555; }}
+            
+            QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+            QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+                background-color: #444;
+            }}
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 4px solid #eee;
+                width: 0; height: 0;
+                margin-bottom: 1px;
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid #eee;
+                width: 0; height: 0;
+                margin-top: 1px;
+            }}
+
+            QPushButton {{
+                color: {text_color_rgba};
+                background-color: #444;
+                border: 1px solid #555;
+                padding: 6px 12px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{ background-color: #555; }}
+            QPushButton:pressed {{ background-color: #333; }}
+        """)
 
     def set_content_widget(self, widget):
         if self.content_layout.count() > 0:
@@ -558,9 +659,9 @@ class FramelessDialog(QDialog, Win32Mixin):
             r = self.devicePixelRatioF()
             pt = self.mapFromGlobal(QPoint(int(x_phys / r), int(y_phys / r)))
             child = self.childAt(pt)
-            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider
-            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView)
-            interactive_names = ["Sidebar", "MainContent", "ItemCard", "QuickTagPanel"]
+            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractSpinBox
+            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox)
+            interactive_names = ["Sidebar", "MainContent", "ItemCard", "QuickTagPanel", "deploy_mode_indicator", "titlebar_icon"]
             curr = child
             while curr:
                 if isinstance(curr, interactive_types) or curr.objectName() in interactive_names or curr.__class__.__name__ == "ClickableLabel":
