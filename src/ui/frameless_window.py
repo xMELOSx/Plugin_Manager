@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
+from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox, QGraphicsOpacityEffect
 from PyQt6.QtCore import Qt, QPoint, QSize, QEvent, QTimer
 from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter, QBrush
 from src.ui.title_bar_button import TitleBarButton
@@ -71,6 +71,11 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         # But wait, LinkMasterDebugWindow inherits FramelessWindow, which ALREADY has paintEvent!
         # The user's issue with DebugWindow "half transparency" was due to default 0.9 opacity.
         self.set_background_opacity(0.95)
+        
+        # Initialize Opacity Effect for Content (Smoother, no QSS hit)
+        self._content_opacity_effect = QGraphicsOpacityEffect(self.container)
+        self._content_opacity_effect.setOpacity(self._content_opacity)
+        self.container.setGraphicsEffect(self._content_opacity_effect)
 
         
         self.main_layout = QVBoxLayout(self.container)
@@ -149,18 +154,10 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.update()
 
     def set_content_opacity(self, opacity: float):
-        """Sets the text/content opacity (0.0 to 1.0).
-        
-        Optimization: Uses a short timer to debounce stylesheet updates during slider movement.
-        """
+        """Sets the text/content opacity (0.0 to 1.0) using QGraphicsOpacityEffect."""
         self._content_opacity = max(0.0, min(1.0, opacity))
-        
-        if not hasattr(self, '_opacity_timer'):
-            self._opacity_timer = QTimer(self)
-            self._opacity_timer.setSingleShot(True)
-            self._opacity_timer.timeout.connect(self._update_stylesheet)
-        
-        self._opacity_timer.start(30) # 30ms debounce
+        if hasattr(self, '_content_opacity_effect'):
+            self._content_opacity_effect.setOpacity(self._content_opacity)
 
     def _update_stylesheet(self):
         radius = f"{self.border_radius}px" if not self.isMaximized() and not self.isFullScreen() else "0px"
@@ -386,19 +383,17 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.control_layout.insertWidget(index, widget)
 
     def set_content_widget(self, widget: QWidget):
-        # Clear old layout properly without creating orphan widgets
-        old_layout = self.content_area.layout()
-        if old_layout:
-            # Delete all widgets in old layout
-            while old_layout.count():
-                item = old_layout.takeAt(0)
+        layout = self.content_area.layout()
+        if not layout:
+            layout = QVBoxLayout(self.content_area)
+            layout.setContentsMargins(10, 10, 10, 10)
+        else:
+            # Clear existing items if any
+            while layout.count():
+                item = layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
-            # Delete the old layout itself
-            old_layout.deleteLater()
-        
-        layout = QVBoxLayout(self.content_area)
-        layout.setContentsMargins(10, 10, 10, 10)
+                    
         layout.addWidget(widget)
         widget.installEventFilter(self) # Ensure top-level content handles resize cursor reset
         widget.setAttribute(Qt.WidgetAttribute.WA_Hover)
@@ -451,10 +446,20 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
                     return
             
             # 2. Drag
-            # Check ignored widgets
+            # Check ignored widgets (Interactive inputs should not trigger window drag)
             child = self.childAt(event.pos())
-            if isinstance(child, (QPushButton, QCheckBox)): 
-                 pass # Ignored
+            from PyQt6.QtWidgets import QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView
+            
+            # Walk up the widget hierarchy to check if we clicked a child of an interactive widget
+            curr = child
+            while curr and curr != self:
+                if isinstance(curr, (QPushButton, QCheckBox, QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView)):
+                    return # Allow widget to handle event, don't drag
+                curr = curr.parent()
+            
+            # Or direct check if childAt returned strictly the widget
+            if isinstance(child, (QPushButton, QCheckBox, QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView)): 
+                 return # Ignored
             
             self.handle_drag_press(event)
         

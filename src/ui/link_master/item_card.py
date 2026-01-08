@@ -205,7 +205,7 @@ class ItemCard(QFrame):
 
         import logging
         if 'link_status' in kwargs:
-             logging.getLogger("ItemCard").info(f"[UpdateData] {os.path.basename(kwargs.get('path', self.path))} status={kwargs['link_status']} cat_deploy={kwargs.get('category_deploy_status')}")
+             logging.getLogger("ItemCard").debug(f"[UpdateData] {os.path.basename(kwargs.get('path', self.path))} status={kwargs['link_status']} cat_deploy={kwargs.get('category_deploy_status')}")
 
         # 1. Update Core Data & Context
         old_path = self.path
@@ -473,9 +473,12 @@ class ItemCard(QFrame):
         status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
         self.link_status = status.get('status', 'none')
         
-        # Debug: Log detection result (commented out for performance)
-        # import logging
-        # logging.getLogger("ItemCard").debug(f"[CheckLink] {self.folder_name}: target={target_link}, tm={transfer_mode}, status={self.link_status}")
+        self.link_status = status.get('status', 'none')
+        
+        # Debug: Log detection result
+        import logging
+        cat_deploy = getattr(self, 'category_deploy_status', 'None')
+        logging.getLogger("ItemCard").debug(f"[UpdateData] {self.folder_name} status={self.link_status} cat_deploy={cat_deploy}")
         
         self.has_physical_conflict = (self.link_status == 'conflict')
 

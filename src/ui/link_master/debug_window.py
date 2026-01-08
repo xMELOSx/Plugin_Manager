@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox, QComboBox)
 from PyQt6.QtCore import Qt
 from src.ui.frameless_window import FramelessWindow
 from src.ui.title_bar_button import TitleBarButton
@@ -6,6 +6,7 @@ from src.ui.window_mixins import OptionsMixin
 from src.core import core_handler
 from src.core.lang_manager import _
 import os
+import logging
 
 class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
     def __init__(self, parent=None, app_data=None):
@@ -44,7 +45,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
             self.opt_btn.setChecked(True)
 
     def init_ui(self):
-        container = QWidget(self)
+        container = QWidget() # No parent, set_content_widget handles it
         layout = QVBoxLayout(container)
         
         self.security_lbl = QLabel(_("<h2>Debug: Core Security Check</h2>"))
@@ -108,6 +109,26 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         layout.addLayout(src_backup_grid)
         
+        layout.addLayout(src_backup_grid)
+        
+        layout.addSpacing(20)
+        
+        # --- Log Level Control ---
+        self.log_lbl = QLabel(_("<b>Log Level</b>"))
+        layout.addWidget(self.log_lbl)
+        
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
+        # Set current level
+        current_level = logging.getLogger().getEffectiveLevel()
+        if current_level <= 10: self.log_level_combo.setCurrentText("DEBUG")
+        elif current_level <= 20: self.log_level_combo.setCurrentText("INFO")
+        elif current_level <= 30: self.log_level_combo.setCurrentText("WARNING")
+        else: self.log_level_combo.setCurrentText("ERROR")
+        
+        self.log_level_combo.currentTextChanged.connect(self._on_log_level_changed)
+        layout.addWidget(self.log_level_combo)
+
         layout.addSpacing(20)
         self.ui_debug_lbl = QLabel(_("<b>UI Debug</b>"))
         layout.addWidget(self.ui_debug_lbl)
@@ -131,7 +152,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.lang_header_lbl = QLabel(_("<b>Language Settings / 言語設定</b>"))
         layout.addWidget(self.lang_header_lbl)
         
-        from PyQt6.QtWidgets import QHBoxLayout, QComboBox
+        from PyQt6.QtWidgets import QHBoxLayout
         lang_layout = QHBoxLayout()
         
         from src.core.lang_manager import get_lang_manager
@@ -242,6 +263,17 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
             self.lang_label.setText(f"{_('Current:')} {self.lang_manager.current_language_name}")
             QMessageBox.information(self, _("Language Changed"), 
                 _("Language changed to: {0}\n\nSome changes may require a restart to take full effect.").format(self.lang_manager.current_language_name))
+
+    def _on_log_level_changed(self, text):
+        """Update global log level."""
+        level = getattr(logging, text, logging.INFO)
+        logging.getLogger().setLevel(level)
+        # Also set specific loggers if needed
+        logging.getLogger("LinkMasterWindow").setLevel(level)
+        logging.getLogger("ItemCard").setLevel(level)
+        
+        # Add a verification log
+        logging.getLogger("LinkMasterDebug").log(level, f"Log Level changed to {text}")
 
     def _run_backup_bat(self, arg):
         """Runs backup_source.bat with the given argument."""

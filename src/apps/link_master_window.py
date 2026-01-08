@@ -510,6 +510,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'v_splitter') and hasattr(self, '_category_fixed_height'):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self._apply_fixed_category_height)
+            
+        # Sync Options Window if open
+        if hasattr(self, 'options_window') and self.options_window and self.options_window.isVisible():
+            self.options_window.update_size_from_parent()
     
     def _apply_fixed_category_height(self):
         """Force-apply the fixed category height to the splitter."""
@@ -598,6 +602,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.mode_indicator.setToolTip(_("シンボリックリンクが作成できる状態です"))
         else:
             self.mode_indicator.setStyleSheet("color: #888888; font-size: 14px;")  # Gray
+            self.mode_indicator.setToolTip(_("管理者権限がないため、コピーモードで動作します"))
+
+    def toggle_options(self):
+        """Show/Toggle independent options window."""
+        from src.components.sub_windows import OptionsWindow
+        
+        if not hasattr(self, 'options_window') or self.options_window is None:
+            # Parent=None to prevent opacity inheritance and other parent-child bugs
+            # Target=self to allow controlling this window
+            self.options_window = OptionsWindow(parent=None, db=self.db, target=self)
+
+        if self.options_window.isVisible():
+            self.options_window.hide()
+            self.opt_btn.setChecked(False)
+        else:
+            self.options_window.show()
+            self.options_window.raise_()
+            self.options_window.activateWindow()
+            self.opt_btn.setChecked(True)
+            # Update size sliders
+            self.options_window.update_size_from_parent()
             msg = _("シンボリックリンクが使用できない（またはこのドライブで制限されている）ため、自動でコピーモードになります")
             self.mode_indicator.setToolTip(msg)
         
@@ -2415,7 +2440,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 import time
                 t_opt = time.perf_counter()
                 from src.components.sub_windows import OptionsWindow
-                self.options_window = OptionsWindow(None, self.db)
+                self.options_window = OptionsWindow(parent=None, db=self.db, target=self)
                 self.logger.info(f"[Profile] OptionsWindow (Lazy) init took {time.perf_counter()-t_opt:.3f}s")
                 # Removed setParent to prevent darkening artifacts (Double Transparency)
                 # self.options_window.setParent(self, self.options_window.windowFlags())

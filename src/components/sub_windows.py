@@ -4,30 +4,34 @@
 
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QCheckBox, QSlider, QSpinBox, QApplication
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.frameless_window import FramelessWindow
+import logging
 
 class OptionsWindow(FramelessWindow):
     closed = pyqtSignal()  # Signal emitted when window is closed via X button
     
-    def __init__(self, parent=None, db=None):
-        # Pass parent properly - double transparency bug now fixed in paintEvent
+    def __init__(self, parent=None, db=None, target=None):
+        # Pass parent=None to ensure independence (avoid opacity inheritance)
         super().__init__(parent)
         self.setObjectName("OptionsWindow")
 
-        # Sync opacity from parent link_master window if available
-        if parent and hasattr(parent, '_bg_opacity'):
-            self.set_background_opacity(parent._bg_opacity)
+        # Sync opacity from target window if available
+        if target and hasattr(target, '_bg_opacity'):
+            self.set_background_opacity(target._bg_opacity)
 
         self.setWindowTitle("Options")
-        # Tool flag + transient parent for proper stacking without composition artifacts
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
+        # Tool flag + Window type to ensure it's treated as a separate window but floating
+        self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.resize(300, 240)
 
-        self.parent_debug_window = parent
+        self.target_window = target if target else parent
         self.db = db  # Database for settings persistence
         self.set_resizable(False) 
         self._init_ui()
-        self._load_settings()
+        # Delay load settings to ensure UI is ready
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._load_settings)
 
     def _init_ui(self):
         content = QWidget() # Create without parent, set_content_widget will handle ownership
@@ -282,8 +286,11 @@ class OptionsWindow(FramelessWindow):
                 # Apply always_on_top to BOTH parent AND this options window
                 if settings.get('always_top', False):
                     self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-                    if self.parent_debug_window:
-                        self.parent_debug_window.set_pin_state(True)
+                    if self.target_window:
+                        if hasattr(self.target_window, 'set_pin_state'):
+                            self.target_window.set_pin_state(True)
+                        # elif hasattr(self.target_window, 'set_always_on_top'):
+                         #   self.target_window.set_always_on_top(True)
             
             # Load language setting
             saved_lang = all_config.get('language', 'system')
@@ -347,22 +354,24 @@ class OptionsWindow(FramelessWindow):
         # Removed: auto-save on change - now saved on close only
 
     def _apply_bg_opacity(self, value):
-        if self.parent_debug_window:
-            self.parent_debug_window.set_background_opacity(value / 100.0)
+        if self.target_window and hasattr(self.target_window, 'set_background_opacity'):
+            self.target_window.set_background_opacity(value / 100.0)
 
     def _apply_text_opacity(self, value):
-        if self.parent_debug_window:
-            self.parent_debug_window.set_content_opacity(value / 100.0)
+        if self.target_window and hasattr(self.target_window, 'set_content_opacity'):
+            self.target_window.set_content_opacity(value / 100.0)
 
     def _apply_window_width(self, value):
-        if self.parent_debug_window:
-            curr_h = self.parent_debug_window.height()
-            self.parent_debug_window.resize(value, curr_h)
+        if self.target_window:
+            logging.getLogger("OptionsWindow").info(f"Applying width: {value}")
+            curr_h = self.target_window.height()
+            self.target_window.resize(value, curr_h)
 
     def _apply_window_height(self, value):
-        if self.parent_debug_window:
-            curr_w = self.parent_debug_window.width()
-            self.parent_debug_window.resize(curr_w, value)
+        if self.target_window:
+            logging.getLogger("OptionsWindow").info(f"Applying height: {value}")
+            curr_w = self.target_window.width()
+            self.target_window.resize(curr_w, value)
 
     def _on_language_changed(self, index):
         """Handle language selection change."""
@@ -424,14 +433,15 @@ class OptionsWindow(FramelessWindow):
     
     def _sync_size_from_parent(self):
         """Sync width/height sliders with parent window dimensions."""
-        if self.parent_debug_window:
+        if self.target_window:
             self.width_slider.blockSignals(True)
             self.width_spin.blockSignals(True)
             self.height_slider.blockSignals(True)
             self.height_spin.blockSignals(True)
             
-            w = self.parent_debug_window.width()
-            h = self.parent_debug_window.height()
+            w = self.target_window.width()
+            h = self.target_window.height()
+            logging.getLogger("OptionsWindow").info(f"Syncing size from parent: {w}x{h}")
             
             self.width_slider.setValue(w)
             self.width_spin.setValue(w)
@@ -449,8 +459,8 @@ class OptionsWindow(FramelessWindow):
             self._sync_size_from_parent()
 
     def _on_always_top_toggled(self, checked):
-        if self.parent_debug_window:
-            self.parent_debug_window.set_pin_state(checked)
+        if self.target_window and hasattr(self.target_window, 'set_pin_state'):
+            self.target_window.set_pin_state(checked)
         # Removed: _save_settings() - now saved on close only
 
     def _on_remember_geo_toggled(self, checked):
