@@ -69,19 +69,28 @@ class LinkMasterRegistry:
             except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN score INTEGER DEFAULT 0")
-            except: pass
+            except Exception as e:
+                self.logger.warning(f"Migration score: {e}")
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN target_root_3 TEXT")
-            except: pass
+            except Exception as e:
+                self.logger.warning(f"Migration target_root_3: {e}")
+            try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN target_root_4 TEXT")
+            except Exception as e:
+                self.logger.warning(f"Migration target_root_4: {e}")
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_b TEXT DEFAULT 'folder'")
-            except: pass
+            except Exception as e:
+                self.logger.warning(f"Migration deployment_rule_b: {e}")
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_c TEXT DEFAULT 'folder'")
-            except: pass
+            except Exception as e:
+                self.logger.warning(f"Migration deployment_rule_c: {e}")
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN default_skip_levels INTEGER DEFAULT 0")
-            except: pass
+            except Exception as e:
+                self.logger.warning(f"Migration default_skip_levels: {e}")
 
             conn.commit()
 
@@ -127,8 +136,8 @@ class LinkMasterRegistry:
 
     def add_app(self, data: dict):
         self._apps_cache = None
-        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, target_root_3, default_subpath, managed_folder_name, conflict_policy, deployment_type, deployment_rule, deployment_rule_b, deployment_rule_c, transfer_mode, cover_image, is_favorite, score, default_skip_levels)
-                 VALUES (:name, :storage_root, :target_root, :target_root_2, :target_root_3, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :deployment_rule, :deployment_rule_b, :deployment_rule_c, :transfer_mode, :cover_image, :is_favorite, :score, :default_skip_levels)'''
+        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, target_root_3, target_root_4, default_subpath, managed_folder_name, conflict_policy, deployment_type, deployment_rule, deployment_rule_b, deployment_rule_c, transfer_mode, cover_image, is_favorite, score, default_skip_levels)
+                 VALUES (:name, :storage_root, :target_root, :target_root_2, :target_root_3, :target_root_4, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :deployment_rule, :deployment_rule_b, :deployment_rule_c, :transfer_mode, :cover_image, :is_favorite, :score, :default_skip_levels)'''
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(sql, data)
@@ -137,7 +146,7 @@ class LinkMasterRegistry:
 
     def update_app(self, app_id: int, data: dict):
         self._apps_cache = None
-        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'managed_folder_name', 
+        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'target_root_4', 'managed_folder_name', 
                       'default_subpath', 'conflict_policy', 'deployment_type', 'deployment_rule', 'deployment_rule_b', 'deployment_rule_c', 'transfer_mode',
                       'cover_image', 'last_target',
                       'default_category_style', 'default_package_style', 'executables', 'url_list',

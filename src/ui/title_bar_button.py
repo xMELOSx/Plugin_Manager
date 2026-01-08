@@ -34,6 +34,14 @@ class TitleBarButton(QPushButton):
         if text: self.text_color = text
         self.update_style()
 
+    def set_icon_path(self, path):
+        if path and __import__("os").path.exists(path):
+            self.setText("")
+            from PyQt6.QtGui import QIcon
+            self.setIcon(QIcon(path))
+            self.setIconSize(self.size() * 0.7)
+        self.update_style()
+
     def update_style(self):
         if self.toggled_state:
             bg_color = self.override_color if self._is_override else self.active_color

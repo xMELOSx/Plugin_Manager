@@ -646,7 +646,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # Style to match Link Master overall dark theme
         self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #ffffff; }
+            QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLineEdit, QComboBox, QSpinBox { background-color: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
             QComboBox { background: #333; }
             QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 12px; }
@@ -1650,7 +1650,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
     def reject(self):
         super().reject()
         # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
-        Toast(self.parent(), _("Changes Cancelled")).show_message()
+        Toast(self.parent(), _("Changes Cancelled"), preset='warning').show_message()
 
     def keyPressEvent(self, event):
         """Phase 28: Handle global hotkeys for the dialog."""

@@ -566,6 +566,32 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # 3. Help Button
         self.help_btn = TitleBarButton("?", is_toggle=True)
+        try:
+            import os
+            from PyQt6.QtGui import QPixmap, QPainter, QFont, QColor
+            from PyQt6.QtCore import Qt
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            res_dir = os.path.join(project_root, "resource", "tags")
+            if not os.path.exists(res_dir): os.makedirs(res_dir, exist_ok=True)
+            help_icon_path = os.path.join(res_dir, "help_icon_v2.png")
+            
+            if not os.path.exists(help_icon_path):
+                pix = QPixmap(64, 64)
+                pix.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(pix)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                # Try Segoe UI Emoji for Windows color emoji support
+                font = QFont("Segoe UI Emoji", 48)
+                font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+                painter.setFont(font)
+                rect = pix.rect()
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "❔")
+                painter.end()
+                pix.save(help_icon_path)
+            
+            self.help_btn.set_icon_path(help_icon_path)
+        except Exception as e:
+            self.logger.error(f"Failed to generate help icon cache: {e}")
         self.help_btn.setObjectName("titlebar_help_btn")
         self.help_btn.clicked.connect(self.toggle_help)
         self.help_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -2077,7 +2103,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         height = self.content_wrapper.height()
         # Use saved width or default to 280
         width = getattr(self, '_explorer_panel_width', 280)
-        self.explorer_panel.setGeometry(pos.x() + 20, pos.y(), width, height)
+        self.explorer_panel.setGeometry(pos.x() + 50, pos.y(), width, height)
         self.explorer_panel.raise_()
     
     def _on_explorer_panel_width_changed(self, new_width: int):
@@ -2390,6 +2416,40 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             except:
                 pass
 
+
+
+    def _on_explorer_target_changed(self, key):
+        """Handle target change from ExplorerPanel. switch context and CURRENT VIEW to the target folder."""
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        self.current_target_key = key
+        target_path = app_data.get(key, "")
+        
+        # Switch Explorer View to Target Logic
+        if target_path and os.path.exists(target_path):
+            # Change Explorer Tree to show Target Folder
+            self.explorer_panel.set_storage_root(target_path)
+            # Switch Main/Bottom View to Target Folder
+            self._load_items_for_path(target_path, force=True)
+        else:
+            # If target not valid, maybe revert to Source? Or stay? 
+             # For now, just log warning.
+            self.logger.warning(f"Target path not found for {key}: {target_path}")
+
+        # Update target name label (if visible)
+        if hasattr(self, 'target_name_lbl'):
+             self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
+             
+        # Record last target
+        self.db.update_app(app_data['id'], {'last_target': key})
+        app_data['last_target'] = key
+        
+        self.logger.info(f"Explorer Switched to Target View: {key} -> {target_path}")
+        
+        # Refresh visuals (Scanner context update)
+        self._refresh_current_view()
+        self._refresh_tag_visuals()
 
     # --- Target Switching ---
     

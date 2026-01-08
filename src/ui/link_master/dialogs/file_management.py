@@ -273,7 +273,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         if "transfer_overrides" not in self.rules: self.rules["transfer_overrides"] = {}
         
         self.setWindowTitle(_("File Management: {name}").format(name=os.path.basename(folder_path)))
-        self.resize(1150, 800)
+        self.resize(900, 600)
         self.load_options("file_management_dialog")
         
         self._apply_theme()
@@ -428,64 +428,20 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
                 self.tree.setColumnWidth(0, 320)
                 self.tree.setColumnWidth(3, 400)
 
-        # Sidebar + Tree Layout
-        main_content_layout = QHBoxLayout()
-        main_content_layout.setContentsMargins(0, 0, 0, 0)
-        main_content_layout.setSpacing(10)
-
-        # Sidebar View Toggle
-        sidebar_frame = QFrame()
-        sidebar_frame.setFixedWidth(100)
-        sidebar_frame.setStyleSheet("background-color: #252525; border-right: 1px solid #333;")
-        sidebar_layout = QVBoxLayout(sidebar_frame)
-        sidebar_layout.setContentsMargins(5, 10, 5, 10)
-        sidebar_layout.setSpacing(12)
-
-        self.btn_view_source = QPushButton(_("Source"))
-        self.btn_view_source.setCheckable(True)
-        self.btn_view_source.setChecked(True)
-        self.btn_view_source.setStyleSheet("""
-            QPushButton { 
-                background-color: #333; color: white; border: none; padding: 10px; border-radius: 4px; 
-                text-align: center; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #444; }
-            QPushButton:checked { background-color: #3498db; }
-        """)
-        self.btn_view_source.clicked.connect(self._switch_to_source)
-        sidebar_layout.addWidget(self.btn_view_source)
-
-        self.btn_view_target = QPushButton(_("Target"))
-        self.btn_view_target.setCheckable(True)
-        self.btn_view_target.setStyleSheet("""
-            QPushButton { 
-                background-color: #333; color: white; border: none; padding: 10px; border-radius: 4px; 
-                text-align: center; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #444; }
-            QPushButton:checked { background-color: #e67e22; }
-        """)
-        self.btn_view_target.clicked.connect(self._switch_to_target)
-        sidebar_layout.addWidget(self.btn_view_target)
-        
-        sidebar_layout.addStretch()
-        main_content_layout.addWidget(sidebar_frame)
-
-        # Tree Wrap (To separate it from sidebar and tools)
+        # Tree Container
         self.tree_container = QWidget()
         tree_sub_layout = QVBoxLayout(self.tree_container)
         tree_sub_layout.setContentsMargins(0, 0, 0, 0)
         tree_sub_layout.addWidget(self.tree)
         
-        main_content_layout.addWidget(self.tree_container, 1)
-        # Toolbar / Quick Actions - Reorganized per user request
+        main_layout.addWidget(self.tree_container, 1) # Add tree with stretch
+
+        # Toolbar / Quick Actions
         tools_frame = QFrame(self)
-        tools_frame.setObjectName("ToolsFrame")  # For CSS #ToolsFrame selector
+        tools_frame.setObjectName("ToolsFrame")
         tools_layout = QVBoxLayout(tools_frame)
         tools_layout.setSpacing(12)
-        main_content_layout.addWidget(tools_frame) # Integrate tools_frame into main_content_layout
-        
-        main_layout.addLayout(main_content_layout) # Add the combined main_content_layout to main_layout
+        main_layout.addWidget(tools_frame) # Add tools below tree
 
         LABEL_WIDTH = 110 # For alignment - defined here for batch header
 

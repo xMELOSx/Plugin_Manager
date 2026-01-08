@@ -43,7 +43,17 @@ class LMPortabilityMixin:
         dialog = QFileDialog(self, _("Select Export Destination"), default_filename, "Dionys Control Export (*.dioco)")
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
-        dialog.setStyleSheet(getattr(self, 'styleSheet', lambda: "")()) # Inherit or use factory style
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
+        # Apply explicit dark theme
+        dialog.setStyleSheet("""
+            QFileDialog { background-color: #2b2b2b; color: #ffffff; }
+            QLabel { color: #ffffff; }
+            QLineEdit { background-color: #333; color: #ffffff; border: 1px solid #555; }
+            QTreeView { background-color: #1a1a1a; color: #ffffff; alternate-background-color: #222; }
+            QListView { background-color: #1a1a1a; color: #ffffff; }
+            QPushButton { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 5px; }
+            QPushButton:hover { background-color: #444; }
+        """)
         
         if dialog.exec():
             dest_file = dialog.selectedFiles()[0]
@@ -157,6 +167,16 @@ class LMPortabilityMixin:
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
+        # Apply explicit dark theme
+        dialog.setStyleSheet("""
+            QFileDialog { background-color: #2b2b2b; color: #ffffff; }
+            QLabel { color: #ffffff; }
+            QLineEdit { background-color: #333; color: #ffffff; border: 1px solid #555; }
+            QTreeView { background-color: #1a1a1a; color: #ffffff; alternate-background-color: #222; }
+            QListView { background-color: #1a1a1a; color: #ffffff; }
+            QPushButton { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 5px; }
+            QPushButton:hover { background-color: #444; }
+        """)
         
         if dialog.exec():
             source_file = dialog.selectedFiles()[0]

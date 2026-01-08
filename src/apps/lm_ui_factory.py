@@ -55,6 +55,8 @@ def setup_ui(window):
         QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
         QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
         
+        QPushButton#header_search_btn:checked { background-color: #3498db; border-color: #5dade2; }
+        
         QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
         QMessageBox QLabel { color: #fff; }
         QMessageBox QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 15px; min-width: 60px; }
@@ -678,5 +680,6 @@ def _setup_floating_explorer(window):
     window.explorer_panel.config_changed.connect(window._refresh_current_view)
     window.explorer_panel.request_properties_edit.connect(window._handle_explorer_properties_edit)
     window.explorer_panel.width_changed.connect(window._on_explorer_panel_width_changed)
+    window.explorer_panel.target_changed.connect(window._on_explorer_target_changed)
     window.explorer_panel.hide()
     window.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
