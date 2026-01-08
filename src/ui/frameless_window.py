@@ -5,6 +5,7 @@ from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import Win32Mixin, DraggableMixin, ResizableMixin
 import os
 import ctypes
+from ctypes import wintypes
 
 def force_dark_mode(window):
     """Force immersive dark mode via DWM API to prevent white borders/flashes."""
@@ -353,9 +354,6 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             self.max_btn.hide()
 
     def toggle_maximize(self):
-        # Freeze updates to hide the "jump" (move then resize) behavior
-        self.setUpdatesEnabled(False) 
-        
         if self.isMaximized():
             self.showNormal()
             self.max_btn.setText("□")
@@ -364,16 +362,13 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             self.max_btn.setText("❐")
             
         self._update_stylesheet()
-        self.setUpdatesEnabled(True)
 
     def toggle_fullscreen(self):
-        self.setUpdatesEnabled(False)
         if self.isFullScreen():
             self.showNormal()
         else:
             self.showFullScreen()
         self._update_stylesheet()
-        self.setUpdatesEnabled(True)
 
     def add_title_bar_button(self, btn: TitleBarButton, index: int = 0):
         self.control_layout.insertWidget(index, btn)
@@ -432,11 +427,20 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
                 edges = self._get_resize_edges(pos)
                 self._update_cursor(edges)
         
-        elif event.type() == QEvent.Type.HoverLeave:
-             # Reset cursor when leaving the window or moving deep into content if needed
-             self.setCursor(Qt.CursorShape.ArrowCursor)
-
         return super().eventFilter(obj, event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Toggle maximize on title bar double-click."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check if click is within title bar height (approx 40px)
+            if event.pos().y() <= 40:
+                # Ignore if clicking a control
+                child = self.childAt(event.pos())
+                from PyQt6.QtWidgets import QPushButton
+                if not isinstance(child, QPushButton):
+                    self.toggle_maximize()
+                    
+        super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -472,7 +476,8 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             if self._resizing: return
 
         # Drag
-        if not self.isMaximized() and not self.isFullScreen():
+        # Allow drag even if maximized (DraggableMixin handles unsnap). Only block in FullScreen.
+        if not self.isFullScreen():
             self.handle_drag_move(event)
             
         # Cursor update handled by eventFilter mostly, but ensure:

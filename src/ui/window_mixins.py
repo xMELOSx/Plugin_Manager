@@ -69,19 +69,56 @@ class DraggableMixin:
     def init_drag(self):
         self.draggable = False
         self._drag_pos = QPoint()
+        self._drag_pending = False
+        self._drag_start_global = QPoint()
 
     def handle_drag_press(self, event):
-        # Allow dragging if specific conditions met (handled in MouseHandlerMixin usually)
-        # But here we just set the flag/pos
-        self._drag_pos = event.globalPosition().toPoint() - self.pos()
-        self.draggable = True
-        
+        # Phase 2: Do NOT start system move immediately.
+        # Wait for actual movement to distinguish from Click/Double-Click.
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pending = True
+            self._drag_start_global = event.globalPosition().toPoint()
+            # Store relative offset just in case fallback is needed
+            self._drag_pos = event.globalPosition().toPoint() - self.pos()
+
     def handle_drag_move(self, event):
+        if self._drag_pending and event.buttons() == Qt.MouseButton.LeftButton:
+            # Check drag threshold
+            dist = (event.globalPosition().toPoint() - self._drag_start_global).manhattanLength()
+            if dist > 5: # Threshold of 5px
+                self._drag_pending = False
+                
+                # Maximized Drag Logic: Restore before moving
+                if self.isMaximized():
+                    # Calculate relative X ratio
+                    screen_w = self.screen().geometry().width()
+                    cursor_x = event.globalPosition().toPoint().x()
+                    ratio = cursor_x / screen_w
+                    
+                    self.showNormal()
+                    
+                    # Reposition window so cursor stays at same relative point
+                    new_w = self.width()
+                    new_x = int(cursor_x - (new_w * ratio))
+                    new_y = event.globalPosition().toPoint().y() - 10 # Offset a bit for title bar
+                    self.move(new_x, new_y)
+                
+                # Handover to System Move
+                if hasattr(self, 'windowHandle') and self.windowHandle():
+                    if self.windowHandle().startSystemMove():
+                        self.draggable = False 
+                        return
+
+                # If System Move failed, fallback to manual (should rarely happen on patched Qt)
+                self.draggable = True
+        
+        # Manual Drag Fallback
         if self.draggable and event.buttons() == Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
-            
+
     def handle_drag_release(self, event):
         self.draggable = False
+        self._drag_pending = False
 
 class ResizableMixin:
     """Handles 8-way resizing logic."""
