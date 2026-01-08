@@ -6,6 +6,17 @@ from src.ui.window_mixins import Win32Mixin, DraggableMixin, ResizableMixin
 import os
 import ctypes
 from ctypes import wintypes
+from PyQt6.QtWidgets import QApplication
+
+class MINMAXINFO(ctypes.Structure):
+    _fields_ = [
+        ("ptReserved", wintypes.POINT),
+        ("ptMaxSize", wintypes.POINT),
+        ("ptMaxPosition", wintypes.POINT),
+        ("ptMinTrackSize", wintypes.POINT),
+        ("ptMaxTrackSize", wintypes.POINT),
+    ]
+
 
 def force_dark_mode(window):
     """Force immersive dark mode via DWM API to prevent white borders/flashes."""
@@ -20,43 +31,40 @@ def force_dark_mode(window):
             )
         except: pass
 
-class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
+class FramelessWindow(QMainWindow, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
         
         # 0. Preparation for "No White Flash"
         self.setWindowOpacity(0.0) # Hide immediately
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        # self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent) # Remove: may cause alpha accumulation on some systems
         
-        
-        # 1. Base UI Props
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        # Enable transparency - this is the ONLY attribute we need for semi-transparent background
+        # 1. Base UI Props - User recommended flags
+        # FramelessWindowHint removes standard frame, but we re-add native behavior via WinAPI style
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowMinMaxButtonsHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # 2. Force DWM Dark mode (for window border color)
+        # 2. Force DWM Dark mode
         force_dark_mode(self)
         
-        # Mixin Inits
-        self.init_drag()
-        self.init_resize()
+        # 3. Apply WinAPI Styles (Moved to showEvent for stability)
+        self._native_styles_applied = False
         
         # State
         self.border_radius = 8
-        self._bg_opacity = 0.9 # Default Background 90%
-        self._content_opacity = 1.0 # Default Content 100%
+        self._bg_opacity = 0.9
+        self._content_opacity = 1.0
         
         self._init_frameless_ui()
         
         # 4. Show with short delay to ensure first paint is done
         QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
 
+
     def _init_frameless_ui(self):
         # Ensure the Window itself is transparent so only our painted background/container is seen
         self.setStyleSheet("background: transparent;")
         
-        # Main container - uses parent's paintEvent for background
+        # Main container
         self.container = QWidget(self)
         self.container.setObjectName("FramelessContainer")
         self.container.setMouseTracking(True)
@@ -65,19 +73,14 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.container.setAttribute(Qt.WidgetAttribute.WA_Hover)
         
         self._update_stylesheet()
-        self.setCentralWidget(self.container) # Assuming set_content_widget is a typo and it should be setCentralWidget
+        self.setCentralWidget(self.container)
         
-        # Debug window should be opaque for better readability
-        # Now that FramelessDialog (via LinkMasterDebugWindow inheritance) has paintEvent, this will work.
-        # But wait, LinkMasterDebugWindow inherits FramelessWindow, which ALREADY has paintEvent!
-        # The user's issue with DebugWindow "half transparency" was due to default 0.9 opacity.
         self.set_background_opacity(0.95)
         
-        # Initialize Opacity Effect for Content (Smoother, no QSS hit)
+        # Initialize Opacity Effect
         self._content_opacity_effect = QGraphicsOpacityEffect(self.container)
         self._content_opacity_effect.setOpacity(self._content_opacity)
         self.container.setGraphicsEffect(self._content_opacity_effect)
-
         
         self.main_layout = QVBoxLayout(self.container)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -89,7 +92,6 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.title_bar.setStyleSheet("background-color: transparent;")
         self.title_bar.setFixedHeight(40)
         self.title_bar.setMouseTracking(True)
-        # self.title_bar.installEventFilter(self) # Redundant
         
         self.title_bar_layout = QHBoxLayout(self.title_bar)
         self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
@@ -111,7 +113,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         
         self.title_bar_layout.addStretch()
         
-        # Center Container for Executable Links (Phase 28)
+        # Center Container
         self.title_bar_center = QWidget(self.title_bar)
         self.title_bar_center_layout = QHBoxLayout(self.title_bar_center)
         self.title_bar_center_layout.setContentsMargins(0, 0, 0, 0)
@@ -120,7 +122,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         
         self.title_bar_layout.addStretch()
         
-        # Gap between handle area and buttons
+        # Gap
         self.title_bar_layout.addSpacing(10) 
         
         # Custom Buttons Area
@@ -128,7 +130,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         self.control_layout.setSpacing(1)
         self.title_bar_layout.addLayout(self.control_layout)
 
-        # Default Controls (Min/Max/Close)
+        # Default Controls
         self._add_default_controls()
 
         self.main_layout.addWidget(self.title_bar)
@@ -151,8 +153,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
     def set_background_opacity(self, opacity: float):
         """Sets the background opacity (0.0 to 1.0) separate from content."""
         self._bg_opacity = max(0.0, min(1.0, opacity))
-        # Background is handled by paintEvent, no need to re-apply global stylesheet
-        self.update()
+        self._update_stylesheet()
 
     def set_content_opacity(self, opacity: float):
         """Sets the text/content opacity (0.0 to 1.0) using QGraphicsOpacityEffect."""
@@ -161,12 +162,10 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             self._content_opacity_effect.setOpacity(self._content_opacity)
 
     def _update_stylesheet(self):
-        radius = f"{self.border_radius}px" if not self.isMaximized() and not self.isFullScreen() else "0px"
-        check_icon_path = "src/assets/checkmark.svg"
-        
-        # Calculate RGBA for background
-        bg_alpha = int(self._bg_opacity * 255)
-        bg_color = f"rgba(43, 43, 43, {bg_alpha})" # #2b2b2b
+        # Simple stylesheet update for border radius
+        # The main frame is hidden by WM_NCCALCSIZE, so we just style the container
+        radius = 0 if self.isMaximized() else self.border_radius
+        border = "" if self.isMaximized() else "border: 1px solid #444;"
         
         # Calculate RGBA for text
         text_alpha = self._content_opacity # 0.0 - 1.0
@@ -174,9 +173,9 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         
         self.container.setStyleSheet(f"""
             #FramelessContainer {{
-                /* Background is painted by paintEvent - keep transparent here */
-                background: transparent;
-                border-radius: {radius};
+                background-color: rgba(30, 30, 30, {int(self._bg_opacity * 255)});
+                border-radius: {radius}px;
+                {border}
             }}
             /* Generic Widget Styling for Dark Mode */
             QLabel {{ color: {text_color_rgba}; background: transparent; }}
@@ -258,7 +257,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             QCheckBox::indicator:checked, QCheckBox::indicator:checked:!active {{
                 background: #3498db;
                 border: 2px solid #3498db;
-                image: url({check_icon_path});
+                image: url(src/assets/checkmark.svg);
             }}
 
             /* Fix QSpinBox visibility in dark mode */
@@ -414,88 +413,124 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         super().changeEvent(event)
 
     def eventFilter(self, obj, event):
-        # Resize Cursor Hover Handling (Even over child widgets via HoverMove)
-        if event.type() in [QEvent.Type.MouseMove, QEvent.Type.HoverMove]:
-            if self.resizable and not self.isMaximized() and not self.isFullScreen() and not getattr(self, '_resizing', False) and not getattr(self, 'draggable', False):
-                # For HoverMove, the position is in event.position()
-                pos = event.position().toPoint() if event.type() == QEvent.Type.HoverMove else event.pos()
-                
-                # Use mapFromGlobal if obj is a child widget filtering events
-                if obj != self:
-                    pos = self.mapFromGlobal(obj.mapToGlobal(pos))
-                
-                edges = self._get_resize_edges(pos)
-                self._update_cursor(edges)
-        
+        # Allow child widgets to process their own hover/mouse events without interference
         return super().eventFilter(obj, event)
 
-    def mouseDoubleClickEvent(self, event):
-        """Toggle maximize on title bar double-click."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Check if click is within title bar height (approx 40px)
-            if event.pos().y() <= 40:
-                # Ignore if clicking a control
-                child = self.childAt(event.pos())
-                from PyQt6.QtWidgets import QPushButton
-                if not isinstance(child, QPushButton):
-                    self.toggle_maximize()
-                    
-        super().mouseDoubleClickEvent(event)
+    def showEvent(self, event):
+        """Apply native styles once the window is shown and winId is valid."""
+        super().showEvent(event)
+        if not self._native_styles_applied:
+            self._apply_native_styles()
+            self._native_styles_applied = True
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            # 1. Resize
-            if not self.isMaximized() and not self.isFullScreen():
-                if self.handle_resize_press(event):
+    def _apply_native_styles(self):
+        """Apply Windows styles to enable native features like Snap and Shadows."""
+        if os.name == 'nt':
+            try:
+                # Ensure window handle is created
+                if not self.winId():
                     return
-            
-            # 2. Drag
-            # Check ignored widgets (Interactive inputs should not trigger window drag)
-            child = self.childAt(event.pos())
-            from PyQt6.QtWidgets import QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView
-            
-            # Walk up the widget hierarchy to check if we clicked a child of an interactive widget
-            curr = child
-            while curr and curr != self:
-                if isinstance(curr, (QPushButton, QCheckBox, QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView)):
-                    return # Allow widget to handle event, don't drag
-                curr = curr.parent()
-            
-            # Or direct check if childAt returned strictly the widget
-            if isinstance(child, (QPushButton, QCheckBox, QSlider, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractItemView)): 
-                 return # Ignored
-            
-            self.handle_drag_press(event)
-        
-        super().mousePressEvent(event)
+                    
+                hwnd = int(self.winId())
+                GWL_STYLE = -16
+                WS_CAPTION = 0x00C00000
+                WS_THICKFRAME = 0x00040000
+                
+                style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+                ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME)
+                
+                # Trigger frame recalc
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                SWP_NOZORDER = 0x0004
+                SWP_FRAMECHANGED = 0x0020
+                user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED)
+            except Exception as e:
+                print(f"Failed to apply native styles: {e}")
 
-    def mouseMoveEvent(self, event):
-        # Resize
-        if not self.isMaximized() and not self.isFullScreen():
-            self.handle_resize_move(event)
-            if self._resizing: return
-
-        # Drag
-        # Allow drag even if maximized (DraggableMixin handles unsnap). Only block in FullScreen.
-        if not self.isFullScreen():
-            self.handle_drag_move(event)
+    def nativeEvent(self, eventType, message):
+        """Handle native Windows events for true frameless behavior."""
+        try:
+            if eventType == b"windows_generic_MSG":
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+            else:
+                return False, 0
+        except:
+            return False, 0
             
-        # Cursor update handled by eventFilter mostly, but ensure:
-        if not self._resizing and not self.draggable:
-             edges = self._get_resize_edges(event.pos())
-             self._update_cursor(edges)
-             
-        super().mouseMoveEvent(event)
+        WM_GETMINMAXINFO = 0x0024
+        WM_NCCALCSIZE = 0x0083
+        WM_NCHITTEST = 0x0084
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.handle_drag_release(event)
-            self.handle_resize_release(event)
-            self.setCursor(Qt.CursorShape.ArrowCursor) 
-            edges = self._get_resize_edges(event.pos())
-            self._update_cursor(edges)
+        if msg.message == WM_GETMINMAXINFO:
+            # Prevent 8px overhang when maximized
+            try:
+                info = ctypes.cast(msg.lParam, ctypes.POINTER(MINMAXINFO)).contents
+                r = self.devicePixelRatioF()
+                screen = self.screen().availableGeometry()
+                # WinAPI expects physical pixels, Qt provides logical
+                info.ptMaxTrackSize.x = int(screen.width() * r)
+                info.ptMaxTrackSize.y = int(screen.height() * r)
+                info.ptMaxSize.x = int(screen.width() * r)
+                info.ptMaxSize.y = int(screen.height() * r)
+                info.ptMaxPosition.x = 0
+                info.ptMaxPosition.y = 0
+                return True, 0
+            except:
+                pass
             
-        super().mouseReleaseEvent(event)
+        if msg.message == WM_NCCALCSIZE:
+            # Return True (1) to indicate valid client area (hides standard title bar)
+            return True, 0
+            
+        if msg.message == WM_NCHITTEST:
+            # Physical screen coordinates from Windows
+            x_phys = ctypes.c_short(msg.lParam & 0xffff).value
+            y_phys = ctypes.c_short((msg.lParam >> 16) & 0xffff).value
+            
+            # Convert physical pixels to Qt logical pixels
+            r = self.devicePixelRatioF()
+            pt = QPoint(int(x_phys / r), int(y_phys / r))
+            local_pos = self.mapFromGlobal(pt)
+            lx, ly = local_pos.x(), local_pos.y()
+            w, h = self.width(), self.height()
+            
+            margin = 8
+            
+            # 1. Resize Handles (Skip if maximized/fullscreen)
+            if not self.isMaximized() and not self.isFullScreen():
+                # Corners
+                if lx < margin and ly < margin: return True, 13 # HTTOPLEFT
+                if lx > w - margin and ly < margin: return True, 14 # HTTOPRIGHT
+                if lx < margin and ly > h - margin: return True, 16 # HTBOTTOMLEFT
+                if lx > w - margin and ly > h - margin: return True, 17 # HTBOTTOMRIGHT
+                
+                # Edges
+                if lx < margin: return True, 10 # HTLEFT
+                if lx > w - margin: return True, 11 # HTRIGHT
+                if ly < margin: return True, 12 # HTTOP
+                if ly > h - margin: return True, 15 # HTBOTTOM
+            
+            # 2. Title Bar (HTCAPTION) - excluding buttons
+            if ly <= 40:
+                # IMPORTANT: Don't steal clicks from Buttons
+                btns = [getattr(self, 'min_btn', None), getattr(self, 'max_btn', None), getattr(self, 'close_btn', None)]
+                for btn in btns:
+                    if btn and btn.isVisible() and btn.geometry().contains(local_pos):
+                        return False, 0 # Let Qt handle click
+                
+                return True, 2 # HTCAPTION
+            
+            # 3. Default to Client Area (Important for button interaction!)
+            # Return False to let Qt reset its internal cursor stack
+            return False, 1 # HTCLIENT
+            
+        return False, 0 
+
+
+    # Manual mouse events are handled by the OS via nativeEvent (WM_NCHITTEST)
+    # We do NOT override them unless we need specific child-interaction logic.
+    # Standard child interaction works because we return HTCLIENT (1) for non-caption/non-border areas.
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_F11:
@@ -570,7 +605,7 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
         y = screen_geo.y() + (screen_geo.height() - geo.height()) // 2
         self.move(x, y)
 
-class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
+class FramelessDialog(QDialog, Win32Mixin):
     """
     Common base class for all Link Master dialogs.
     Provides borderless, translucent, and 'flash-free' dark UI matching the main window.
