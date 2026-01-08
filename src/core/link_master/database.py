@@ -231,6 +231,8 @@ class LinkMasterDB:
                 target_override TEXT,     -- Phase 16
                 deployment_rules TEXT,     -- Phase 16 (JSON)
                 deploy_rule TEXT,          -- Phase 5 (A/B/C support)
+                deploy_rule_b TEXT,        -- Target 2 override
+                deploy_rule_c TEXT,        -- Target 3 override
                 deploy_type TEXT,          -- Phase 18.15 (Override)
                 conflict_policy TEXT,      -- Phase 18.15 (Override)
                 conflict_tag TEXT,         -- Phase 28: Tag to check for conflicts
@@ -325,6 +327,12 @@ class LinkMasterDB:
             except: pass
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deploy_rule TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deploy_rule_b TEXT")
+            except: pass
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN deploy_rule_c TEXT")
             except: pass
             
             # Phase 28 Migrations
@@ -647,14 +655,14 @@ class LinkMasterDB:
         # Normalize path to forward slashes for consistent DB storage
         rel_path = rel_path.replace('\\', '/') if rel_path else rel_path
         valid_cols = ['app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
-                       'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'inherit_tags', 'is_visible',
+                       'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'deploy_rule_b', 'deploy_rule_c', 'inherit_tags', 'is_visible',
                        'deploy_type', 'conflict_policy', 'transfer_mode', 'sort_order', 'last_known_status',
-                      'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
-                      'is_favorite', 'score', 'url_list',
-                      'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
-                      'lib_folder_id',
-                      'has_logical_conflict', 'is_library_alt_version',
-                      'size_bytes', 'scanned_at']
+                       'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
+                       'is_favorite', 'score', 'url_list',
+                       'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
+                       'lib_folder_id',
+                       'has_logical_conflict', 'is_library_alt_version',
+                       'size_bytes', 'scanned_at']
         updates = []
         params = []
         for k, v in kwargs.items():
@@ -713,7 +721,7 @@ class LinkMasterDB:
                 
                 # We reuse the logic from update_folder_display_config but in one transaction
                 valid_cols = {'app_id', 'folder_type', 'display_style', 'display_style_package', 'display_name', 'image_path', 'manual_preview_path', 
-                             'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'inherit_tags', 'is_visible',
+                             'tags', 'is_terminal', 'target_override', 'deployment_rules', 'deploy_rule', 'deploy_rule_b', 'deploy_rule_c', 'inherit_tags', 'is_visible',
                              'deploy_type', 'conflict_policy', 'transfer_mode', 'sort_order', 'last_known_status',
                              'conflict_tag', 'conflict_scope', 'description', 'author', 'url',
                              'is_favorite', 'score', 'url_list',

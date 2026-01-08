@@ -36,11 +36,18 @@ def setup_error_handling():
     root.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s | %(levelname)s | [%(name)s] %(message)s')
 
-    # セッションログ
-    sh = logging.FileHandler(session_file, encoding='utf-8')
-    sh.setFormatter(formatter)
-    sh.setLevel(logging.INFO)
-    root.addHandler(sh)
+    # Phase 40: Dynamic Log Level
+    log_level = logging.INFO
+    if os.environ.get('LM_DEBUG') == '1':
+        log_level = logging.DEBUG
+        
+    logging.getLogger().setLevel(log_level)
+    
+    # Session Log (Overwrite each time for fresh history)
+    session_handler = logging.FileHandler(os.path.join(log_dir, "session.log"), mode='w', encoding='utf-8')
+    session_handler.setFormatter(formatter)
+    session_handler.setLevel(log_level)
+    logging.getLogger().addHandler(session_handler)
 
     # エラーログ
     eh = logging.FileHandler(error_file, encoding='utf-8')

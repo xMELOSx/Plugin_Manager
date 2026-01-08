@@ -212,24 +212,32 @@ class LMDeploymentOpsMixin:
         # self._unlink_single(rel_path, update_ui=False, _cascade=False) 
         
         config = self.db.get_folder_config(rel_path) or {}
-        folder_name = os.path.basename(rel_path)
+        folder_name = os.path.basename(rel_path.rstrip('\\/'))
         
-        # Phase 5: Resolve Deployment Rule and Transfer Mode
-        deploy_rule = config.get('deploy_rule')
         
-        # Determine App-Default based on selected target
-        app_rule_key = 'deployment_rule'
+        # Phase 5 & 40: Resolve Deployment Rule based on current target
         target_key = getattr(self, 'current_target_key', 'target_root')
-        if target_key == 'target_root_2': app_rule_key = 'deployment_rule_b'
-        elif target_key == 'target_root_3': app_rule_key = 'deployment_rule_c'
+        item_rule_key = 'deploy_rule'
+        app_rule_key = 'deployment_rule'
         
+        if target_key == 'target_root_2':
+            item_rule_key = 'deploy_rule_b'
+            app_rule_key = 'deployment_rule_b'
+        elif target_key == 'target_root_3':
+            item_rule_key = 'deploy_rule_c'
+            app_rule_key = 'deployment_rule_c'
+            
+        deploy_rule = config.get(item_rule_key)
         app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
         
         if not deploy_rule or deploy_rule in ("default", "inherit"):
-            # Fallback to legacy deploy_type if set to something other than 'folder'
-            legacy_type = config.get('deploy_type')
-            if legacy_type and legacy_type != 'folder':
-                deploy_rule = legacy_type
+            # Fallback to legacy deploy_type only if it's the primary target and deploy_rule is missing
+            if item_rule_key == 'deploy_rule':
+                legacy_type = config.get('deploy_type')
+                if legacy_type and legacy_type != 'folder':
+                    deploy_rule = legacy_type
+                else:
+                    deploy_rule = app_default_rule
             else:
                 deploy_rule = app_default_rule
         

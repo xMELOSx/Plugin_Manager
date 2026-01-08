@@ -17,6 +17,12 @@ class TagConflictWorker(QObject):
         self.target_root = target_root
         
     def run(self):
+        if not self.storage_root:
+            import logging
+            logging.error("TagConflictWorker Error: storage_root is None")
+            self.finished.emit(None)
+            return
+
         import time
         start_t = time.time()
         try:
@@ -33,6 +39,8 @@ class TagConflictWorker(QObject):
             # Step 1: Collect Active State (Linked items) and Library Names
             linked_count = 0
             for p, cfg in all_configs.items():
+                if not p: continue
+
                 # Skip trash items and corrupted paths
                 if '/Trash/' in p or p.startswith('..') or '/Trash' in p:
                     continue
@@ -84,6 +92,8 @@ class TagConflictWorker(QObject):
             abs_config_map = {} # For UI thread matching
 
             for p, cfg in all_configs.items():
+                if not p: continue
+
                 # Skip trash items and corrupted paths (same filter as Step 1)
                 if '/Trash/' in p or p.startswith('..') or '/Trash' in p:
                     continue

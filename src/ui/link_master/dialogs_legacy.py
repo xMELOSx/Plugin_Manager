@@ -3,7 +3,7 @@
 """
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QHBoxLayout, QFileDialog, QComboBox, QFormLayout, 
+                             QPushButton, QHBoxLayout, QGridLayout, QFileDialog, QComboBox, QFormLayout, 
                              QGroupBox, QCheckBox, QWidget, QListWidget, QListWidgetItem,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
@@ -134,9 +134,9 @@ class AppRegistrationDialog(QDialog):
             btn.clicked.connect(browse_slot)
             
             rule_combo = StyledComboBox()
-            rule_combo.addItem(_("whole folder"), "folder")
-            rule_combo.addItem(_("all files"), "files")
-            rule_combo.addItem(_("tree"), "tree")
+            rule_combo.addItem(_("Folder"), "folder")
+            rule_combo.addItem(_("Flat"), "files")
+            rule_combo.addItem(_("Tree"), "tree")
             setattr(self, rule_combo_attr, rule_combo)
             rule_combo.setFixedWidth(120)
             
@@ -146,14 +146,15 @@ class AppRegistrationDialog(QDialog):
             layout.addWidget(rule_combo)
             form.addRow(label, layout)
 
-        # Target A (Primary)
-        create_target_row(_("Target A (Primary):"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
+        # Phase 40: Unified Target Labels
+        # Target A (Primary) -> プライマリ
+        create_target_row(_("プライマリ"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
         
-        # Target B (Optional)
-        create_target_row(_("Target B (Optional):"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
+        # Target B (Optional) -> セカンダリ（任意）
+        create_target_row(_("セカンダリ（任意）"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
 
-        # Target C (Optional)
-        create_target_row(_("Target C (Optional):"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
+        # Target C (Optional) -> ターシャリ（任意）
+        create_target_row(_("ターシャリ（任意）"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
 
         # Default Folder Property Settings Group (Misc)
         defaults_group = QGroupBox(_("Other Default Settings"))
@@ -659,6 +660,16 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 self.current_config['image_path'] = auto_thumb
         
         self.db = getattr(parent, 'db', None)
+        
+        # Phase 40: Target-Specific Deploy Rules State
+        self.deploy_rules = {
+            1: self.current_config.get('deploy_rule', 'inherit'),
+            2: self.current_config.get('deploy_rule_b', 'inherit'),
+            3: self.current_config.get('deploy_rule_c', 'inherit'),
+            4: 'custom'
+        }
+        self.prev_target_data = 1 # Start with Primary
+        
         self._init_ui()
         
         # Phase 32: Restore Size
@@ -1119,30 +1130,23 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Phase 33 & Refinement: Target Override using Dropdown
         # REPLACED QGroupBox with simple horizontal layout (No blue border)
         target_container = QWidget()
-        target_layout = QHBoxLayout(target_container)
-        target_layout.setContentsMargins(0, 0, 0, 0)
-        target_layout.setSpacing(10)
+        target_v_layout = QVBoxLayout(target_container)
+        target_v_layout.setContentsMargins(0, 0, 0, 0)
+        target_v_layout.setSpacing(0)
         
+        target_row = QHBoxLayout()
+        target_row.setContentsMargins(0, 0, 0, 0)
+        target_row.setSpacing(5)
+        target_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        target_v_layout.addLayout(target_row)
+
         self.target_combo = StyledComboBox()
-        self.target_combo.setMinimumWidth(200)
-        
+        self.target_combo.setFixedWidth(240)
         if self.batch_mode:
             self.target_combo.addItem(_("--- No Change ---"), "KEEP")
 
-        
-        # 1. Inherit (App Default)
-        last_target_key = self.current_app_data.get('last_target', 'target_root')
-        root_map = {'target_root': 0, 'target_root_2': 1, 'target_root_3': 2}
-        default_idx = root_map.get(last_target_key, 0)
-        default_path = self.target_roots[default_idx] if len(self.target_roots) > default_idx else ""
-        
-        # Primary/Secondary/Tertiary Labels for Inheritance
-        def_label = _("Primary") if default_idx == 0 else _("Secondary") if default_idx == 1 else _("Tertiary")
-        self.target_combo.addItem(_("App Default (Inherit: {root})").format(root=def_label), 0)
-        self.target_combo.setItemData(0, default_path, Qt.ItemDataRole.ToolTipRole)
-        
-        # 2. Roots (Primary, Secondary, Tertiary)
-        labels = [_("Primary"), _("Secondary"), _("Tertiary")]
+        # Phase 40: Unified Target Labels
+        labels = [_("プライマリ"), _("セカンダリ"), _("ターシャリ")]
         for i, root_path in enumerate(self.target_roots):
             if root_path:
                 self.target_combo.addItem(labels[i], i + 1)
@@ -1150,110 +1154,124 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 
         # 3. Custom
         self.target_combo.addItem(_("Custom..."), 4)
-        target_layout.addWidget(self.target_combo)
-        
-        # Manual Path Editor (Only visible if Custom is selected)
+        target_row.addWidget(self.target_combo)
+        target_row.addStretch() # Push to left
+
+        # [RE-MOVED] Manual Path Editor restored to "Right Below" the selection
         self.manual_path_container = QWidget()
-        manual_layout = QHBoxLayout(self.manual_path_container)
-        manual_layout.setContentsMargins(0, 0, 0, 0)
-        self.target_override_edit = StyledLineEdit()
-        self.target_override_edit.setPlaceholderText(_("Override path..."))
-        self.target_override_edit.setText(self.current_config.get('target_override') or '')
-        self.target_override_btn = QPushButton(_("Browse"))
-        self.target_override_btn.setFixedWidth(60)
-        self.target_override_btn.clicked.connect(self._browse_target_override)
-        manual_layout.addWidget(self.target_override_edit)
-        manual_layout.addWidget(self.target_override_btn)
-        target_layout.addWidget(self.manual_path_container)
+        manual_v = QVBoxLayout(self.manual_path_container)
+        manual_v.setContentsMargins(10, 5, 0, 5) # Indent a bit
         
-        # Initial Selection Logic
+        manual_edit_h = QHBoxLayout()
+        self.target_override_edit = StyledLineEdit()
+        self.target_override_edit.setPlaceholderText(_("Override path (Absolute)..."))
+        self.target_override_edit.setText(self.current_config.get('target_override') or '')
+        manual_edit_h.addWidget(self.target_override_edit)
+        
+        self.target_override_btn = QPushButton(_("Browse"))
+        self.target_override_btn.setFixedWidth(70)
+        self.target_override_btn.clicked.connect(self._browse_target_override)
+        manual_edit_h.addWidget(self.target_override_btn)
+        manual_v.addLayout(manual_edit_h)
+        
+        target_v_layout.addWidget(self.manual_path_container)
+        
+        # Initial Selection Logic (Standardized to Primary by default to avoid 'latesttarget' noise)
         curr_override = self.current_config.get('target_override')
         if not curr_override:
-            self.target_combo.setCurrentIndex(0)
+            # Strictly default to Primary (1) as requested to simplify design
+            idx = self.target_combo.findData(1)
+            if idx >= 0: self.target_combo.setCurrentIndex(idx)
+            else: self.target_combo.setCurrentIndex(0)
         else:
             found = False
             for i, root_path in enumerate(self.target_roots):
                 if root_path and os.path.normpath(curr_override) == os.path.normpath(root_path):
-                    # Find index in combo with data == i+1
-                    idx = self.target_combo.findData(i + 1)
-                    if idx >= 0:
-                        self.target_combo.setCurrentIndex(idx)
+                    target_idx = self.target_combo.findData(i + 1)
+                    if target_idx >= 0:
+                        self.target_combo.setCurrentIndex(target_idx)
                         found = True
                         break
             if not found:
-                idx = self.target_combo.findData(4)
-                if idx >= 0:
-                    self.target_combo.setCurrentIndex(idx)
+                custom_idx = self.target_combo.findData(4)
+                if custom_idx >= 0:
+                    self.target_combo.setCurrentIndex(custom_idx)
         
-        self.target_combo.currentIndexChanged.connect(self._on_target_choice_changed)
-        self._on_target_choice_changed()
+        # [CRITICAL] Defer signal connection to end of init to prevent loops during setup
+        # self.target_combo.currentIndexChanged.connect(self._on_target_choice_changed)
         
+        # Phase 40: Target-Specific Deploy Rules State (REVERTED to Simple Model)
+        self.target_row = target_row # Keep for layout reference
         adv_form.addRow(_("Target Destination:"), target_container)
 
-        # Phase 2: Deploy/Conflict Overrides (Rule & Mode)
+        # Phase 40 & Correction: In-place help layout
+        deploy_rule_container = QWidget()
+        deploy_rule_v_layout = QVBoxLayout(deploy_rule_container)
+        deploy_rule_v_layout.setContentsMargins(0, 0, 0, 0)
+        deploy_rule_v_layout.setSpacing(2)
+        
+        deploy_rule_row = QHBoxLayout()
+        deploy_rule_row.setContentsMargins(0, 0, 0, 0)
+        deploy_rule_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        deploy_rule_row.setSpacing(5)
+        deploy_rule_v_layout.addLayout(deploy_rule_row)
+
         self.deploy_rule_override_combo = StyledComboBox()
+        self.deploy_rule_override_combo.setFixedWidth(240) # Fix width to prevent "shaking" when text changes
         if self.batch_mode:
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
-        # New Rule Options - Phase 36: Read deploy rule based on currently selected target in target_combo
-        # Get the current target selection from target_combo (0=App Default, 1=Primary, 2=Secondary, 3=Tertiary, 4=Custom)
-        target_data = self.target_combo.currentData()
-        
-        # Determine which deployment rule to read based on target selection
-        # 0 = App Default (use app's last_target), 1 = Primary, 2 = Secondary, 3 = Tertiary, 4 = Custom
-        if target_data == 0 or target_data is None:
-            # App Default - use app's current target setting
-            last_target = self.current_app_data.get('last_target', 'target_root')
-            target_map = {'target_root': 1, 'target_root_2': 2, 'target_root_3': 3}
-            effective_target = target_map.get(last_target, 1)
-        elif target_data == 4:
-            # Custom - use Primary as fallback
-            effective_target = 1
-        else:
-            # Direct selection (1=Primary, 2=Secondary, 3=Tertiary)
-            effective_target = target_data
-        
-        # Map target number to rule key: 1=Primary, 2=Secondary, 3=Tertiary
-        rule_key_map = {
-            1: 'deployment_rule',       # Primary
-            2: 'deployment_rule_b',     # Secondary  
-            3: 'deployment_rule_c'      # Tertiary
-        }
-        app_rule_key = rule_key_map.get(effective_target, 'deployment_rule')
-        actual_default_rule = self.current_app_data.get(app_rule_key) or self.current_app_data.get('deployment_rule', 'folder')
-        
-        # Map rule to display name
-        rule_display_map = {'folder': 'Folder', 'files': 'Flat', 'tree': 'Tree', 'custom': 'Custom'}
-        default_display = rule_display_map.get(actual_default_rule, actual_default_rule.capitalize())
-        
-        # Phase 36 Debug: Show what's being used
-        print(f"[DEBUG Deploy Rule Init] target_data={target_data}, effective_target={effective_target}, app_rule_key={app_rule_key}, actual_default_rule={actual_default_rule}, default_display={default_display}")
-        
-        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit: {mode})").format(mode=default_display), "inherit")
+        # Options
+        self.deploy_rule_override_combo.addItem(_("デフォルト"), "inherit")
         self.deploy_rule_override_combo.addItem(_("Folder"), "folder")
         self.deploy_rule_override_combo.addItem(_("Flat"), "files")
         self.deploy_rule_override_combo.addItem(_("Tree"), "tree")
         self.deploy_rule_override_combo.addItem(_("Custom"), "custom")
         
-        curr_rule = self.current_config.get('deploy_rule')
-        if not curr_rule:
-            # Fallback for old configs
-            old_type = self.current_config.get('deploy_type')
-            if old_type == 'flatten': curr_rule = 'files'
-            elif old_type: curr_rule = old_type
-
-        idx = self.deploy_rule_override_combo.findData(curr_rule)
-        if idx >= 0 and not self.batch_mode:
+        # Initial Rule for current target
+        initial_rule = self.deploy_rules.get(self.prev_target_data, "inherit")
+        idx = self.deploy_rule_override_combo.findData(initial_rule)
+        if idx >= 0:
             self.deploy_rule_override_combo.setCurrentIndex(idx)
-        elif self.batch_mode:
-            self.deploy_rule_override_combo.setCurrentIndex(0)
             
-        adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
+        deploy_rule_row.addWidget(self.deploy_rule_override_combo)
         
-        # Phase 36: Now that deploy_rule_override_combo exists, trigger initial update based on current target selection
-        # and reconnect signal for real-time updates
-        self._on_target_choice_changed()
+        # Help Button - Now toggles In-place label
+        self.rule_help_btn = QPushButton("?")
+        self.rule_help_btn.setFixedSize(22, 22)
+        self.rule_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rule_help_btn.clicked.connect(self._toggle_deploy_help)
+        self.rule_help_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #555; color: #fff; border-radius: 11px; font-weight: bold; font-size: 11px;
+            }
+            QPushButton:hover { background-color: #777; }
+        """)
+        deploy_rule_row.addWidget(self.rule_help_btn)
+        deploy_rule_row.addStretch()
 
+        # [NEW] In-place Help Label
+        self.deploy_help_panel = QLabel()
+        self.deploy_help_panel.setWordWrap(True)
+        self.deploy_help_panel.setStyleSheet("""
+            background-color: #333; color: #aaa; border-left: 3px solid #555; 
+            padding: 8px; margin: 5px 0 10px 0; border-radius: 4px;
+        """)
+        msg = (
+            "<b>[デフォルト]</b>: " + _("App-level default.") + "<br>" +
+            "<b>[Folder]</b>: " + _("Keep original structure.") + "<br>" +
+            "<b>[Flat]</b>: " + _("Ignore subfolders.") + "<br>" +
+            "<b>[Tree]</b>: " + _("Recursive tree.") + "<br>" +
+            "<b>[Custom]</b>: " + _("Apply JSON rules.")
+        )
+        self.deploy_help_panel.setText(msg)
+        self.deploy_help_panel.setVisible(False)
+        deploy_rule_v_layout.addWidget(self.deploy_help_panel)
+        
+        adv_form.addRow(_("Deploy Rule:"), deploy_rule_container)
+        
+        # [CRITICAL] Defer initial update until the end of constructor to avoid signal loops
+        
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
         self.skip_levels_spin.setRange(0, 5)
@@ -1315,19 +1333,56 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.conflict_override_combo.setCurrentIndex(0)
         adv_form.addRow(_("Conflict Policy:"), self.conflict_override_combo)
 
-        # Deployment Rules (JSON) - Now BEFORE the redirections button
-        self.rules_edit = QTextEdit()
-        self.rules_edit.setPlaceholderText('{"exclude": ["*.txt", "docs/"], "rename": {"old.dll": "new.dll"}}')
-        self.rules_edit.setMinimumHeight(80)
-        self.rules_edit.setText(self.current_config.get('deployment_rules', '') or '')
-        # Match QLineEdit style
-        self.rules_edit.setStyleSheet("""
-            QTextEdit { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; padding: 4px; border-radius: 4px;
-            }
+        # [NEW] Deployment Rules (JSON) with In-place Help
+        json_container = QWidget()
+        json_v_layout = QVBoxLayout(json_container)
+        json_v_layout.setContentsMargins(0, 0, 0, 0)
+        json_v_layout.setSpacing(2)
+        
+        json_label_row = QHBoxLayout()
+        json_label_row.setSpacing(5)
+        json_label_row.addWidget(QLabel(_("Deployment Rules (JSON):")))
+        
+        self.json_help_btn = QPushButton("?")
+        self.json_help_btn.setFixedSize(20, 20)
+        self.json_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.json_help_btn.clicked.connect(self._toggle_json_help)
+        self.json_help_btn.setStyleSheet("""
+            QPushButton { background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px; }
+            QPushButton:hover { background-color: #777; }
         """)
-        adv_form.addRow(_("Deployment Rules (JSON):"), self.rules_edit)
+        json_label_row.addWidget(self.json_help_btn)
+        json_label_row.addStretch()
+        json_v_layout.addLayout(json_label_row)
+
+        # [NEW] In-place JSON Help
+        self.json_help_panel = QLabel()
+        self.json_help_panel.setWordWrap(True)
+        self.json_help_panel.setStyleSheet("""
+            background-color: #333; color: #aaa; border-left: 3px solid #3498db; 
+            padding: 8px; margin: 3px 0 10px 0; border-radius: 4px; font-size: 11px;
+        """)
+        json_msg = (
+            "<b>JSON Example:</b><br>"
+            "<code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>"
+            "• <b>exclude</b>: Glob pattern list.<br>"
+            "• <b>rename</b>: Mapping of internal files."
+        )
+        self.json_help_panel.setText(json_msg)
+        self.json_help_panel.setVisible(False)
+        json_v_layout.addWidget(self.json_help_panel)
+
+        self.rules_edit = QTextEdit()
+        self.rules_edit.setPlaceholderText('{"exclude": ["*.txt"], "rename": {"old": "new"}}')
+        self.rules_edit.setMinimumHeight(100)
+        self.rules_edit.setText(self.current_config.get('deployment_rules', '') or '')
+        self.rules_edit.setStyleSheet("""
+            QTextEdit { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; border-radius: 4px; }
+            QTextEdit:disabled { background-color: #222; color: #666; }
+        """)
+        json_v_layout.addWidget(self.rules_edit)
+        adv_form.addRow(json_container)
+
 
         # Phase 3.7: Shortcut to File Management (Now AFTER Rules) - Full width
         if not self.batch_mode:
@@ -1443,53 +1498,113 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         btn_layout.addWidget(self.ok_btn)
         
         self.root_layout.addLayout(btn_layout)
-    
-    def _on_target_choice_changed(self):
-        """Handle target selection changes - update custom path visibility and deploy rule default."""
-        data = self.target_combo.currentData()
         
-        # Phase 36 Debug: Verify method is being called
-        print(f"[DEBUG _on_target_choice_changed CALLED] data={data}, has_combo={hasattr(self, 'deploy_rule_override_combo')}")
+        self.target_combo.currentIndexChanged.connect(self._on_target_choice_changed)
+        self.deploy_rule_override_combo.currentIndexChanged.connect(self._on_deploy_rule_changed)
+        
+        # Initialize display values immediately
+        self._on_target_choice_changed()
+        
+    def _on_target_choice_changed(self):
+        """Handle target selection changes - update custom path visibility and deployment defaults."""
+        # Phase 40: Save current state to cache before switching
+        current_rule = self.deploy_rule_override_combo.currentData()
+        if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
+            self.deploy_rules[self.prev_target_data] = current_rule
+
+        data = self.target_combo.currentData()
+        self.prev_target_data = data # Update for next switch
+        
+        # Restore rule from cache for the newly selected target
+        new_rule = self.deploy_rules.get(data, "inherit")
+        idx = self.deploy_rule_override_combo.findData(new_rule)
+        if idx >= 0:
+            # We don't block signals because _on_deploy_rule_changed was removed/simplified
+            self.deploy_rule_override_combo.setCurrentIndex(idx)
         
         # Show/hide custom path editor
         is_custom = (data == 4)
         if hasattr(self, 'manual_path_container'):
             self.manual_path_container.setVisible(is_custom)
-        
-        # Phase 36: Update deploy rule default label based on selected target
+            
         if hasattr(self, 'deploy_rule_override_combo'):
-            # Determine which target is selected
-            target_key = 'target_root'  # Default
-            if data == 2:
-                target_key = 'target_root_2'
-            elif data == 3:
-                target_key = 'target_root_3'
+            # Determine effective target for inheritance display
+            effective_target = data
+            if data == 4 or data == "KEEP":
+                 effective_target = 1
             
-            # Map target key to rule key
-            rule_key_map = {
-                'target_root': 'deployment_rule',
-                'target_root_2': 'deployment_rule_b',
-                'target_root_3': 'deployment_rule_c'
-            }
-            app_rule_key = rule_key_map.get(target_key, 'deployment_rule')
-            actual_default_rule = self.current_app_data.get(app_rule_key) or self.current_app_data.get('deployment_rule', 'folder')
+            # Re-fetch default rules (Simplified: no per-target caching)
+            actual_default_rule = self.app_deploy_default
+            if effective_target == 2:
+                actual_default_rule = self.current_app_data.get('deployment_rule_b') or self.app_deploy_default
+            elif effective_target == 3:
+                actual_default_rule = self.current_app_data.get('deployment_rule_c') or self.app_deploy_default
             
-            # Map rule to display name
             rule_display_map = {'folder': 'Folder', 'files': 'Flat', 'tree': 'Tree', 'custom': 'Custom'}
-            default_display = rule_display_map.get(actual_default_rule, actual_default_rule.capitalize())
+            default_display = rule_display_map.get(actual_default_rule, str(actual_default_rule).capitalize())
             
-            # Phase 36 Debug: Show values during target change + full app_data rules
-            dr = self.current_app_data.get('deployment_rule')
-            drb = self.current_app_data.get('deployment_rule_b')
-            drc = self.current_app_data.get('deployment_rule_c')
-            print(f"[DEBUG _on_target_choice_changed] data={data}, target_key={target_key}")
-            print(f"[DEBUG _on_target_choice_changed] current_app_data deployment_rules: A={dr}, B={drb}, C={drc}")
-            print(f"[DEBUG _on_target_choice_changed] app_rule_key={app_rule_key}, actual_default_rule={actual_default_rule}, default_display={default_display}")
+            # Update the label for "Default" (inherit) option
+            inherit_idx = self.deploy_rule_override_combo.findData("inherit")
+            if inherit_idx >= 0:
+                self.deploy_rule_override_combo.setItemText(inherit_idx, _("デフォルト ({rule})").format(rule=default_display))
             
-            # Update the first (or second in batch mode) item's text
-            default_idx = 1 if self.batch_mode else 0
-            self.deploy_rule_override_combo.setItemText(default_idx, _("Target Default (Inherit: {mode})").format(mode=default_display))
-    
+            # Enable JSON editor ONLY if current rule is custom or target is custom
+            # (Simplified logic, not stateful per target)
+            current_rule = self.deploy_rule_override_combo.currentData()
+            enable_json = (is_custom or current_rule == 'custom')
+            if hasattr(self, 'rules_edit'):
+                self.rules_edit.setEnabled(enable_json)
+
+            # Update tree skip visibility
+            if hasattr(self, '_update_tree_skip_visibility'):
+                self._update_tree_skip_visibility()
+
+        # Force a repaint for help buttons
+        if hasattr(self, 'rule_help_btn'):
+            self.rule_help_btn.raise_()
+
+    def _on_deploy_rule_changed(self):
+        """Update JSON editor enablement and update cache for current target."""
+        if hasattr(self, 'deploy_rule_override_combo'):
+            rule = self.deploy_rule_override_combo.currentData()
+            data = self.target_combo.currentData()
+            is_custom_target = (data == 4)
+            enable_json = (is_custom_target or rule == 'custom')
+            if hasattr(self, 'rules_edit'):
+                self.rules_edit.setEnabled(enable_json)
+            
+            # Update cache for current target
+            if hasattr(self, 'prev_target_data'):
+                self.deploy_rules[self.prev_target_data] = rule
+
+    def _get_selected_target_path(self):
+        """Helper to get current effective target path."""
+        data = self.target_combo.currentData()
+        if data == 4:
+            return self.target_override_edit.text()
+        elif data == "KEEP":
+             return "KEEP"
+        
+        # Primary, Secondary, Tertiary
+        idx_val = 0
+        try:
+            idx_val = int(data) - 1
+        except: return None
+
+        if 0 <= idx_val < len(self.target_roots):
+            return self.target_roots[idx_val]
+        return None
+
+    def _toggle_deploy_help(self):
+        """Toggle in-place deployment rule guide."""
+        if hasattr(self, 'deploy_help_panel'):
+            self.deploy_help_panel.setVisible(not self.deploy_help_panel.isVisible())
+
+    def _toggle_json_help(self):
+        """Toggle in-place JSON rules guide."""
+        if hasattr(self, 'json_help_panel'):
+            self.json_help_panel.setVisible(not self.json_help_panel.isVisible())
+
     def _open_actual_folder(self):
         """Open the folder in Explorer."""
         if self.folder_path and os.path.isdir(self.folder_path):
@@ -1685,10 +1800,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         if path:
             self.target_override_edit.setText(os.path.normpath(path))
-
-    def _on_target_choice_changed(self, *args):
-        choice = self.target_combo.currentData()
-        self.manual_path_container.setVisible(choice == 4)
 
     def _get_selected_target_path(self):
         choice = self.target_combo.currentData()
@@ -1972,10 +2083,24 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             elif not display_name:
                 display_name = "" # Explicitly clear if toggle is ON and field is empty
         
+        # Phase 40: Target-Specific Rule Switching (Restored logic)
+        # Update current selected target's rule in cache before collecting everything
+        current_rule = self.deploy_rule_override_combo.currentData()
+        current_target = self.target_combo.currentData()
+        if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
+             self.deploy_rules[self.prev_target_data] = current_rule
+        
+        # Resolve target override properly: ONLY if "Custom" (4)
+        target_override = None
+        if current_target == 4:
+            target_override = self.target_override_edit.text().strip() or None
+        elif current_target == "KEEP":
+            target_override = "KEEP"
+
         data = {
             'display_name': display_name,
             'description': self.description_edit.toPlainText().strip() or None,
-            'image_path': final_image_path.strip() or None, # Use the finalized image path
+            'image_path': final_image_path.strip() or None, 
             'manual_preview_path': self.full_preview_edit.text().strip() or None,
             'author': self.author_edit.text().strip() or None,
             'url_list': self.url_list_edit.text() if self.url_list_edit.text() != '[]' else None,
@@ -1986,16 +2111,25 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             'display_style_package': self.style_combo_pkg.currentData(),
             'tags': ", ".join(all_tags) if all_tags else None,
             'is_visible': 0 if self.hide_checkbox.isChecked() else 1,
-            'deploy_rule': self.deploy_rule_override_combo.currentData(),
+            
+            # Use cached values for all targets
+            'deploy_rule': self.deploy_rules.get(1, 'KEEP' if self.batch_mode else 'inherit'),
+            'deploy_rule_b': self.deploy_rules.get(2, 'KEEP' if self.batch_mode else 'inherit'),
+            'deploy_rule_c': self.deploy_rules.get(3, 'KEEP' if self.batch_mode else 'inherit'),
+            
             'transfer_mode': self.transfer_mode_override_combo.currentData(),
-            'deploy_type': None, # Supplant legacy
             'conflict_policy': self.conflict_override_combo.currentData(),
             'inherit_tags': 1 if self.inherit_tags_chk.isChecked() else 0,
-            'target_override': self._get_selected_target_path(),
+            'target_override': target_override, 
             'conflict_tag': self.conflict_tag_edit.text().strip() if self.conflict_tag_edit.text().strip() else (None if not self.batch_mode else "KEEP"),
             'conflict_scope': self.conflict_scope_combo.currentData(),
             'lib_deps': self.lib_deps if not self.batch_mode else (self.lib_deps if self.lib_deps != self.current_config.get('lib_deps', '[]') else "KEEP"),
         }
+        
+        # Keep legacy deploy_type if it exists and we're not explicitly supplanting it?
+        # Actually, it's safer to just NOT include it in the update dict to prevent clearing fallback data.
+        if 'deploy_type' in self.current_config:
+            data['deploy_type'] = self.current_config['deploy_type']
         
         # Inject skip_levels into rules JSON
         skip_val = self.skip_levels_spin.value()
