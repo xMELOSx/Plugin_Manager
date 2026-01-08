@@ -270,7 +270,6 @@ class LMCardSettingsMixin:
     def _cancel_settings(self):
         """設定パネルを開く前の状態に戻す。"""
         if not hasattr(self, '_settings_backup'):
-            self._settings_panel.hide()
             return
         
         self.card_settings = copy.deepcopy(self._settings_backup)
@@ -278,4 +277,4 @@ class LMCardSettingsMixin:
         self._sync_settings_to_attributes()
         # Phase 1.1.5: Do NOT save to DB on cancel
         self._refresh_current_view(force=False)
-        self._settings_panel.hide()
+

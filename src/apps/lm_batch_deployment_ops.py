@@ -966,8 +966,15 @@ class LMDeploymentOpsMixin:
             warn.setStyleSheet(COMMON_DIALOG_STYLE)
             warn.exec()
         
-        # --- Immediate UI refresh ---
-        self._force_refresh_visible_cards()
+        # --- Immediate UI refresh with Overrides ---
+        overrides = {category_rel_path.replace('\\', '/'): {'category_deploy_status': 'deployed'}}
+        for child_rel in linked_children:
+             child_norm = child_rel.replace('\\', '/')
+             overrides[child_norm] = {'last_known_status': 'none'}
+             
+        self._force_refresh_visible_cards(overrides=overrides)
+        if hasattr(self, '_update_total_link_count'):
+            self._update_total_link_count()
 
     def _handle_unlink_category(self, category_rel_path):
         """
@@ -982,41 +989,60 @@ class LMDeploymentOpsMixin:
         self.db.update_folder_display_config(category_rel_path, category_deploy_status=None)
         self.logger.info(f"[CategoryUnlink] {category_rel_path}")
         
-        # --- Immediate UI refresh ---
-        self._force_refresh_visible_cards()
+        # --- Immediate UI refresh with Overrides ---
+        overrides = {category_rel_path.replace('\\', '/'): {'category_deploy_status': None}}
+        self._force_refresh_visible_cards(overrides=overrides)
+        if hasattr(self, '_update_total_link_count'):
+            self._update_total_link_count()
 
-    def _force_refresh_visible_cards(self):
-        """Force immediate refresh of all visible ItemCards."""
+    def _force_refresh_visible_cards(self, overrides=None):
+        """Force immediate refresh of all visible ItemCards.
+        overrides: dict {rel_path: {key: value}} to force memory-based updates.
+        """
+        overrides = overrides or {}
+
         # Refresh category area
-        if hasattr(self, '_cat_layout'):
-            for i in range(self._cat_layout.count()):
-                item = self._cat_layout.itemAt(i)
+        if hasattr(self, 'cat_layout'):
+            for i in range(self.cat_layout.count()):
+                item = self.cat_layout.itemAt(i)
                 if item and item.widget():
                     card = item.widget()
                     if hasattr(card, 'path'):
                         rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
                         config = self.db.get_folder_config(rel) or {}
+                        
+                        # Apply Overrides
+                        ov = overrides.get(rel, {})
+
                         if hasattr(card, 'update_data'):
-                            card.update_data(category_deploy_status=config.get('category_deploy_status'))
+                            card.update_data(
+                                link_status=ov.get('last_known_status', config.get('last_known_status', 'none')),
+                                is_visible=config.get('is_visible', 1),
+                                category_deploy_status=ov.get('category_deploy_status', config.get('category_deploy_status'))
+                            )
                         if hasattr(card, '_update_style'):
                             card._update_style()
         
         # Refresh package area
-        if hasattr(self, '_pkg_layout'):
-            for i in range(self._pkg_layout.count()):
-                item = self._pkg_layout.itemAt(i)
+        if hasattr(self, 'pkg_layout'):
+            for i in range(self.pkg_layout.count()):
+                item = self.pkg_layout.itemAt(i)
                 if item and item.widget():
                     card = item.widget()
                     if hasattr(card, 'path'):
                         rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
                         config = self.db.get_folder_config(rel) or {}
+                        
+                        # Apply Overrides
+                        ov = overrides.get(rel, {})
+
                         if hasattr(card, 'update_data'):
                             # Use full update_data to ensure deploy button state (green/Link) is reset
                             # update_link_status is partial and might miss some overlay states
                             card.update_data(
-                                link_status=config.get('last_known_status', 'none'),
+                                link_status=ov.get('last_known_status', config.get('last_known_status', 'none')),
                                 is_visible=config.get('is_visible', 1),
-                                category_deploy_status=config.get('category_deploy_status')
+                                category_deploy_status=ov.get('category_deploy_status', config.get('category_deploy_status'))
                             )
                         if hasattr(card, '_update_style'):
                             card._update_style()

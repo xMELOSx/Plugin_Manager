@@ -28,18 +28,18 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
     elif is_partial and (link_status == 'linked' or link_status == 'partial'):
         status_color = COLOR_YELLOW
         bg_color = "#3d3d2a"
-    # Priority 5: Linked (for PACKAGES)
-    elif link_status == 'linked':
-        status_color = COLOR_GREEN
-        bg_color = "#2a332a"
-    # Priority 6: Unregistered
-    elif not is_registered:
-        status_color = COLOR_PURPLE
-        bg_color = "#322a3d"
-    # Priority 7: Category Deploy Status (ONLY for categories, not packages)
+    # Priority 5: Category Deploy Status (Moved up for priority)
     elif not is_package and category_deploy_status == 'deployed':
         status_color = COLOR_CATEGORY_DEPLOYED
         bg_color = "#1a2a3d"
+    # Priority 6: Linked
+    elif link_status == 'linked':
+        status_color = COLOR_GREEN
+        bg_color = "#2a332a"
+    # Priority 7: Unregistered
+    elif not is_registered:
+        status_color = COLOR_PURPLE
+        bg_color = "#322a3d"
     # Priority 8: Category hierarchical status (ONLY for categories, not packages)
     elif not is_package:
         # Categories: Check children status

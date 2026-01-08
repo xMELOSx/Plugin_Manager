@@ -203,6 +203,10 @@ class ItemCard(QFrame):
         if sip.isdeleted(self):
             return
 
+        import logging
+        if 'link_status' in kwargs:
+             logging.getLogger("ItemCard").info(f"[UpdateData] {os.path.basename(kwargs.get('path', self.path))} status={kwargs['link_status']} cat_deploy={kwargs.get('category_deploy_status')}")
+
         # 1. Update Core Data & Context
         old_path = self.path
         if 'path' in kwargs:
@@ -244,6 +248,7 @@ class ItemCard(QFrame):
 
         # Core Conflict Flags (Preserve during pinpoint updates if not provided)
         self.link_status = kwargs.get('link_status', getattr(self, 'link_status', 'none'))
+        self.category_deploy_status = kwargs.get('category_deploy_status', getattr(self, 'category_deploy_status', None))
         self.has_physical_conflict = (self.link_status == 'conflict')
 
         # Support multiple keywords for logical/tag conflicts
@@ -550,11 +555,17 @@ class ItemCard(QFrame):
         # This enables the Unlink button to appear when children are linked
         # PRIORITY: conflict > partial > linked > none
         if not getattr(self, 'is_package', True):  # Category card
+            cat_deployed = getattr(self, 'category_deploy_status', None) == 'deployed'
+            
             if has_conflict:
                 self.link_status = 'conflict'
             elif has_partial:
                 self.link_status = 'partial'
             elif has_linked:
+                self.link_status = 'linked'
+            elif cat_deployed:
+                # Phase 5 Fix: Deployed category remains 'linked' (active) even if children are unlinked.
+                # The visual style (Blue Border) is handled by get_card_colors via category_deploy_status priority.
                 self.link_status = 'linked'
             else:
                 self.link_status = 'none'
@@ -568,6 +579,12 @@ class ItemCard(QFrame):
         is_fav = getattr(self, 'is_favorite', False)
         has_urls = getattr(self, 'has_urls', False)
         status = getattr(self, 'link_status', 'none')
+        
+        # FIX: Category Deployed overrides children-based status for the button logic
+        cat_status = getattr(self, 'category_deploy_status', None)
+        if not getattr(self, 'is_package', True) and cat_status == 'deployed':
+            status = 'linked'
+
         is_lib = bool(getattr(self, 'is_library', 0))
         
         # Performance Guard: Skip if nothing changed

@@ -803,221 +803,93 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'tag_bar'):
             self.tag_bar.refresh_tags()
 
-    def _show_settings_menu(self):
-        """Show/toggle settings panel with size sliders."""
-        # Toggle existing panel
-        if hasattr(self, '_settings_panel') and self._settings_panel.isVisible():
-            self._settings_panel.hide()
-            if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
-            return
-            
-        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(True)
-        
-        # Create panel if not exists
-        if not hasattr(self, '_settings_panel'):
-            self._settings_panel = QFrame(self)
-            self._settings_panel.setStyleSheet("""
-                QFrame { background-color: #2b2b2b; border: 2px solid #555; border-radius: 8px; }
-                QLabel { color: #ddd; padding: 2px; }
-                QSlider::groove:horizontal { height: 8px; background: #444; border-radius: 4px; }
-                QSlider::handle:horizontal { background: #3498db; width: 18px; height: 18px; margin: -5px 0; border-radius: 9px; }
-                QTabWidget::pane { border: 1px solid #555; background: #333; }
-                QTabBar::tab { background: #3a3a3a; color: #ddd; padding: 5px 10px; }
-                QTabBar::tab:selected { background: #555; }
-            """)
-            
-            layout = QVBoxLayout(self._settings_panel)
-            layout.setContentsMargins(8, 8, 8, 8) 
-            layout.setSpacing(2) 
-            
-            # Common style for buttons inside Settings (saving lines)
-            self._settings_panel.setStyleSheet(self._settings_panel.styleSheet() + """
-                QPushButton#settings_btn { 
-                    background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; 
-                }
-                QPushButton#settings_btn:hover { background-color: #4a4a4a; border-color: #777; }
-                QPushButton#settings_btn:pressed { background-color: #222; }
-                
-                QSlider::groove:horizontal { height: 6px; background: #444; border-radius: 3px; }
-                QSlider::handle:horizontal { background: #3498db; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; }
-                QSlider::handle:horizontal:hover { background: #5dade2; border: 1px solid #fff; }
-                
-                QSpinBox { background-color: #222; color: #fff; border: 1px solid #555; border-radius: 4px; }
-                QSpinBox:hover { border-color: #777; }
-            """)
+    def _save_card_settings_window(self):
+        """Handle save from independent window."""
+        self._save_card_settings()
+        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
+        if self.card_settings_window: self.card_settings_window.hide()
 
-            
-            # Header with buttons
-            header = QHBoxLayout()
-            header.setSpacing(5)
-            header.addWidget(QLabel(_("<b>📓 Card Settings</b>")))
-            header.addStretch()
-            
-            save_btn = QPushButton(_("Save"))
-            save_btn.setFixedWidth(50)
-            save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #2ecc71; }")
-            def confirm_and_hide():
-                self._save_card_settings()
-                self._settings_panel.hide()
-            save_btn.clicked.connect(confirm_and_hide)
-            header.addWidget(save_btn)
-            
-            cancel_btn = QPushButton(_("Reset"))
-            cancel_btn.setFixedWidth(50)
-            cancel_btn.setMouseTracking(True)
-            cancel_btn.setStyleSheet("QPushButton { background-color: #555; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #777; }")
-            cancel_btn.clicked.connect(self._cancel_settings)
-            header.addWidget(cancel_btn)
-            
-            close_btn = QPushButton("✕")
-            close_btn.setFixedSize(20, 20)
-            close_btn.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; }")
-            # Close button acts as Cancel per requirement (閉じたらキャンセル)
-            close_btn.clicked.connect(self._cancel_settings)
-            header.addWidget(close_btn)
-            layout.addLayout(header)
-            
-            # Phase 25: Lock View Mode Option
-            from src.ui.slide_button import SlideButton
-            lock_layout = QHBoxLayout()
-            lock_layout.setSpacing(10)
-            
-            self._lock_check = SlideButton()
-            self._lock_check.setChecked(self.display_mode_locked)
-            self._lock_check.clicked.connect(lambda: self._on_display_lock_toggled(self._lock_check.isChecked()))
-            lock_layout.addWidget(self._lock_check)
-            
-            lock_lbl = QLabel(_("Lock Display Mode (Persist)"))
-            lock_lbl.setStyleSheet("color: #ddd; font-size: 11px;")
-            lock_layout.addWidget(lock_lbl)
-            lock_layout.addStretch()
-            layout.addLayout(lock_layout)
+    def _cancel_settings_window(self):
+        """Handle cancel/reset from independent window."""
+        self._cancel_settings()
+        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
+        if self.card_settings_window: self.card_settings_window.hide()
 
-            # Tab widget for display modes
-            self._settings_tabs = QTabWidget()
-            self._settings_tabs.setFixedWidth(330) # Widen to 330
-            
-            # Create tabs for each display mode
-            for mode_name, mode_icon in [("T", "text_list"), ("🖼", "mini_image"), ("🖼T", "image_text")]:
-                tab = QWidget()
-                tab_layout = QVBoxLayout(tab)
-                tab_layout.setContentsMargins(5, 10, 5, 5)
-                
-                # Category section
-                tab_layout.addWidget(QLabel(_("📁 <b>Category</b>")))
-                tab_layout.addLayout(self._create_mode_slider("Card W:", f'cat_{mode_icon}_card_w', 'category', mode_icon, 'card_w', 50, 500))
-                h_min = 20 if mode_icon == "text_list" else 50
-                tab_layout.addLayout(self._create_mode_slider("Card H:", f'cat_{mode_icon}_card_h', 'category', mode_icon, 'card_h', h_min, 500))
-                
-                if mode_icon != "text_list":
-                    tab_layout.addLayout(self._create_mode_slider("Img W:", f'cat_{mode_icon}_img_w', 'category', mode_icon, 'img_w', 0, 500))
-                    tab_layout.addLayout(self._create_mode_slider("Img H:", f'cat_{mode_icon}_img_h', 'category', mode_icon, 'img_h', 0, 500))
-                # Move Scale directly under Size
-                tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'cat_{mode_icon}_scale', 'category', mode_icon, 25, 400))
-                
-                tab_layout.addSpacing(10)
-                
-                # Package section
-                tab_layout.addWidget(QLabel(_("📦 <b>Package</b>")))
-                tab_layout.addLayout(self._create_mode_slider("Card W:", f'pkg_{mode_icon}_card_w', 'package', mode_icon, 'card_w', 50, 800))
-                tab_layout.addLayout(self._create_mode_slider("Card H:", f'pkg_{mode_icon}_card_h', 'package', mode_icon, 'card_h', h_min, 800))
-                
-                if mode_icon != "text_list":
-                    tab_layout.addLayout(self._create_mode_slider("Img W:", f'pkg_{mode_icon}_img_w', 'package', mode_icon, 'img_w', 0, 500))
-                    tab_layout.addLayout(self._create_mode_slider("Img H:", f'pkg_{mode_icon}_img_h', 'package', mode_icon, 'img_h', 0, 500))
-                # Move Scale directly under Size
-                tab_layout.addLayout(self._create_mode_scale_row("Scale:", f'pkg_{mode_icon}_scale', 'package', mode_icon, 25, 400))
-                
-                # Phase 31: Display Toggles Section
-                tab_layout.addSpacing(10)
-                tab_layout.addWidget(QLabel(_("👁 <b>Display Settings</b>")))
-                
-                # Link Button Overlay Toggle
-                tab_layout.addWidget(QLabel(_("  <font color='#888'>Link Button (🌐)</font>")))
-                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Category")), f'cat_{mode_icon}_show_link', 'category', mode_icon, 'show_link'))
-                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Package")), f'pkg_{mode_icon}_show_link', 'package', mode_icon, 'show_link'))
-                
-                # Deploy Button Toggle
-                tab_layout.addWidget(QLabel(_("  <font color='#888'>Deploy Button (🔵)</font>")))
-                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Category")), f'cat_{mode_icon}_show_deploy', 'category', mode_icon, 'show_deploy'))
-                tab_layout.addLayout(self._create_mode_check(_("Show in {type}").format(type=_("Package")), f'pkg_{mode_icon}_show_deploy', 'package', mode_icon, 'show_deploy'))
+    def _on_setting_param_changed(self, type_, mode, param, value):
+        """Handle parameter changes from settings window."""
+        if type_ == 'global' and param == 'deploy_button_opacity':
+             self.deploy_button_opacity = value
+             self.card_settings['deploy_button_opacity'] = value
+             self._apply_card_params_to_layout_debounced('category', self.cat_display_override or 'mini_image')
+             self._apply_card_params_to_layout_debounced('package', self.pkg_display_override or 'mini_image')
+        else:
+             self._set_mode_param(type_, mode, param, value)
 
+    def _on_setting_scale_changed(self, type_, mode, scale):
+        self._update_mode_scale(type_, mode, scale)
 
-                
-                tab_layout.addStretch()
-                self._settings_tabs.addTab(tab, mode_name)
-            
-            # Requirement: Automatic override selection on tab change
-            self._settings_tabs.currentChanged.connect(self._on_settings_tab_changed)
-            
-            layout.addWidget(self._settings_tabs)
-
-            
-            
-            self._settings_panel.adjustSize()
-        self._settings_panel.setFixedWidth(350) 
-        
-        # --- Transactional Backup (Requirement) ---
-        self._settings_backup = copy.deepcopy(self.card_settings)
-        self._overrides_backup = (self.cat_display_override, self.pkg_display_override)
-        
-        # --- Initial Tab Selection (Requirement) ---
-        # Select tab matching the CURRENT mode being used for categories
-        cur_mode = self.cat_display_override
-        if not cur_mode:
-            # Check what's currently marked as active in UI (which aligns with _refresh_current_view)
-            if self.btn_cat_text.styleSheet() == self.btn_selected_style or self.btn_cat_text.styleSheet() == self.btn_no_override_style:
-                cur_mode = "text_list"
-            elif self.btn_cat_image.styleSheet() == self.btn_selected_style or self.btn_cat_image.styleSheet() == self.btn_no_override_style:
-                cur_mode = "mini_image"
-            else:
-                cur_mode = "image_text"
-
-        mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
-        self._settings_tabs.blockSignals(True) # Don't trigger auto-override yet
-        self._settings_tabs.setCurrentIndex(mode_to_tab.get(cur_mode, 1))
-        self._settings_tabs.blockSignals(False)
-
-        # Position near button, but keep within window bounds
-        btn_pos = self.btn_card_settings.mapToGlobal(self.btn_card_settings.rect().bottomLeft())
-        panel_pos = self.mapFromGlobal(btn_pos)
-        
-        # Safe size retrieval for clamping
-        panel_w = self._settings_panel.width()
-        panel_h = self._settings_panel.height()
-        window_w = self.width()
-        window_h = self.height()
-        
-        # Clamp X to keep panel fully visible
-        x = panel_pos.x()
-        if x + panel_w > window_w - 10:
-            x = window_w - panel_w - 10
-        if x < 10:
-            x = 10
-            
-        # Clamp Y to keep panel fully visible
-        y = panel_pos.y()
-        if y + panel_h > window_h - 10:
-            y = window_h - panel_h - 10
-        if y < 10:
-            y = 10
-        
-        self._settings_panel.move(x, y)
-        self._settings_panel.show()
-        self._settings_panel.raise_()
-        self._settings_panel.activateWindow()
-
+    def _on_setting_check_changed(self, type_, mode, param, value):
+        self._set_mode_check_param(type_, mode, param, value)
 
     def _on_settings_tab_changed(self, index):
         """Automatically switch display mode when settings tab is changed."""
         modes = ["text_list", "mini_image", "image_text"]
         target_mode = modes[index]
-        
-        # Determine if we are looking at Categories or Packages (or both)
-        # For simplicity, we apply to both since the panel covers both
-        # Requirement: Tab change always enforces that mode
         self._toggle_cat_display_mode(target_mode, force=True)
         self._toggle_pkg_display_mode(target_mode, force=True)
+
+    def _show_settings_menu(self):
+        """Show/toggle independent settings window."""
+        # Cleanup legacy QFrame logic if exists
+        if hasattr(self, '_settings_panel') and isinstance(self._settings_panel, QFrame):
+             self._settings_panel.hide()
+             self._settings_panel.deleteLater()
+             del self._settings_panel
+
+        if hasattr(self, 'card_settings_window') and self.card_settings_window and self.card_settings_window.isVisible():
+            self.card_settings_window.hide()
+            if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
+            return
+
+        if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(True)
+
+        if not hasattr(self, 'card_settings_window') or self.card_settings_window is None:
+            from src.ui.link_master.card_settings_window import CardSettingsWindow
+            
+            # Prepare settings including volatile ones
+            current_settings = self.card_settings 
+            current_settings['deploy_button_opacity'] = getattr(self, 'deploy_button_opacity', 0.8)
+            
+            self.card_settings_window = CardSettingsWindow(current_settings, getattr(self, 'display_mode_locked', False))
+            
+            # Connect Signals
+            self.card_settings_window.paramChanged.connect(self._on_setting_param_changed)
+            self.card_settings_window.scaleChanged.connect(self._on_setting_scale_changed)
+            self.card_settings_window.checkChanged.connect(self._on_setting_check_changed)
+            self.card_settings_window.lockToggled.connect(self._on_display_lock_toggled)
+            self.card_settings_window.saveRequested.connect(self._save_card_settings_window)
+            self.card_settings_window.cancelRequested.connect(self._cancel_settings_window)
+            
+            # Connect Tab Change (Directly access tabs widget)
+            if hasattr(self.card_settings_window, 'tabs'):
+                self.card_settings_window.tabs.currentChanged.connect(self._on_settings_tab_changed)
+
+            # Initial Tab Selection
+            cur_mode = self.cat_display_override
+            if not cur_mode:
+                if hasattr(self, 'btn_cat_text') and 'selected' in self.btn_cat_text.styleSheet(): cur_mode = "text_list"
+                elif hasattr(self, 'btn_cat_image') and 'selected' in self.btn_cat_image.styleSheet(): cur_mode = "mini_image"
+                else: cur_mode = "image_text"
+
+            mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
+            self.card_settings_window.tabs.setCurrentIndex(mode_to_tab.get(cur_mode, 1))
+
+        # Always update backup on show (Start of transaction)
+        self._settings_backup = copy.deepcopy(self.card_settings)
+        self._overrides_backup = (self.cat_display_override, self.pkg_display_override)
+
+        self.card_settings_window.show()
+        self.card_settings_window.activateWindow()
 
 
 

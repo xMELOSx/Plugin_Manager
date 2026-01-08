@@ -324,7 +324,8 @@ class LMScanHandlerMixin:
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
-            deploy_button_opacity=settings['opacity']
+            deploy_button_opacity=settings['opacity'],
+            category_deploy_status=item_config.get('category_deploy_status')
         )
         card.context = context
         card.rel_path = item_rel
