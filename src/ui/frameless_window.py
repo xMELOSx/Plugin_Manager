@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox, QGraphicsOpacityEffect
+from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox, QGraphicsOpacityEffect, QLineEdit, QTextEdit, QComboBox, QSlider, QScrollArea, QAbstractButton
 from PyQt6.QtCore import Qt, QPoint, QSize, QEvent, QTimer
 from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter, QBrush
 from src.ui.title_bar_button import TitleBarButton
@@ -9,12 +9,14 @@ from ctypes import wintypes
 from PyQt6.QtWidgets import QApplication
 
 class MINMAXINFO(ctypes.Structure):
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
     _fields_ = [
-        ("ptReserved", wintypes.POINT),
-        ("ptMaxSize", wintypes.POINT),
-        ("ptMaxPosition", wintypes.POINT),
-        ("ptMinTrackSize", wintypes.POINT),
-        ("ptMaxTrackSize", wintypes.POINT),
+        ("ptReserved", POINT),
+        ("ptMaxSize", POINT),
+        ("ptMaxPosition", POINT),
+        ("ptMinTrackSize", POINT),
+        ("ptMaxTrackSize", POINT),
     ]
 
 
@@ -67,10 +69,10 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         # Main container
         self.container = QWidget(self)
         self.container.setObjectName("FramelessContainer")
-        self.container.setMouseTracking(True)
+        self.container.setMouseTracking(False)
         self.container.installEventFilter(self)
         self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.container.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        self.container.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
         
         self._update_stylesheet()
         self.setCentralWidget(self.container)
@@ -173,7 +175,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         
         self.container.setStyleSheet(f"""
             #FramelessContainer {{
-                background-color: rgba(30, 30, 30, {int(self._bg_opacity * 255)});
+                background-color: transparent;
                 border-radius: {radius}px;
                 {border}
             }}
@@ -300,30 +302,27 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         
         # Calculate color with opacity
         bg_alpha = int(self._bg_opacity * 255)
-        # Ensure we clamp alpha
-        bg_alpha = max(0, min(255, bg_alpha))
-        bg_color = QColor(43, 43, 43, bg_alpha)
-        
-        # DEBUG: Log opacity (Removed)
+        # Standard background color #1e1e1e (30,30,30)
+        bg_color = QColor(30, 30, 30, bg_alpha)
         
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
         
         radius = self.border_radius if not self.isMaximized() and not self.isFullScreen() else 0
         
-        if self.isMaximized():
-             painter.drawRect(self.rect())
+        # Consistent drawing for both modes
+        if radius > 0:
+            painter.drawRoundedRect(self.rect(), radius, radius)
         else:
-             painter.drawRoundedRect(self.rect(), radius, radius)
+            painter.drawRect(self.rect())
         
         # Draw border (SourceOver to blend ON TOP of background)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-        border_alpha = int(self._bg_opacity * 255)
         if radius > 0:
             from PyQt6.QtGui import QPen
-            painter.setPen(QPen(QColor(68, 68, 68, border_alpha), 1))
+            painter.setPen(QPen(QColor(80, 80, 80, 100), 1))
             painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), radius, radius)
-            
+        
         painter.end()
         # Debug: Log paint event occasionally or on specific state
         # print(f"DEBUG: Painted {self.objectName()} with bg_opacity={self._bg_opacity}, alpha={bg_alpha}")
@@ -331,7 +330,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
     def _add_default_controls(self):
         self.min_btn = TitleBarButton("_")
         self.min_btn.setObjectName("titlebar_minimize")
-        self.min_btn.clicked.connect(self.showMinimized)
+        self.min_btn.clicked.connect(self.showMinimized) # showMinimized is fine as it triggers WM_SYSCOMMAND internally
         self.control_layout.addWidget(self.min_btn)
 
         self.max_btn = TitleBarButton("□")
@@ -353,14 +352,26 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             self.max_btn.hide()
 
     def toggle_maximize(self):
+        """Toggle maximization using native WinAPI commands for better integration."""
+        if os.name == 'nt':
+            try:
+                hwnd = int(self.winId())
+                WM_SYSCOMMAND = 0x0112
+                SC_MAXIMIZE = 0xF030
+                SC_RESTORE = 0xF120
+                if self.isMaximized():
+                    ctypes.windll.user32.PostMessageW(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0)
+                else:
+                    ctypes.windll.user32.PostMessageW(hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0)
+                return
+            except:
+                pass
+        
+        # Fallback for non-Windows or if API fails
         if self.isMaximized():
             self.showNormal()
-            self.max_btn.setText("□")
         else:
             self.showMaximized()
-            self.max_btn.setText("❐")
-            
-        self._update_stylesheet()
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -401,9 +412,11 @@ class FramelessWindow(QMainWindow, Win32Mixin):
     # -- Event Overrides with Mixins delegation --
     def changeEvent(self, event):
         if event.type() == QEvent.Type.WindowStateChange:
+            # Sync Maximize Button Icon
+            if hasattr(self, 'max_btn'):
+                self.max_btn.setText("❐" if self.isMaximized() else "□")
             self._update_stylesheet()
             if self.isMaximized():
-                self.max_btn.setText("❐")
                 self.main_layout.setContentsMargins(0, 0, 0, 0)
             elif self.isFullScreen():
                 self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -484,46 +497,41 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             return True, 0
             
         if msg.message == WM_NCHITTEST:
-            # Physical screen coordinates from Windows
+            # Physical screen coordinates (High DPI Aware)
             x_phys = ctypes.c_short(msg.lParam & 0xffff).value
             y_phys = ctypes.c_short((msg.lParam >> 16) & 0xffff).value
             
-            # Convert physical pixels to Qt logical pixels
+            # Convert physical to Qt logical
             r = self.devicePixelRatioF()
-            pt = QPoint(int(x_phys / r), int(y_phys / r))
-            local_pos = self.mapFromGlobal(pt)
+            pt_logical = QPoint(int(x_phys / r), int(y_phys / r))
+            local_pos = self.mapFromGlobal(pt_logical)
             lx, ly = local_pos.x(), local_pos.y()
             w, h = self.width(), self.height()
             
-            margin = 8
-            
-            # 1. Resize Handles (Skip if maximized/fullscreen)
+            # 1. Resize Handles (Skip if maximized)
             if not self.isMaximized() and not self.isFullScreen():
-                # Corners
+                margin = 8
                 if lx < margin and ly < margin: return True, 13 # HTTOPLEFT
                 if lx > w - margin and ly < margin: return True, 14 # HTTOPRIGHT
                 if lx < margin and ly > h - margin: return True, 16 # HTBOTTOMLEFT
                 if lx > w - margin and ly > h - margin: return True, 17 # HTBOTTOMRIGHT
-                
-                # Edges
                 if lx < margin: return True, 10 # HTLEFT
                 if lx > w - margin: return True, 11 # HTRIGHT
                 if ly < margin: return True, 12 # HTTOP
                 if ly > h - margin: return True, 15 # HTBOTTOM
             
-            # 2. Title Bar (HTCAPTION) - excluding buttons
-            if ly <= 40:
-                # IMPORTANT: Don't steal clicks from Buttons
-                btns = [getattr(self, 'min_btn', None), getattr(self, 'max_btn', None), getattr(self, 'close_btn', None)]
-                for btn in btns:
-                    if btn and btn.isVisible() and btn.geometry().contains(local_pos):
-                        return False, 0 # Let Qt handle click
-                
-                return True, 2 # HTCAPTION
+            # 2. Universal Drag vs Interactive detection
+            child = self.childAt(local_pos)
             
-            # 3. Default to Client Area (Important for button interaction!)
-            # Return False to let Qt reset its internal cursor stack
-            return False, 1 # HTCLIENT
+            # Whitelist of interactive components that SHOULD handle their own clicks
+            interactive_types = (QAbstractButton, QPushButton, QLineEdit, QTextEdit, QComboBox, QSlider, QScrollArea)
+            
+            # If we hit an interactive component, return HTCLIENT (1)
+            if isinstance(child, interactive_types):
+                return False, 1 # HTCLIENT
+                
+            # For everything else (Empty space, Labels, Backgrounds, TitleBar widget), return HTCAPTION (2)
+            return True, 2 # HTCAPTION
             
         return False, 0 
 
