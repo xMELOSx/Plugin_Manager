@@ -438,15 +438,8 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
                 self._update_cursor(edges)
         
         elif event.type() == QEvent.Type.HoverLeave:
-             # Only reset cursor if it was a resize cursor, to avoid overriding button cursors
-             resize_shapes = [
-                 Qt.CursorShape.SizeVerCursor,
-                 Qt.CursorShape.SizeHorCursor,
-                 Qt.CursorShape.SizeFDiagCursor,
-                 Qt.CursorShape.SizeBDiagCursor
-             ]
-             if self.cursor().shape() in resize_shapes:
-                 self.setCursor(Qt.CursorShape.ArrowCursor)
+             # Reset cursor when leaving the window or moving deep into content if needed
+             self.setCursor(Qt.CursorShape.ArrowCursor)
 
         return super().eventFilter(obj, event)
 
@@ -466,18 +459,6 @@ class FramelessWindow(QMainWindow, Win32Mixin, DraggableMixin, ResizableMixin):
             self.handle_drag_press(event)
         
         super().mousePressEvent(event)
-
-    def mouseDoubleClickEvent(self, event):
-        """Double-click on title bar to maximize/restore window."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Check if double-click is on title bar area
-            if hasattr(self, 'title_bar') and self.title_bar.geometry().contains(event.pos()):
-                # Ignore if clicking on buttons
-                child = self.childAt(event.pos())
-                if not isinstance(child, (QPushButton, QCheckBox)):
-                    self.toggle_maximize()
-                    return
-        super().mouseDoubleClickEvent(event)
 
     def mouseMoveEvent(self, event):
         # Resize
@@ -814,15 +795,7 @@ class FramelessDialog(QDialog, Win32Mixin, DraggableMixin, ResizableMixin):
                 self._update_cursor(edges)
         
         elif event.type() == QEvent.Type.HoverLeave:
-             # Only reset cursor if it was a resize cursor, to avoid overriding button cursors
-             resize_shapes = [
-                 Qt.CursorShape.SizeVerCursor,
-                 Qt.CursorShape.SizeHorCursor,
-                 Qt.CursorShape.SizeFDiagCursor,
-                 Qt.CursorShape.SizeBDiagCursor
-             ]
-             if self.cursor().shape() in resize_shapes:
-                 self.setCursor(Qt.CursorShape.ArrowCursor)
+             self.setCursor(Qt.CursorShape.ArrowCursor)
 
         # Dragging logic - Check if title_bar exists first to avoid AttributeError during init
         if hasattr(self, 'title_bar') and obj == self.title_bar:

@@ -7,12 +7,11 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                              QGroupBox, QCheckBox, QWidget, QListWidget, QListWidgetItem,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
-                             QRadioButton, QButtonGroup, QFrame)
+                             QRadioButton, QButtonGroup)
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
-from src.ui.toast import Toast
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.link_master.utils import format_size
 from src.ui.slide_button import SlideButton
@@ -161,36 +160,30 @@ class AppRegistrationDialog(QDialog):
         defaults_group.setStyleSheet("QGroupBox { border: 1px solid #444; margin-top: 10px; padding-top: 10px; color: #aaa; }")
         defaults_form = QFormLayout()
         
-        # Tree Skip (Redundant 'Default' removed from labels inside group)
+        # Default Tree Skip (Relocated to top of group)
         self.default_skip_levels_spin = StyledSpinBox()
         self.default_skip_levels_spin.setRange(0, 5)
         self.default_skip_levels_spin.setSuffix(_(" levels"))
-        defaults_form.addRow(_("Tree Skip:"), self.default_skip_levels_spin)
+        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
 
         # Transfer Mode
         self.transfer_mode_combo = StyledComboBox()
-        self.transfer_mode_combo.addItem(_("Symbolic Link"), "symlink")
-        self.transfer_mode_combo.addItem(_("Physical Copy"), "copy")
-        defaults_form.addRow(_("Transfer Mode:"), self.transfer_mode_combo)
+        self.transfer_mode_combo.addItem(_("Symbolic Link (recommended)"), "symlink")
+        self.transfer_mode_combo.addItem(_("Physical Copy (slower)"), "copy")
+        defaults_form.addRow(_("Default Transfer Mode:"), self.transfer_mode_combo)
 
         # Conflict Policy
         self.conflict_combo = StyledComboBox()
-        self.conflict_combo.addItem(_("backup"), "backup")
-        self.conflict_combo.addItem(_("skip"), "skip")
-        self.conflict_combo.addItem(_("overwrite"), "overwrite")
-        defaults_form.addRow(_("Conflict Policy:"), self.conflict_combo)
+        self.conflict_combo.addItems(["backup", "skip", "overwrite"])
+        defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
-        self.cat_style_combo.addItem(_("image"), "image")
-        self.cat_style_combo.addItem(_("text"), "text")
-        self.cat_style_combo.addItem(_("image_text"), "image_text")
+        self.cat_style_combo.addItems(["image", "text", "image_text"])
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
         self.pkg_style_combo = StyledComboBox()
-        self.pkg_style_combo.addItem(_("image"), "image")
-        self.pkg_style_combo.addItem(_("text"), "text")
-        self.pkg_style_combo.addItem(_("image_text"), "image_text")
+        self.pkg_style_combo.addItems(["image", "text", "image_text"])
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
         
         defaults_group.setLayout(defaults_form)
@@ -572,10 +565,6 @@ class AppRegistrationDialog(QDialog):
 
 class FolderPropertiesDialog(QDialog, OptionsMixin):
     """Dialog to configure folder-specific display properties."""
-    
-    # Phase 35: Signal for non-modal save
-    config_saved = pyqtSignal(dict)
-
     def __init__(self, parent=None, folder_path: str = "", current_config: dict = None, 
                  batch_mode: bool = False, app_name: str = None, storage_root: str = None,
                  thumbnail_manager = None, app_deploy_default: str = "folder", 
@@ -644,15 +633,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         title = _("Batch Edit Properties") if batch_mode else _("Properties: {name}").format(name=self.original_name)
         self.setWindowTitle(title)
 
-        # Style to match Link Master overall dark theme
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLineEdit, QComboBox, QSpinBox { background-color: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-            QComboBox { background: #333; }
-            QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 12px; }
-            QPushButton:hover { background-color: #4a4a4a; }
             QLabel { color: #cccccc; }
             QCheckBox { color: #cccccc; }
+            QPushButton {
+                background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #555; }
             QGroupBox { 
                 color: #ddd; 
                 border: 1px solid #555; 
@@ -675,7 +663,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         # Phase 32: Restore Size
         self.load_options("folder_properties")
-    
+
     def closeEvent(self, event):
         """Save window geometry on close."""
         self.save_options("folder_properties")
@@ -1208,11 +1196,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
         # New Rule Options
-        # Phase 36: Updated localized inheritance text
-        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit: 真上のターゲットに基く設定)"), "inherit")
+        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit)"), "inherit")
         self.deploy_rule_override_combo.addItem(_("whole folder"), "folder")
-        self.deploy_rule_override_combo.addItem(_("all files"), "files")
-        self.deploy_rule_override_combo.addItem(_("tree"), "tree")
+        self.deploy_rule_override_combo.addItem(_("all files (flatten)"), "files")
+        self.deploy_rule_override_combo.addItem(_("tree (relative)"), "tree")
         self.deploy_rule_override_combo.addItem(_("Custom (Individual Settings)"), "custom")
         
         curr_rule = self.current_config.get('deploy_rule')
@@ -1222,60 +1209,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             if old_type == 'flatten': curr_rule = 'files'
             elif old_type: curr_rule = old_type
 
-        # Fix Phase 35: Use correct def_idx logic (index 0 is KEEP in batch mode)
-        def_idx = 1 if self.batch_mode else 0
-        if not curr_rule or curr_rule == 'inherit':
-            # Phase 36: Simplified localized text for inheritance
-            self.deploy_rule_override_combo.setItemText(def_idx, _("Target Default (Inherit: 真上のターゲットに基く設定)"))
-            if not curr_rule: curr_rule = 'inherit'
-        
         idx = self.deploy_rule_override_combo.findData(curr_rule)
         if idx >= 0 and not self.batch_mode:
             self.deploy_rule_override_combo.setCurrentIndex(idx)
         elif self.batch_mode:
             self.deploy_rule_override_combo.setCurrentIndex(0)
             
-        # Help Button + Sticky Note (Phase 35) - Use text button "?" instead of emoji
-        help_btn = QPushButton("?")
-        help_btn.setFixedSize(24, 24)
-        help_btn.setToolTip(_("Deployment Rule Help"))
-        help_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: transparent; border: 1px solid #555; color: #aaa; border-radius: 4px; font-weight: bold; 
-            }
-            QPushButton:hover { background-color: #444; color: #fff; border-color: #3498db; }
-        """)
-        
-        rule_row = QHBoxLayout()
-        rule_row.addWidget(self.deploy_rule_override_combo, 1)
-        rule_row.addWidget(help_btn)
-        adv_form.addRow(_("Deploy Rule:"), rule_row)
-
-        # Help Note (The "Sticky Note")
-        self.help_panel = QFrame()
-        self.help_panel.setVisible(False)
-        self.help_panel.setStyleSheet("""
-            QFrame { 
-                background-color: #2c3e50; border: 1px solid #3498db; border-radius: 6px; 
-                margin: 5px 0px; padding: 8px;
-            }
-            QLabel { color: #ecf0f1; font-size: 11px; }
-        """)
-        help_layout = QVBoxLayout(self.help_panel)
-        help_layout.setContentsMargins(5, 5, 5, 5)
-        
-        help_text = QLabel(
-            _("<b>whole folder</b>: Keeps the folder structure as-is. Good for most mods.") + "<br><br>" +
-            _("<b>all files</b>: Flattens the folder, placing all files directly into the target. Useful for 'resource pack' style folders.") + "<br><br>" +
-            _("<b>tree</b>: Maintains partial structure starting from a specific depth. Advanced use only.") + "<br><br>" +
-            _("<b>JSO (Joint Storage Organization)</b>: Advanced rule for shared storage structures. Controls how files are merged across targets.") + "<br><br>" +
-            _("More detailed overrides (individual file redirections, excludes, etc.) can be managed via the <b>Edit Individual Redirections</b> button below.")
-        )
-        help_text.setWordWrap(True)
-        help_layout.addWidget(help_text)
-        adv_form.addRow("", self.help_panel)
-        
-        help_btn.clicked.connect(lambda: self.help_panel.setVisible(not self.help_panel.isVisible()))
+        adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
 
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
@@ -1306,20 +1246,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.transfer_mode_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
         app_default_mode = getattr(self, 'app_transfer_mode', 'symlink')
-        self.transfer_mode_override_combo.addItem(_("App Default (Inherit)"), "inherit")
+        self.transfer_mode_override_combo.addItem(_("App Default ({default})").format(default=app_default_mode), None)
         self.transfer_mode_override_combo.addItem(_("Symbolic Link"), "symlink")
         self.transfer_mode_override_combo.addItem(_("Physical Copy"), "copy")
         
         curr_mode = self.current_config.get('transfer_mode')
-        # Phase 34: Resolve Effective Mode for Display Label
-        if not curr_mode or curr_mode == 'KEEP' or curr_mode == 'inherit':
-            effective_mode = app_default_mode
-            loc_mode = _("Symbolic Link") if effective_mode == 'symlink' else _("Physical Copy")
-            # Item 1 is 'App Default' (index 0 is KEEP in batch, else Item 0 is App Default)
-            def_idx = 1 if self.batch_mode else 0
-            self.transfer_mode_override_combo.setItemText(def_idx, _("App Default (Inherit: {mode})").format(mode=loc_mode))
-            if not curr_mode: curr_mode = 'inherit'
-
         idx = self.transfer_mode_override_combo.findData(curr_mode)
         if idx >= 0 and not self.batch_mode:
             self.transfer_mode_override_combo.setCurrentIndex(idx)
@@ -1333,19 +1264,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.conflict_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
-        self.conflict_override_combo.addItem(_("App Default (Inherit)"), "inherit")
-        self.conflict_override_combo.addItem(_("backup"), "backup")
-        self.conflict_override_combo.addItem(_("skip"), "skip")
-        self.conflict_override_combo.addItem(_("overwrite"), "overwrite")
+        self.conflict_override_combo.addItem(_("App Default ({default})").format(default=self.app_conflict_default), None)
+        self.conflict_override_combo.addItem(_("Backup"), "backup")
+        self.conflict_override_combo.addItem(_("Skip"), "skip")
+        self.conflict_override_combo.addItem(_("Overwrite"), "overwrite")
         
         curr_conflict = self.current_config.get('conflict_policy')
-        # Phase 34: Resolve Effective Conflict Policy for Display Label
-        if not curr_conflict or curr_conflict == 'KEEP' or curr_conflict == 'inherit':
-            effective_conflict = self.app_conflict_default
-            loc_policy = _(effective_conflict)
-            def_idx = 1 if self.batch_mode else 0
-            self.conflict_override_combo.setItemText(def_idx, _("App Default (Inherit: {policy})").format(policy=loc_policy))
-            if not curr_conflict: curr_conflict = 'inherit'
 
         idx = self.conflict_override_combo.findData(curr_conflict)
         if idx >= 0 and not self.batch_mode:
@@ -1366,53 +1290,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 border: 1px solid #555; padding: 4px; border-radius: 4px;
             }
         """)
-        
-        # Help Button for JSON Rules
-        json_help_btn = QPushButton()
-        json_help_btn.setFixedSize(24, 24)
-        json_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        try:
-             import os
-             from PyQt6.QtGui import QIcon
-             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-             icon_path = os.path.join(project_root, "resource", "tags", "help_icon_v2.png")
-             if os.path.exists(icon_path):
-                 json_help_btn.setIcon(QIcon(icon_path))
-                 json_help_btn.setIconSize(json_help_btn.size() * 0.8)
-             else:
-                 json_help_btn.setText("?")
-        except:
-             json_help_btn.setText("?")
-             
-        json_help_tooltip = (
-            _("<b>Deployment Rules JSON format:</b>") + "<br><br>" +
-            _("<b>exclude</b>: List of patterns to skip.") + "<br>" +
-            "<pre>{\"exclude\": [\"*.txt\", \"docs/\"]}</pre><br>" +
-            _("<b>rename</b>: Dictionary of filename mappings.") + "<br>" +
-            "<pre>{\"rename\": {\"old.dll\": \"new.dll\"}}</pre><br>" +
-            _("<b>skip_levels</b>: Number of folder levels to flatten.") + "<br>" +
-            "<pre>{\"skip_levels\": 1}</pre>"
-        )
-        json_help_btn.setToolTip(json_help_tooltip)
-        
-        json_help_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: transparent; border: 1px solid #555; border-radius: 4px; 
-            }
-            QPushButton:hover { background-color: #444; border-color: #3498db; }
-        """)
-        
-        rules_layout = QHBoxLayout()
-        rules_layout.addWidget(self.rules_edit)
-        
-        btn_box = QVBoxLayout()
-        btn_box.setContentsMargins(0, 0, 0, 0)
-        btn_box.addWidget(json_help_btn)
-        btn_box.addStretch()
-        rules_layout.addLayout(btn_box)
-
-        adv_form.addRow(_("Deployment Rules (JSON):"), rules_layout)
+        adv_form.addRow(_("Deployment Rules (JSON):"), self.rules_edit)
 
         # Phase 3.7: Shortcut to File Management (Now AFTER Rules) - Full width
         if not self.batch_mode:
@@ -1501,52 +1379,33 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                     self.image_edit.setText(first_preview[0])
                     self._update_preview(first_preview[0])
             
-        # Phase 35: Set non-modal to allow concurrent FM operation
-        self.setModal(False)
-        
-        # Actions - Add to Root Layout (Phase 36: Restored missing buttons)
+        # Actions - Add to Root Layout
         btn_layout = QHBoxLayout()
+        self.ok_btn = QPushButton(_("Save (Alt + Enter)"))
+        self.ok_btn.setObjectName("save_btn")
+        # Removed setDefault(True) - Use Alt+Enter instead
+        self.ok_btn.clicked.connect(self.accept)
+        
         # Phase 28: Use Alt+Enter for save to prevent accidental submissions
         from PyQt6.QtGui import QKeySequence, QShortcut
         self.save_shortcut = QShortcut(QKeySequence("Alt+Return"), self)
         self.save_shortcut.activated.connect(self.accept)
         self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self) # Support numpad
         self.save_shortcut_win.activated.connect(self.accept)
-
-        self.ok_btn = QPushButton(_("変更を反映して閉じる (Alt+Enter)"))
-        self.ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.ok_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #2980b9; color: white; font-weight: bold; 
-                border-radius: 4px; padding: 8px 16px; 
-            }
-            QPushButton:hover { background-color: #3498db; }
-        """)
-        self.ok_btn.clicked.connect(self.accept)
         
-        self.cancel_btn = QPushButton(_("キャンセル"))
-        self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.cancel_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #444; color: white; 
-                border: 1px solid #555; border-radius: 4px; padding: 8px 16px; 
-            }
-            QPushButton:hover { background-color: #555; border-color: #777; }
-        """)
+        # Button Styling & Layout (Unified)
+        self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
+        self.ok_btn.setFixedWidth(160)
+        
+        self.cancel_btn = QPushButton(_("Cancel"))
+        self.cancel_btn.setFixedWidth(160)
         self.cancel_btn.clicked.connect(self.reject)
-
         
         btn_layout.addStretch()
         btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.ok_btn)
         
         self.root_layout.addLayout(btn_layout)
-
-    def accept(self):
-        """Override accept to emit signal for non-modal use."""
-        data = self.get_data()
-        self.config_saved.emit(data)
-        super().accept()
     
     def _open_actual_folder(self):
         """Open the folder in Explorer."""
@@ -1621,59 +1480,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         os.makedirs(thumb_dir, exist_ok=True)
         return thumb_dir
 
-    def get_data(self):
-        """Gather all data from UI widgets into a directory for the database."""
-        manual_tags = [t.strip() for t in self.tags_edit.text().split(',') if t.strip()]
-        quick_tags = [n for n, btn in self.tag_buttons.items() if btn.isChecked()]
-        all_tags = sorted(list(set(manual_tags + quick_tags)))
-
-        data = {
-            "display_name": self.name_edit.text(),
-            "score": self.score_dial.value(),
-            "image_path": self.image_edit.text() if self.image_edit.text() != " [ Clipboard Image ] " else self.pending_icon_path,
-            "description": self.description_edit.toPlainText(),
-            "author": self.author_edit.text(),
-            "url_list": self.url_list_edit.text(),
-            "folder_type": self.type_combo.currentData(),
-            "display_style": self.style_combo.currentData(),
-            "display_style_package": self.style_combo_pkg.currentData(),
-            "is_visible": 0 if self.hide_checkbox.isChecked() else 1,
-            "inherit_tags": 1 if self.inherit_tags_chk.isChecked() else 0,
-            "conflict_tag": self.conflict_tag_edit.text(),
-            "conflict_scope": self.conflict_scope_combo.currentData(),
-            "transfer_mode": self.transfer_mode_override_combo.currentData(),
-            "conflict_policy": self.conflict_override_combo.currentData(),
-            "tags": ", ".join(all_tags)
-        }
-
-        # Target Override calculation
-        t_data = self.target_combo.currentData()
-        if t_data == "KEEP":
-            pass # Handle KEEP logic if batch (caller should handle based on data being present)
-        elif t_data == 0: # App Default
-            data["target_override"] = None
-        elif t_data == 4: # Custom
-            data["target_override"] = self.target_override_edit.text()
-        else: # Roots 1, 2, 3
-            idx = t_data - 1
-            if idx < len(self.target_roots):
-                data["target_override"] = self.target_roots[idx]
-        
-        # Deploy Rule + Skip Levels
-        data["deploy_rule"] = self.deploy_rule_override_combo.currentData()
-        
-        # Deployment Rules JSON
-        import json
-        rules_text = self.rules_edit.toPlainText() or '{}'
-        try:
-            current_rules = json.loads(rules_text)
-        except:
-            current_rules = {}
-        current_rules['skip_levels'] = self.skip_levels_spin.value()
-        data["deployment_rules"] = json.dumps(current_rules)
-
-        return data
-
     def accept(self):
         """Override accept to save clipboard image and Stage/Finalize icon path."""
         import uuid
@@ -1690,13 +1496,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 return
 
         super().accept()
-        # Phase 29: Toast Notification on Success
-        Toast(self.parent(), _("Settings Saved Successfully")).show_message()
-
-    def reject(self):
-        super().reject()
-        # Phase 29: Toast Notification on Cancel (Yellowish/Warning)
-        Toast(self.parent(), _("Changes Cancelled"), preset='warning').show_message()
 
     def keyPressEvent(self, event):
         """Phase 28: Handle global hotkeys for the dialog."""
@@ -1807,12 +1606,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
     def _on_target_choice_changed(self, *args):
         choice = self.target_combo.currentData()
         self.manual_path_container.setVisible(choice == 4)
-        
-        # Phase 36: If Custom is chosen and current text is empty, pre-fill with primary target
-        if choice == 4 and not self.target_override_edit.text():
-            primary_root = self.target_roots[0] if self.target_roots else None
-            if primary_root:
-                self.target_override_edit.setText(primary_root)
 
     def _get_selected_target_path(self):
         choice = self.target_combo.currentData()

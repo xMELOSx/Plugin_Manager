@@ -108,36 +108,8 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         layout.addLayout(src_backup_grid)
         
-        # Log Level Section
-        layout.addSpacing(20)
-        self.log_level_lbl = QLabel(_("<b>Log Level / ログレベル</b>"))
-        layout.addWidget(self.log_level_lbl)
-        
-        from PyQt6.QtWidgets import QHBoxLayout, QComboBox
-        log_layout = QHBoxLayout()
-        self.log_combo = QComboBox()
-        import logging
-        levels = [("DEBUG", logging.DEBUG), ("INFO", logging.INFO), 
-                  ("WARNING", logging.WARNING), ("ERROR", logging.ERROR)]
-        for name, level in levels:
-            self.log_combo.addItem(name, level)
-        # Default to INFO
-        current_level = logging.getLogger().getEffectiveLevel()
-        for i, (name, level) in enumerate(levels):
-            if level == current_level:
-                self.log_combo.setCurrentIndex(i)
-                break
-        else:
-            self.log_combo.setCurrentIndex(1)  # Default INFO
-        self.log_combo.currentIndexChanged.connect(self._on_log_level_changed)
-        log_layout.addWidget(QLabel(_("Level:")))
-        log_layout.addWidget(self.log_combo)
-        log_layout.addStretch()
-        layout.addLayout(log_layout)
-        
         layout.addSpacing(20)
         self.ui_debug_lbl = QLabel(_("<b>UI Debug</b>"))
-
         layout.addWidget(self.ui_debug_lbl)
         self.show_hitbox_cb = QCheckBox(_("当たり判定を表示 (Show Hitboxes)"))
         from src.ui.link_master.item_card import ItemCard
@@ -207,26 +179,13 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.btn_src_patch.setText(_("🩹 Source Backup (Patch)"))
         self.btn_src_minor.setText(_("🌟 Source Backup (Minor)"))
         self.btn_src_major.setText(_("🚀 Source Backup (Major)"))
-        self.log_level_lbl.setText(_("<b>Log Level / ログレベル</b>"))
         self.ui_debug_lbl.setText(_("<b>UI Debug</b>"))
         self.show_hitbox_cb.setText(_("当たり判定を表示 (Show Hitboxes)"))
         self.show_outlines_cb.setText(_("全ウィジェットに枠線を表示 (Global Outlines)"))
         self.lang_header_lbl.setText(_("<b>Language Settings / 言語設定</b>"))
         self.lang_label.setText(f"{_('Current:')} {self.lang_manager.current_language_name}")
 
-    def _on_log_level_changed(self, index):
-        """Change root logger level."""
-        import logging
-        level = self.log_combo.itemData(index)
-        if level is not None:
-            logging.getLogger().setLevel(level)
-            # Also update rich handler if present
-            for handler in logging.getLogger().handlers:
-                handler.setLevel(level)
-            logging.getLogger().info(f"Log level changed to: {logging.getLevelName(level)}")
-
     def _on_hitbox_toggled(self, checked):
-
         from src.ui.link_master.item_card import ItemCard
         ItemCard.SHOW_HITBOXES = checked
         if self.parent_window:

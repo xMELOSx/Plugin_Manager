@@ -1,8 +1,7 @@
 def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict, 
                     has_conflict_children, is_library_alt_version, is_registered,
                     is_package, is_selected, is_focused, has_name_conflict=False, 
-                    has_target_conflict=False, has_linked_children=False, has_unlinked_children=False, has_partial_children=False,
-                    category_deploy_status=None):
+                    has_target_conflict=False, has_linked_children=False, has_unlinked_children=False, has_partial_children=False):
     """Calculate status and background colors for ItemCard."""
     status_color = "#444"
     bg_color = "#333"
@@ -38,12 +37,8 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
         bg_color = "#322a3d"
     # Priority 7: Category hierarchical status (ONLY for categories, not packages)
     elif not is_package:
-        # 7.1: Category Deploy status (deep blue) - TAKE PRECEDENCE for category state
-        if category_deploy_status == 'deployed':
-            status_color = COLOR_CATEGORY_DEPLOYED
-            bg_color = "#1a2a3a"
-        # 7.2: Categories: Check children status (orange/yellow/green)
-        elif has_partial_children:
+        # Categories: Check children status
+        if has_partial_children:
             status_color = COLOR_YELLOW
             bg_color = "#3d3d2a"
         elif has_linked_children:
@@ -83,7 +78,6 @@ COLOR_PURPLE = "#9b59b6"
 COLOR_LIB_ALT = "#9acd32"
 COLOR_HIDDEN = "#888"
 COLOR_NORMAL_TEXT = "#ddd"
-COLOR_CATEGORY_DEPLOYED = "#1e5a8f"  # Deep blue for category deploy
 COLOR_SELECTION_BG = "#2a3b4d"
 COLOR_FOCUSED_BG = "#34495e"
 COLOR_FOCUSED_BORDER = "#5DADE2"

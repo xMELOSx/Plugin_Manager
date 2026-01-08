@@ -18,14 +18,8 @@ from src.ui.title_bar_button import TitleBarButton
 from src.ui.action_button import ActionButton
 from src.ui.common_widgets import StyledComboBox
 
-from src.ui.styles import DialogStyles
-
 def setup_ui(window):
-    """Factory entry point to build the LinkMasterWindow UI.
-    🚨 厳守ルール: ファイル操作禁止 🚨
-    ファイルI/Oは、必ず src.core.file_handler を経由すること。
-    Link Master: UI Factory
-    """
+    """Factory entry point to build the LinkMasterWindow UI."""
     t_start = time.perf_counter()
     main_widget = QWidget(window)
     main_widget.setStyleSheet("""
@@ -54,13 +48,6 @@ def setup_ui(window):
         QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
         QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
         QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
-        
-        QPushButton#header_search_btn:checked { background-color: #3498db; border-color: #5dade2; }
-        
-        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; }
-        QMessageBox QLabel { color: #fff; }
-        QMessageBox QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 15px; min-width: 60px; }
-        QMessageBox QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
     """)
     
     main_layout = QVBoxLayout(main_widget)
@@ -75,7 +62,7 @@ def setup_ui(window):
     window.retranslate_ui()
     window._restore_ui_state()
     
-    window.logger.debug(f"[Profile] setup_ui took {time.perf_counter()-t_start:.3f}s")
+    window.logger.info(f"[Profile] setup_ui took {time.perf_counter()-t_start:.3f}s")
 
 def _setup_header(window, main_layout, main_widget):
     t_start = time.perf_counter()
@@ -180,12 +167,11 @@ def _setup_header(window, main_layout, main_widget):
     window.search_mode.setFixedWidth(150)
     header_layout.addWidget(window.search_mode)
     
-    window.search_btn = ActionButton("🔍", main_widget, is_toggle=True)
+    window.search_btn = ActionButton("🔍", main_widget)
     window.search_btn.setObjectName("header_search_btn")
     window.search_btn.setFixedSize(32, 28)
     window.search_btn.clicked.connect(window._perform_search)
     window.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    window.search_btn.setToolTip(_("Execute Search (Toggle)"))
     header_layout.addWidget(window.search_btn)
     
     window.clear_search_btn = ActionButton("✕", main_widget)
@@ -201,7 +187,7 @@ def _setup_header(window, main_layout, main_widget):
             combo.view().window().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
     main_layout.addLayout(header_layout)
-    window.logger.debug(f"[Profile] _setup_header took {time.perf_counter()-t_start:.3f}s")
+    window.logger.info(f"[Profile] _setup_header took {time.perf_counter()-t_start:.3f}s")
 
 def _setup_content_area(window, main_layout, main_widget):
     window.content_wrapper = QWidget(main_widget)
@@ -459,12 +445,6 @@ def _setup_navigation_bar(window, right_layout):
     window.btn_unlink_all.setFixedSize(28, 26)
     window.btn_unlink_all.setToolTip(_("Unlink All Active Links"))
     window.btn_unlink_all.setStyleSheet(unlink_btn_style)
-    # Ensure search/clear buttons are not checkable (reset if inherited from ActionButton)
-    if hasattr(window, 'search_btn'):
-        window.search_btn.setCheckable(False)
-    if hasattr(window, 'clear_search_btn'):
-        window.clear_search_btn.setCheckable(False)
-    
     window.btn_unlink_all.clicked.connect(window._unload_active_links)
     window.btn_unlink_all.setCursor(Qt.CursorShape.PointingHandCursor)
     nav_bar_layout.addWidget(window.btn_unlink_all)
@@ -680,6 +660,5 @@ def _setup_floating_explorer(window):
     window.explorer_panel.config_changed.connect(window._refresh_current_view)
     window.explorer_panel.request_properties_edit.connect(window._handle_explorer_properties_edit)
     window.explorer_panel.width_changed.connect(window._on_explorer_panel_width_changed)
-    window.explorer_panel.target_changed.connect(window._on_explorer_target_changed)
     window.explorer_panel.hide()
     window.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")

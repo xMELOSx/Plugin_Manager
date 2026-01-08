@@ -1,6 +1,3 @@
-""" 🚨 厳守ルール: ファイル操作禁止 🚨
-ファイルI/Oは、必ず src.core.file_handler を経由すること。
-"""
 """
 Link Master: Search Functionality Mixin
 Phase 19.8: Major search overhaul with modes, depth limit, NOT search
@@ -177,8 +174,6 @@ class LMSearchMixin:
         
         # If no active filter, just refresh current path normally
         if not query and not selected_tags:
-            if hasattr(self, 'search_btn'):
-                self.search_btn.setChecked(False)  # Reset toggle if empty
             if hasattr(self, 'current_view_path') and self.current_view_path:
                 self._load_items_for_path(self.current_view_path)
             elif storage_root:
@@ -187,8 +182,6 @@ class LMSearchMixin:
             self.non_inheritable_tags = self._get_non_inheritable_tags_from_json()
             return
 
-        if hasattr(self, 'search_btn'):
-            self.search_btn.setChecked(True)  # Keep highlighted
         self._show_search_indicator()
         
         folder_configs = self.db.get_all_folder_configs()
@@ -389,17 +382,15 @@ class LMSearchMixin:
             if exclude_tags & effective_tags:
                 tag_match = False
         
-        # Text matching - search BOTH folder name AND tags AND display name
+        # Text matching - search BOTH folder name AND tags
         text_match = True
         name_lower = name.lower()
-        # Phase 33: Add safety check for config
-        display_name_lower = (config.get('display_name') or "").lower() if config else ""
-        tags_str = " ".join(effective_tags).lower()
-        author_lower = (config.get('author') or "").lower() if config else ""
-        searchable_text = f"{name_lower} {display_name_lower} {author_lower} {tags_str}"
+        tags_str = " ".join(effective_tags)
+        author_lower = (config.get('author') or "").lower()
+        searchable_text = f"{name_lower} {author_lower} {tags_str}"
         
         if terms:
-            # Match if term is in name OR in display name OR in tags
+            # Match if term is in name OR in any tag
             text_match = all(term in searchable_text for term in terms)
         
         if not_terms and text_match:
@@ -474,7 +465,7 @@ class LMSearchMixin:
         self._refresh_category_cards()
         
         if hasattr(self, 'logger'):
-            self.logger.debug(f"[Profile] Search display finished.")
+            self.logger.info(f"[Profile] Search display finished.")
     
     def _show_search_indicator(self):
         """Show floating search indicator overlay with animated dots."""
@@ -520,20 +511,10 @@ class LMSearchMixin:
         if hasattr(self, '_search_overlay') and self._search_overlay:
             self._search_overlay.hide()
     
-    def _on_search_text_changed(self, text):
-        """Handle search bar text change with 300ms debounce."""
-        self._search_timer.stop()
-        self._search_timer.start(300)
-            
-        self._search_timer.stop()
-        self._search_timer.start(300)
-
     def _clear_search(self):
         """Clear search and restore normal view."""
         self.search_bar.clear()
         self.tag_bar.clear_selection()  # Also clear tag selection
-        if hasattr(self, 'search_btn'):
-            self.search_btn.setChecked(False)
         
         self.cat_result_label.setText("")
         self.pkg_result_label.setText("")
@@ -545,6 +526,7 @@ class LMSearchMixin:
         if hasattr(self, 'current_view_path') and self.current_view_path:
             self._load_items_for_path(self.current_view_path, force=True)
             
-            # Phase 7 Fix: Always restore category selection (even if None/Home) to refresh bottom area
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(300, lambda: self._on_category_selected(saved_category, force=True))
+            # Delay category selection to allow scanner to complete
+            if saved_category:
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(300, lambda: self._on_category_selected(saved_category))

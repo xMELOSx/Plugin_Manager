@@ -273,7 +273,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         if "transfer_overrides" not in self.rules: self.rules["transfer_overrides"] = {}
         
         self.setWindowTitle(_("File Management: {name}").format(name=os.path.basename(folder_path)))
-        self.resize(900, 600)
+        self.resize(1150, 800)
         self.load_options("file_management_dialog")
         
         self._apply_theme()
@@ -323,8 +323,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         """)
 
     def _init_ui(self):
-        # Phase 35: Use inherited layout from FramelessDialog instead of detached QWidget
-        main_layout = self.content_layout
+        content = QWidget(self)
+        main_layout = QVBoxLayout(content)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(12)
         
@@ -365,7 +365,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         legend_layout.addStretch()
         main_layout.addLayout(legend_layout)
 
-        # Main Tree Initialization
+        # Main Tree
         self.model = CheckableFileModel(self.folder_path, self.storage_root, self.rules, 
                                         self.primary_target, self.secondary_target, self.tertiary_target, self.app_name)
         self.model.setRootPath(self.folder_path)
@@ -427,22 +427,15 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             if self.tree.columnWidth(0) < 50: # Fail-safe
                 self.tree.setColumnWidth(0, 320)
                 self.tree.setColumnWidth(3, 400)
-
-        # Tree Container
-        self.tree_container = QWidget()
-        tree_sub_layout = QVBoxLayout(self.tree_container)
-        tree_sub_layout.setContentsMargins(0, 0, 0, 0)
-        tree_sub_layout.addWidget(self.tree)
         
-        main_layout.addWidget(self.tree_container, 1) # Add tree with stretch
+        main_layout.addWidget(self.tree)
 
-        # Toolbar / Quick Actions
+        # Toolbar / Quick Actions - Reorganized per user request
         tools_frame = QFrame(self)
-        tools_frame.setObjectName("ToolsFrame")
+        tools_frame.setObjectName("ToolsFrame")  # For CSS #ToolsFrame selector
         tools_layout = QVBoxLayout(tools_frame)
         tools_layout.setSpacing(12)
-        main_layout.addWidget(tools_frame) # Add tools below tree
-
+        
         LABEL_WIDTH = 110 # For alignment - defined here for batch header
 
         # Section Header: 一括設定 - Aligned with デフォルト button left edge
@@ -652,7 +645,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
 
         
-        # Phase 35: Layout is already in self.content_layout, no need for set_content_widget
+        self.set_content_widget(content)
         
         # Double click on Tree
         self.setStyleSheet("""
@@ -805,29 +798,6 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         # Enable actions only if something is selected
         if hasattr(self, 'btn_backup'): self.btn_backup.setEnabled(has_selection)
         if hasattr(self, 'btn_restore'): self.btn_restore.setEnabled(has_selection)
-
-    def _switch_to_source(self):
-        """Switch TreeView to Source (Storage) folder."""
-        self.btn_view_source.setChecked(True)
-        self.btn_view_target.setChecked(False)
-        self.model.setRootPath(self.folder_path)
-        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(self.folder_path)))
-
-    def _switch_to_target(self):
-        """Switch TreeView to Target (Symlink) folder if it exists."""
-        target_path = self.primary_target
-        if not target_path or not os.path.exists(target_path):
-             QMessageBox.information(self, _("ターゲット"), _("ターゲットパスが未設定、または存在しません。"))
-             self.btn_view_source.setChecked(True)
-             self.btn_view_target.setChecked(False)
-             return
-             
-        self.btn_view_source.setChecked(False)
-        self.btn_view_target.setChecked(True)
-        self.model.setRootPath(target_path)
-        self.tree.setRootIndex(self.proxy.mapFromSource(self.model.index(target_path)))
-
-    def _on_tree_double_clicked(self, proxy_idx):
         if hasattr(self, 'btn_apply_redir'): self.btn_apply_redir.setEnabled(has_selection)
         if hasattr(self, 'btn_toggle_mode'): self.btn_toggle_mode.setEnabled(has_selection)
 

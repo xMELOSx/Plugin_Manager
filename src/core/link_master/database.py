@@ -69,28 +69,19 @@ class LinkMasterRegistry:
             except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN score INTEGER DEFAULT 0")
-            except Exception as e:
-                self.logger.warning(f"Migration score: {e}")
+            except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN target_root_3 TEXT")
-            except Exception as e:
-                self.logger.warning(f"Migration target_root_3: {e}")
-            try:
-                conn.execute("ALTER TABLE lm_apps ADD COLUMN target_root_4 TEXT")
-            except Exception as e:
-                self.logger.warning(f"Migration target_root_4: {e}")
+            except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_b TEXT DEFAULT 'folder'")
-            except Exception as e:
-                self.logger.warning(f"Migration deployment_rule_b: {e}")
+            except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule_c TEXT DEFAULT 'folder'")
-            except Exception as e:
-                self.logger.warning(f"Migration deployment_rule_c: {e}")
+            except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN default_skip_levels INTEGER DEFAULT 0")
-            except Exception as e:
-                self.logger.warning(f"Migration default_skip_levels: {e}")
+            except: pass
 
             conn.commit()
 
@@ -136,8 +127,8 @@ class LinkMasterRegistry:
 
     def add_app(self, data: dict):
         self._apps_cache = None
-        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, target_root_3, target_root_4, default_subpath, managed_folder_name, conflict_policy, deployment_type, deployment_rule, deployment_rule_b, deployment_rule_c, transfer_mode, cover_image, is_favorite, score, default_skip_levels)
-                 VALUES (:name, :storage_root, :target_root, :target_root_2, :target_root_3, :target_root_4, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :deployment_rule, :deployment_rule_b, :deployment_rule_c, :transfer_mode, :cover_image, :is_favorite, :score, :default_skip_levels)'''
+        sql = '''INSERT INTO lm_apps (name, storage_root, target_root, target_root_2, target_root_3, default_subpath, managed_folder_name, conflict_policy, deployment_type, deployment_rule, deployment_rule_b, deployment_rule_c, transfer_mode, cover_image, is_favorite, score, default_skip_levels)
+                 VALUES (:name, :storage_root, :target_root, :target_root_2, :target_root_3, :default_subpath, :managed_folder_name, :conflict_policy, :deployment_type, :deployment_rule, :deployment_rule_b, :deployment_rule_c, :transfer_mode, :cover_image, :is_favorite, :score, :default_skip_levels)'''
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(sql, data)
@@ -146,7 +137,7 @@ class LinkMasterRegistry:
 
     def update_app(self, app_id: int, data: dict):
         self._apps_cache = None
-        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'target_root_4', 'managed_folder_name', 
+        valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'managed_folder_name', 
                       'default_subpath', 'conflict_policy', 'deployment_type', 'deployment_rule', 'deployment_rule_b', 'deployment_rule_c', 'transfer_mode',
                       'cover_image', 'last_target',
                       'default_category_style', 'default_package_style', 'executables', 'url_list',
@@ -443,12 +434,7 @@ class LinkMasterDB:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_library_alt_version INTEGER DEFAULT 0")
             except: pass
 
-            try:
-                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN category_deploy_status TEXT DEFAULT NULL")
-            except: pass
-
             # Create indexes for performance
-
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_lib_name ON lm_folder_config (lib_name)")
             except: pass
@@ -656,28 +642,6 @@ class LinkMasterDB:
             conn.execute("DELETE FROM lm_items") # Reset link states too
             conn.commit()
 
-    def unlink_all_for_app(self, app_id=None):
-        """Set all linked items in this app to unlinked in the database."""
-        # Note: app_id is accepted for compatibility with the call site, 
-        # but since this DB is app-specific, we apply it to the whole DB.
-        with self.get_connection() as conn:
-            # Phase 33/34 Enhanced Reset: Clear ALL status and conflict flags.
-            # This ensures parents (categories) don't show red borders for non-existent links/partials/logical conflicts.
-            conn.execute("""
-                UPDATE lm_folder_config 
-                SET last_known_status = 'none',
-                    has_logical_conflict = 0,
-                    has_target_conflict = 0,
-                    has_name_conflict = 0,
-                    is_library_alt_version = 0,
-                    category_deploy_status = NULL,
-                    conflict_tag = NULL,
-                    conflict_scope = NULL
-                WHERE last_known_status != 'none' OR has_logical_conflict = 1 OR category_deploy_status IS NOT NULL
-            """)
-            conn.commit()
-
-
     def update_folder_display_config(self, rel_path: str, **kwargs):
         """Update display config for a folder (Upsert)."""
         # Normalize path to forward slashes for consistent DB storage
@@ -690,9 +654,7 @@ class LinkMasterDB:
                       'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
                       'lib_folder_id',
                       'has_logical_conflict', 'is_library_alt_version',
-                      'size_bytes', 'scanned_at',
-                      'category_deploy_status']  # Phase: Category Deploy Enhancement
-
+                      'size_bytes', 'scanned_at']
         updates = []
         params = []
         for k, v in kwargs.items():

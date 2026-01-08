@@ -14,7 +14,6 @@ class ExplorerPanel(QWidget):
     config_changed = pyqtSignal()
     request_properties_edit = pyqtSignal(list) # Phase 28: Piping property edit requests (abs_paths)
     width_changed = pyqtSignal(int)  # Emitted when user resizes the panel
-    target_changed = pyqtSignal(str) # Emitted when target selection changes (A, B, C, Source)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -23,7 +22,6 @@ class ExplorerPanel(QWidget):
         # Data
         self.storage_root = None
         self.current_app_id = None
-        self.current_target_key = 'target_root' # Default target key
         self.db = get_lm_db()
         self.context_menu_provider = None # Callback to build menu
         
@@ -52,52 +50,6 @@ class ExplorerPanel(QWidget):
         header_layout.addWidget(self.lbl_info)
         
         header_layout.addStretch()
-        
-        # Target Selector (Source, A, B, C)
-        self.target_group_frame = QFrame(self.header_frame)
-        self.target_group_frame.setStyleSheet("QFrame { background: transparent; }")
-        target_group_layout = QHBoxLayout(self.target_group_frame)
-        target_group_layout.setContentsMargins(0, 0, 0, 0)
-        target_group_layout.setSpacing(2)
-        
-        self.btn_targets = {}
-        # Use list of tuples to preserve order; primary target first, then additional
-        target_list = [
-            ('source', 'Src'),
-            ('target_root', _("Main")),
-            ('target_root_2', "A"),
-            ('target_root_3', "B"),
-            ('target_root_4', "C")
-        ]
-
-        
-        for key, label in target_list:
-            btn = QPushButton(label, self.target_group_frame)
-            btn.setCheckable(True)
-            btn.setFixedSize(28, 22)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton { 
-                    background-color: #444; 
-                    color: #aaa; 
-                    border: 1px solid #555; 
-                    border-radius: 2px;
-                    font-size: 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover { background-color: #555; color: #fff; }
-                QPushButton:checked { 
-                    background-color: #3498db; 
-                    color: #fff; 
-                    border: 1px solid #2980b9;
-                }
-            """)
-            btn.clicked.connect(lambda checked, k=key: self._on_target_btn_clicked(k))
-            target_group_layout.addWidget(btn)
-            self.btn_targets[key] = btn
-            
-        header_layout.addWidget(self.target_group_frame)
-        self.btn_targets['target_root'].setChecked(True) # Default
         
         # Smart context button / refresh
         self.btn_refresh = QPushButton("🔄", self.header_frame)
@@ -221,21 +173,15 @@ class ExplorerPanel(QWidget):
             self.tree.scrollTo(proxy_idx)
             self.tree.blockSignals(block)
         
-    def set_storage_root(self, path: str, app_id: int = None, app_name: str = None, app_data: dict = None):
+    def set_storage_root(self, path: str, app_id: int = None, app_name: str = None):
         """Sets the root folder to display and updates DB to app-specific."""
         if not path or not os.path.exists(path):
+            self.lbl_info.setText(_("Invalid Root"))
             self.storage_root = None
             return
             
         self.storage_root = path
         self.current_app_id = app_id
-        
-        # Update button visibility based on which targets are defined
-        if app_data:
-            self.btn_targets['target_root_2'].setVisible(bool(app_data.get('target_root_2')))
-            self.btn_targets['target_root_3'].setVisible(bool(app_data.get('target_root_3')))
-            self.btn_targets['target_root_4'].setVisible(bool(app_data.get('target_root_4')))
-
         
         # Use app-specific DB (Phase 18.13 fix for tree-card sync)
         if app_name:
@@ -259,17 +205,6 @@ class ExplorerPanel(QWidget):
 
         self.fs_model.directoryLoaded.connect(_on_loaded)
         _on_loaded(path)
-
-    def _on_target_btn_clicked(self, target_key):
-        """Update selected target and emit signal."""
-        # Uncheck others
-        for k, btn in self.btn_targets.items():
-            btn.blockSignals(True)
-            btn.setChecked(k == target_key)
-            btn.blockSignals(False)
-            
-        self.current_target_key = target_key
-        self.target_changed.emit(target_key)
 
     def _on_root_label_clicked(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

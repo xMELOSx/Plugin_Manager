@@ -15,7 +15,6 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.core.lang_manager import _
 from src.ui.common_widgets import StyledLineEdit
 from src.ui.slide_button import SlideButton
-from src.ui.styles import DialogStyles
 
 
 class URLItemWidget(QWidget):
@@ -136,19 +135,9 @@ class URLItemWidget(QWidget):
             req = urllib.request.Request(self.url, method='HEAD')
             req.add_header('User-Agent', user_agent)
             urllib.request.urlopen(req, timeout=5)
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(_("Success"))
-            msg_box.setText(_("✅ Reachable"))
-            msg_box.setIcon(QMessageBox.Icon.Information)
-            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-            msg_box.exec()
+            QMessageBox.information(self, _("Success"), _("✅ Reachable"))
         except Exception as e:
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(_("Failed"))
-            msg_box.setText(_("❌ Failed: {error}").format(error=e))
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-            msg_box.exec()
+            QMessageBox.warning(self, _("Failed"), _("❌ Failed: {error}").format(error=e))
 
     def _open_url(self):
         webbrowser.open(self.url)
@@ -441,12 +430,7 @@ class URLListDialog(QDialog):
             except:
                 continue
         
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(_("No Working URL"))
-        msg_box.setText(_("No active links.\n\nAll registered URLs failed to connect."))
-        msg_box.setIcon(QMessageBox.Icon.Warning)
-        msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-        msg_box.exec()
+        QMessageBox.warning(self, _("No Working URL"), _("No active links.\n\nAll registered URLs failed to connect."))
 
     def _on_url_opened(self, url):
         if self.auto_mark_chk.isChecked():

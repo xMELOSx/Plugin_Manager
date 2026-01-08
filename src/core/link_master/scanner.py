@@ -78,5 +78,5 @@ class Scanner:
             self.logger.error(f"Scan failed: {e}")
             
         t_end = time.perf_counter()
-        self.logger.debug(f"[ScannerProfile] scan_directory path='{os.path.basename(root_path)}' items={len(found_items)} took {t_end-t_start:.3f}s")
+        self.logger.info(f"[ScannerProfile] scan_directory path='{os.path.basename(root_path)}' items={len(found_items)} took {t_end-t_start:.3f}s")
         return found_items

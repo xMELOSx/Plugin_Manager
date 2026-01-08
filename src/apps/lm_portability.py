@@ -38,27 +38,12 @@ class LMPortabilityMixin:
         # 2. 保存先ファイルの選択 (.dioco)
         app_name = getattr(self, 'app_name', 'unknown')
         default_filename = f"{app_name}_export.dioco"
-        
-        # Phase 36: Restyle dialog to match dark theme
-        dialog = QFileDialog(self, _("Select Export Destination"), default_filename, "Dionys Control Export (*.dioco)")
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
-        # Apply explicit dark theme
-        dialog.setStyleSheet("""
-            QFileDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLabel { color: #ffffff; }
-            QLineEdit { background-color: #333; color: #ffffff; border: 1px solid #555; }
-            QTreeView { background-color: #1a1a1a; color: #ffffff; alternate-background-color: #222; }
-            QListView { background-color: #1a1a1a; color: #ffffff; }
-            QPushButton { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 5px; }
-            QPushButton:hover { background-color: #444; }
-        """)
-        
-        if dialog.exec():
-            dest_file = dialog.selectedFiles()[0]
-        else:
-            return
+        dest_file, _ = QFileDialog.getSaveFileName(
+            self, "エクスポート先の選択", 
+            default_filename,
+            "Dionys Control Export (*.dioco)"
+        )
+        if not dest_file: return
         
         if not dest_file.endswith('.dioco'):
             dest_file += '.dioco'
@@ -162,26 +147,12 @@ class LMPortabilityMixin:
     def _import_portability_package(self):
         """エクスポートされた .dioco ファイルから設定とリソースをインポートする。"""
         # 1. ソースファイルの選択
-        # Phase 36: Restyle dialog to match dark theme
-        dialog = QFileDialog(self, _("Select Import File"), "", "Dionys Control Export (*.dioco);;All Files (*)")
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog)
-        # Apply explicit dark theme
-        dialog.setStyleSheet("""
-            QFileDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLabel { color: #ffffff; }
-            QLineEdit { background-color: #333; color: #ffffff; border: 1px solid #555; }
-            QTreeView { background-color: #1a1a1a; color: #ffffff; alternate-background-color: #222; }
-            QListView { background-color: #1a1a1a; color: #ffffff; }
-            QPushButton { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 5px; }
-            QPushButton:hover { background-color: #444; }
-        """)
-        
-        if dialog.exec():
-            source_file = dialog.selectedFiles()[0]
-        else:
-            return
+        source_file, _ = QFileDialog.getOpenFileName(
+            self, "インポートファイルの選択", 
+            "",
+            "Dionys Control Export (*.dioco);;All Files (*)"
+        )
+        if not source_file: return
         
         # 2. ZIPファイルを一時ディレクトリに展開
         with tempfile.TemporaryDirectory() as temp_dir:

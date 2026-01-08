@@ -23,7 +23,6 @@ import os
 import time
 from src.core.lang_manager import _
 from src.ui.link_master.item_card import ItemCard
-from PyQt6.QtWidgets import QApplication
 import re # Phase 33: Natural Sort
 
 
@@ -303,7 +302,6 @@ class LMScanHandlerMixin:
             has_target_conflict=r.get('has_target_conflict', False),
             is_misplaced=r.get('is_misplaced', False) if (not is_package and context != "contents") else False,
             is_package=is_package,
-
             is_trash_view=r.get('is_trash_view', False),
             loader=self.image_loader,
             deployer=self.deployer,
@@ -323,8 +321,6 @@ class LMScanHandlerMixin:
             lib_name=item_config.get('lib_name', ''),
             is_library=r.get('is_library', 0),
             is_library_alt_version=r.get('is_library_alt_version', False),
-            category_deploy_status=item_config.get('category_deploy_status') if not is_package else None,  # Phase 36: Only for categories
-
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
@@ -387,7 +383,7 @@ class LMScanHandlerMixin:
 
         
         duration = time.perf_counter() - start_t
-        self.logger.debug(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
+        self.logger.info(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
 
     def _update_cat_button_styles(self, view_config, level_default):
         """Update category display mode button styles."""
@@ -460,7 +456,7 @@ class LMScanHandlerMixin:
         """Called when scan is complete."""
         self._hide_search_indicator()
         if hasattr(self, '_nav_start_t') and self._nav_start_t:
-            self.logger.debug(f"[Profile] Category Navigation/Redraw took {time.time()-self._nav_start_t:.3f}s")
+            self.logger.info(f"[Profile] Category Navigation/Redraw took {time.time()-self._nav_start_t:.3f}s")
             self._nav_start_t = None
 
     def _scan_children_status(self, folder_path: str, target_root: str, cached_configs: dict = None) -> tuple:
@@ -558,25 +554,9 @@ class LMScanHandlerMixin:
         # Phase 28 Optimization: Fetch DB once!
         all_configs_raw = self.db.get_all_folder_configs()
         cached_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
-
-        # Phase 36: Sync cached_configs with ACTUAL displayed package status
-        # This fixes "Ghost Unlink" on category borders by trusting UI over stale DB.
-        if self.pkg_layout:
-             for i in range(self.pkg_layout.count()):
-                 item = self.pkg_layout.itemAt(i)
-                 if item and item.widget():
-                     card = item.widget()
-                     if isinstance(card, ItemCard) and getattr(card, 'is_package', False):
-                         # Override DB status with actual card status
-                         rel_p = card.rel_path.replace('\\', '/')
-                         if rel_p not in cached_configs: cached_configs[rel_p] = {}
-                         cached_configs[rel_p]['last_known_status'] = card.link_status
-
         
         cat_count = 0
-        # Phase 32: Do NOT scan pkg_layout here! It causes 'Ghost Unlink' on packages
-        # because they might be misidentified as categories if is_package is stale.
-        for layout in [self.cat_layout]:
+        for layout in [self.cat_layout, self.pkg_layout]:
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
@@ -585,31 +565,16 @@ class LMScanHandlerMixin:
                             cat_count += 1
                             # Pass cache
                             has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                            
-                            # Phase: Category Deploy Fix - Also refresh the category's OWN deployment status
-                            card_config = cached_configs.get(card.rel_path) or {}
-                            cat_status = card_config.get('category_deploy_status')
-                            
-                            card.update_data(
-                                is_package=False,
-                                has_linked=has_linked, 
-                                has_conflict_children=has_conflict, 
-                                has_partial_children=has_partial, 
-                                has_unlinked_children=has_unlinked,
-                                category_deploy_status=cat_status
-                            )
+                            card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
         
         t_cat_end = time.perf_counter()
-        self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
-        
-        # Phase 34: Ensure UI processing
-        QApplication.processEvents()
+        self.logger.info(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
         
         # Also refresh package card borders (green for linked, red for conflict)
-        # self._refresh_package_cards()
+        self._refresh_package_cards()
         
         t_total_end = time.perf_counter()
-        self.logger.debug(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
+        self.logger.info(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
 
     def _refresh_package_cards(self):
         """Refresh link status for all Package cards (updates green/conflict borders)."""
@@ -628,7 +593,7 @@ class LMScanHandlerMixin:
                     card._update_style()
         
         t_end = time.perf_counter()
-        self.logger.debug(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
+        self.logger.info(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
 
     def _set_cat_display_mode(self, mode):
         """Change display mode for all category cards."""
@@ -689,27 +654,11 @@ class LMScanHandlerMixin:
             # This is vastly faster than a recursive disk scan.
             with self.db.get_connection() as conn:
                 cur = conn.cursor()
-                # Count PACKAGES that are directly linked or partial
-                sql_pkgs = "SELECT COUNT(*) FROM lm_folder_config WHERE last_known_status IN ('linked', 'partial') AND folder_type = 'package'"
-                cur.execute(sql_pkgs)
-                total_link_count = cur.fetchone()[0]
-
-                # Count CHILDREN of CATEGORIES that are marked as 'deployed'
-                sql_cats = "SELECT rel_path FROM lm_folder_config WHERE category_deploy_status = 'deployed'"
-                cur.execute(sql_cats)
-                deployed_cats = [r[0] for r in cur.fetchall()]
-                
-                # For each deployed category, count its top-level contents
-                storage_root = getattr(self, 'storage_root', None)
-                if not storage_root: return # Cannot proceed without storage root
-                
-                for cat_rel in deployed_cats:
-                    cat_abs = os.path.join(storage_root, cat_rel)
-                    if os.path.isdir(cat_abs):
-                        try:
-                            children = [d for d in os.listdir(cat_abs) if os.path.isdir(os.path.join(cat_abs, d)) and not d.startswith('.') and d not in ('_Trash', 'Trash')]
-                            total_link_count += len(children)
-                        except: pass
+                # Count ALL types (Categories and Packages) as requested
+                sql = "SELECT COUNT(*) FROM lm_folder_config WHERE last_known_status IN ('linked', 'partial')"
+                cur.execute(sql)
+                res = cur.fetchone()
+                total_link_count = res[0] if res else 0
         except Exception as e:
             self.logger.warning(f"Fast total count query failed: {e}")
             
@@ -738,7 +687,7 @@ class LMScanHandlerMixin:
         if not app_data: return
         
         storage_root = app_data.get('storage_root')
-        target_roots = [r for r in [app_data.get('target_root'), app_data.get('target_root_2'), app_data.get('target_root_3'), app_data.get('target_root_4')] if r and os.path.exists(r)]
+        target_roots = [r for r in [app_data.get('target_root'), app_data.get('target_root_2')] if r and os.path.exists(r)]
         if not (storage_root and os.path.exists(storage_root)): return
 
         self.logger.info("Starting manual rebuild of link status cache...")

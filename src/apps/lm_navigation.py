@@ -1,6 +1,3 @@
-""" 🚨 厳守ルール: ファイル操作禁止 🚨
-ファイルI/Oは、必ず src.core.file_handler を経由すること。
-"""
 """
 Link Master: Navigation Mixin
 パンくずリストとパスナビゲーションのロジック。
@@ -36,7 +33,7 @@ class LMNavigationMixin:
         if not curr or not root:
             return ""
         try:
-            rel = os.path.relpath(curr, root).replace('\\', '/')
+            rel = os.relpath(curr, root).replace('\\', '/')
             return "" if rel == "." else rel
         except:
             return ""
@@ -74,7 +71,7 @@ class LMNavigationMixin:
         trail_rel = ""
         target_rel = ""
         
-        if path == "" or path == self.storage_root:
+        if not path or path == self.storage_root:
             if active_selection and active_selection != self.storage_root:
                 try:
                     trail_rel = os.path.relpath(active_selection, self.storage_root).replace('\\', '/')
@@ -98,17 +95,10 @@ class LMNavigationMixin:
                     sep_lbl.setStyleSheet("color: #888; font-size: 13px;")
                     self.breadcrumb_layout.addWidget(sep_lbl)
                     
-                    trash_lbl = ClickableLabel(_("Trash"), parent=self)
+                    trash_lbl = ClickableLabel(_("ごみ箱"), parent=self)
                     trash_lbl.setStyleSheet("color: #3498db; font-weight: bold; font-size: 13px; text-decoration: underline;")
                     # Capture trash_path with default argument to avoid late binding issue
                     trash_lbl.clicked.connect(lambda checked=False, tp=trash_path: self._load_items_for_path(tp, force=True))
-                    
-                    # Context menu for Trash breadcrumb
-                    trash_lbl.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-                    trash_lbl.customContextMenuRequested.connect(
-                        lambda pos, tp=trash_path, l=trash_lbl: self._show_trash_breadcrumb_menu(tp, l.mapToGlobal(pos))
-                    )
-                    
                     self.breadcrumb_layout.addWidget(trash_lbl)
                     self.breadcrumb_layout.addStretch()
                     return
@@ -172,6 +162,7 @@ class LMNavigationMixin:
             self.current_path = None
             self._load_items_for_path(self.storage_root)
             return
+            
         # View the parent so the segment itself is shown as a card
         parent_abs = os.path.dirname(abs_path)
         self._load_items_for_path(parent_abs)
@@ -182,21 +173,6 @@ class LMNavigationMixin:
         menu = self._create_item_context_menu(rel_path)
         if menu:
             menu.exec(global_pos)
-
-    def _show_trash_breadcrumb_menu(self, trash_path, global_pos):
-        """Show context menu for Trash breadcrumb segment."""
-        from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QAction
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("QMenu { background-color: #2b2b2b; color: #ddd; border: 1px solid #444; } "
-                           "QMenu::item:selected { background-color: #3d4a59; }")
-        
-        open_explorer_act = QAction(_("📁 Open in Explorer"), self)
-        open_explorer_act.triggered.connect(lambda: os.startfile(trash_path))
-        menu.addAction(open_explorer_act)
-        
-        menu.exec(global_pos)
 
     def _navigate_to_path(self, path):
         """Called by ItemCard click for directory navigation."""

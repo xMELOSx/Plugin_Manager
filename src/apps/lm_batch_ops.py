@@ -1,6 +1,3 @@
-""" 🚨 厳守ルール: ファイル操作禁止 🚨
-ファイルI/Oは、必ず src.core.file_handler を経由すること。
-"""
 """
 Link Master: Batch Operations Mixin
 Extracted from LinkMasterWindow for modularity.
@@ -11,92 +8,12 @@ import time
 from PyQt6.QtWidgets import QMessageBox
 from src.ui.link_master.item_card import ItemCard
 from PyQt6.QtCore import QThread
-from src.core.lang_manager import _
 from .lm_batch_ops_worker import TagConflictWorker
 from src.core.link_master.core_paths import get_trash_dir
-from src.core.file_handler import FileHandler
-
-_file_handler = FileHandler()
 
 
 class LMBatchOpsMixin:
     """Mixin providing batch operation methods for LinkMasterWindow."""
-    
-    def _unload_active_links(self):
-        """Unload all active links and clean up registry."""
-        from src.core.lang_manager import _
-        
-        # Standardized Style for Confirmation
-        msg = QMessageBox(self)
-        msg.setWindowTitle(_("Confirm Unlink All"))
-        msg.setText(_("Are you sure you want to remove all active symbolic links and perform a full physical sweep of the target folders?"))
-        msg.setInformativeText(_("This will also remove 'ghost' links not tracked by the database."))
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
-        from src.ui.styles import DialogStyles
-        msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-
-        if msg.exec() == QMessageBox.StandardButton.No:
-            return
-
-        # Phase 28: Clean up invalid registry entries
-        import winreg
-        try:
-            key_path = r"Software\LinkMaster\ActiveLinks"
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
-                    # Registry cleanup would happen here
-                    # Note: Full cleanup logic would involve enumerating and deleting, 
-                    # but we'll focus on the core unlinking first.
-                    pass
-            except FileNotFoundError:
-                pass
-        except Exception as e:
-            self.logger.error(f"Registry cleanup error: {e}")
-            
-        # Get all folders to ensure we catch "ghost" links not marked as linked in DB
-        all_configs = self.db.get_all_folder_configs()
-        
-        # Phase 7 Fix: Sweep ALL known folders, then perform a physical sweep of search roots
-        count = 0
-        if all_configs:
-            for rel_path in all_configs.keys():
-                if self._unlink_single(rel_path, update_ui=False):
-                    count += 1
-            
-            # Phase: Nuclear Reset - Clear ALL logical conflict flags for the current app context in DB
-            try:
-                self.db.clear_all_conflict_flags()
-            except: pass
-        
-        # Physical Sweep for "Ghost Links" not in DB
-        app_data = self.app_combo.currentData()
-        if app_data:
-            storage_root = app_data.get('storage_root')
-            search_roots = []
-            for k in ['target_root', 'target_root_2', 'target_root_3']:
-                root = app_data.get(k)
-                if root and os.path.isdir(root):
-                    search_roots.append(root)
-            
-            if storage_root and search_roots:
-                self.logger.info(f"Performing physical sweep for orphaned links pointing to: {storage_root}")
-                # Use deployer's sweep method
-                self.deployer.remove_links_pointing_to(search_roots, storage_root)
-
-        # Refresh the entire view
-        self.refresh()
-        if hasattr(self, '_update_total_link_count'):
-            self._update_total_link_count()
-            
-        # Success Notification with shared styling
-        from src.ui.styles import DialogStyles
-        self._show_styled_message(
-            _("Unlink All Complete"),
-            _("Successfully removed {n} active links and performed a physical cleanup.").format(n=count),
-            QMessageBox.Icon.Information
-        )
     
     def _update_cards_link_status(self, paths):
         """Partial update: Update link status for specific cards without rebuild."""
@@ -300,24 +217,10 @@ class LMBatchOpsMixin:
         """Moves all selected items to trash. Uses core _trash_single."""
         if not self.selected_paths: return
         
-        # Phase 7 FIX: Enhanced styling for Batch Trash
         msg = QMessageBox(self)
-        msg.setWindowTitle(_("Batch Trash"))
-        msg.setText(_("Move {n} items to trash?").format(n=len(self.selected_paths)))
+        msg.setWindowTitle("Batch Trash")
+        msg.setText(f"Move {len(self.selected_paths)} items to trash?")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg.setStyleSheet(enhanced_styled_msg_box)
-        
         if msg.exec() != QMessageBox.StandardButton.Yes: return
         
         # Use core _trash_single for each item (shows strikethrough first)
@@ -331,28 +234,6 @@ class LMBatchOpsMixin:
     def _batch_restore_selected(self):
         """Restores all selected items from trash."""
         if not self.selected_paths: return
-        
-        # Phase 7 Fix: Added missing confirmation dialog with styling
-        # Phase 7 FIX: Enhanced styling for Batch Restore
-        msg = QMessageBox(self)
-        msg.setWindowTitle(_("Batch Restore"))
-        msg.setText(_("Restore {n} items from trash?").format(n=len(self.selected_paths)))
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg.setStyleSheet(enhanced_styled_msg_box)
-        
-        if msg.exec() != QMessageBox.StandardButton.Yes: return
-
         for path in list(self.selected_paths):
             self._on_package_restore(path, refresh=False)
         self.selected_paths.clear()
@@ -510,104 +391,86 @@ class LMBatchOpsMixin:
                 app_skip_levels_default=app_data.get('default_skip_levels', 0)
 
             )
-            dialog = FolderPropertiesDialog(
-                parent=self,
-                folder_path=path,
-                current_config=current_config,
-                batch_mode=False,
-                app_name=app_data['name'],
-                storage_root=storage_root,
-                thumbnail_manager=self.thumbnail_manager,
-                app_deploy_default=app_data.get('deployment_type', 'folder'),
-                app_conflict_default=app_data.get('conflict_policy', 'backup'),
-                app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image'),
-                app_skip_levels_default=app_data.get('default_skip_levels', 0)
+            if dialog.exec():
+                data = dialog.get_data()
+                
+                # Phase 3.5: Identify if link-impacting properties changed
+                LINK_AFFECTING_KEYS = {
+                    'folder_type', 'deploy_type', 'conflict_policy', 
+                    'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
+                }
+                impacts_link = any(k in data and data[k] != current_config.get(k) for k in LINK_AFFECTING_KEYS)
+                
+                self.db.update_folder_display_config(rel, **data)
+                
+                # Targeted UI + Auto-Sync
+                abs_norm = os.path.normpath(path).replace('\\', '/')
+                card = self._get_active_card_by_path(abs_norm)
+                
+                # Handling Profiling Log
+                self.logger.info(f"PROFILE: Property Edit Return. Path={abs_norm}")
+                self.logger.info(f"PROFILE: Dialog Data Keys: {list(data.keys())}")
+                if 'image_path' in data:
+                    self.logger.info(f"PROFILE: New image_path: {data['image_path']}")
+                self.logger.info(f"PROFILE: Card found? {card is not None}")
 
-            )
-            # Phase 35: Standardize on Non-modal for all property edits
-            dialog.config_saved.connect(lambda data: self._on_property_dialog_saved(data, rel, path, current_config))
-            self._active_prop_dialog = dialog # Prevent GC
-            dialog.show()
-            
+                if card:
+                    card.update_data(**data)
+                    # Phase 3.5: Auto-sync if currently linked AND link properties changed
+                    if card.link_status == 'linked' and impacts_link:
+                        self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
+                        self._deploy_single(rel)
+                
+                # Phase 28: If Conflict Tag, Scope, or LIBRARY properties changed, we MUST refresh related cards
+                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+                if any(k in data for k in TAG_AFFECTING_KEYS):
+                     self._refresh_tag_visuals()
         else:
             # Batch Mode
             dialog = FolderPropertiesDialog(
                 parent=self, 
-                batch_mode=True,
+                folder_path="",
+                current_config={},
+                batch_mode=True, 
                 app_name=app_data['name'],
-                storage_root=storage_root,
+                storage_root=app_data.get('storage_root'),
                 thumbnail_manager=self.thumbnail_manager,
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
                 app_pkg_style_default=app_data.get('default_package_style', 'image'),
                 app_skip_levels_default=app_data.get('default_skip_levels', 0)
+
             )
             
-            # Phase 35: Use signal for batch save too
-            dialog.config_saved.connect(self._on_batch_property_dialog_saved)
-            self._active_prop_dialog = dialog
-            dialog.show()
-
-    def _on_property_dialog_saved(self, data, rel, path, current_config):
-        """Asynchronous callback for property save in non-modal mode."""
-        # Phase 3.5: Identify if link-impacting properties changed
-        LINK_AFFECTING_KEYS = {
-            'folder_type', 'deploy_type', 'conflict_policy', 
-            'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
-        }
-        impacts_link = any(k in data and data[k] != current_config.get(k) for k in LINK_AFFECTING_KEYS)
-        
-        self.db.update_folder_display_config(rel, **data)
-        
-        # Targeted UI + Auto-Sync
-        abs_norm = os.path.normpath(path).replace('\\', '/')
-        card = self._get_active_card_by_path(abs_norm)
-        
-        # Handling Profiling Log
-        self.logger.info(f"PROFILE: Property Edit Return (Async). Path={abs_norm}")
-        self.logger.info(f"PROFILE: Card found? {card is not None}")
-
-        if card:
-            card.update_data(**data)
-            # Phase 3.5: Auto-sync if currently linked AND link properties changed
-            if card.link_status == 'linked' and impacts_link:
-                self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
-                self._deploy_single(rel)
-        
-        # Phase 28: If Conflict Tag, Scope, or LIBRARY properties changed, we MUST refresh related cards
-        TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
-        if any(k in data for k in TAG_AFFECTING_KEYS):
-             self._refresh_tag_visuals()
-
-    def _on_batch_property_dialog_saved(self, data):
-        """Asynchronous callback for batch property save."""
-        # Use existing batch logic but adapted for signal
-        app_data = self.app_combo.currentData()
-        if not app_data: return
-        storage_root = app_data.get('storage_root')
-        
-        for path in self.selected_paths:
-            try:
-                rel = os.path.relpath(path, storage_root).replace('\\', '/')
-                if rel == ".": rel = ""
-            except: continue
-            
-            # Filter out None/No Change items in batch mode
-            clean_data = {k: v for k, v in data.items() if v != "KEEP"}
-            if clean_data:
-                self.db.update_folder_display_config(rel, **clean_data)
+            if dialog.exec():
+                data = dialog.get_data()
+                storage_root = app_data.get('storage_root')
                 
-                # Update Card
-                abs_norm = os.path.normpath(path).replace('\\', '/')
-                card = self._get_active_card_by_path(abs_norm)
-                if card:
-                    card.update_data(**clean_data)
-        
-        # Refresh visuals
-        self._refresh_tag_visuals()
-        self.logger.info(f"Batch updated properties for {len(self.selected_paths)} items asynchronously.")
+                batch_updates = {k: v for k, v in data.items() if v is not None}
+                if not batch_updates: return
+                
+                for path in self.selected_paths:
+                    try:
+                        rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                        if rel == ".": rel = ""
+                        self.db.update_folder_display_config(rel, **batch_updates)
+                        
+                        # Phase 3.5: Batch Auto-sync
+                        abs_norm = os.path.normpath(path).replace('\\', '/')
+                        card = self._get_active_card_by_path(abs_norm)
+                        if card:
+                            card.update_data(**batch_updates)
+                            if card.link_status == 'linked' and any(k in batch_updates for k in {'deploy_type', 'conflict_policy', 'deployment_rules'}):
+                                self.logger.info(f"Auto-syncing batch item {rel}...")
+                                self._deploy_single(rel)
+                    except Exception as e:
+                        self.logger.error(f"Batch update failed for {path}: {e}")
+                
+                # Phase 28: Batch Mode refresh for tags/libraries
+                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+                if any(k in batch_updates for k in TAG_AFFECTING_KEYS):
+                     self._refresh_tag_visuals()
 
     # ===== Core Single-Item Methods =====
     
@@ -675,7 +538,8 @@ class LMBatchOpsMixin:
             dest = os.path.join(trash_root, f"{name}_{int(time.time())}")
             
         try:
-            _file_handler.move_path(abs_path, dest)
+            import shutil
+            shutil.move(abs_path, dest)
             self.logger.info(f"Moved {name} to Trash")
 
             # Store origin for restore
@@ -779,19 +643,17 @@ class LMBatchOpsMixin:
         # Connect signals
         self._tag_sync_thread.started.connect(self._tag_sync_worker.run)
         self._tag_sync_worker.finished.connect(self._on_tag_refresh_finished)
-        
-        # Phase 7 FIX: Ensure absolute cleanup of QThread and Worker to prevent "hanging" workers
         self._tag_sync_worker.finished.connect(self._tag_sync_thread.quit)
         self._tag_sync_worker.finished.connect(self._tag_sync_worker.deleteLater)
         self._tag_sync_thread.finished.connect(self._tag_sync_thread.deleteLater)
+        # Cleanup python reference
         self._tag_sync_thread.finished.connect(self._cleanup_tag_thread)
         
         self._tag_sync_thread.start()
     
     def _cleanup_tag_thread(self):
-        """Clean up the Python reference to the thread and worker to allow GC."""
+        """Clean up the Python reference to the thread."""
         self._tag_sync_thread = None
-        self._tag_sync_worker = None
 
     def _on_card_deployment_requested(self, path):
         """Phase 30: Handle direct deployment toggle from card overlay button."""
@@ -1152,25 +1014,13 @@ class LMBatchOpsMixin:
             if lib_name:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
-                    # Phase 7 FIX: Use styled message box for dependency confirmation
-                    msg = QMessageBox(self)
-                    msg.setWindowTitle(_("Unlink Dependents"))
-                    msg.setText(_("Library '{lib}' unlinked.\n\nUnlink {n} packages depending on it?").format(lib=lib_name, n=len(dependent_packages)))
-                    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                    
-                    enhanced_styled_msg_box = """
-                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                        QLabel { color: white; font-size: 13px; background: transparent; }
-                        QPushButton { 
-                            background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                            padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                        }
-                        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                        QPushButton:pressed { background-color: #2980b9; }
-                    """
-                    msg.setStyleSheet(enhanced_styled_msg_box)
-                    
-                    if msg.exec() == QMessageBox.StandardButton.Yes:
+                    reply = QMessageBox.question(
+                        self, "依存パッケージをアンリンク", 
+                        f"ライブラリ「{lib_name}」をアンリンクしました。\n\n"
+                        f"このライブラリに依存する {len(dependent_packages)} 個のパッケージもアンリンクしますか？",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
 

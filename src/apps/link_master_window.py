@@ -3,7 +3,6 @@
 """
 
 import os
-import sys
 import json
 import logging
 import copy
@@ -26,7 +25,6 @@ from src.core.link_master.database import get_lm_registry, get_lm_db
 from src.core.link_master.scanner import Scanner
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.item_card import ItemCard
-from src.ui.styles import DialogStyles
 from src.core.link_master.deployer import Deployer
 from src.ui.link_master.single_folder_proxy import SingleFolderProxyModel
 from src.ui.link_master.explorer_window import ExplorerPanel # Renamed
@@ -49,7 +47,6 @@ from src.apps.lm_card_settings import LMCardSettingsMixin
 from src.apps.lm_display import LMDisplayMixin
 from src.apps.lm_navigation import LMNavigationMixin
 from src.apps.lm_scan_handler import LMScanHandlerMixin
-from src.ui.styles import DialogStyles
 from src.apps.lm_import import LMImportMixin
 from src.apps.lm_tags import LMTagsMixin
 from src.apps.lm_card_pool import LMCardPoolMixin
@@ -94,6 +91,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Initialize Thumbnail Manager (resource/app in Project Root)
         # Initialize Thumbnail Manager (resource/app in Project Root)
+        import sys
         if getattr(sys, 'frozen', False):
             project_root = os.path.dirname(sys.executable)
         else:
@@ -459,15 +457,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     
     def closeEvent(self, event):
         """Save geometry and UI state on close, and close subwindows."""
-        # 0. Phase 36: Check for unsaved Quick Memo
-        if hasattr(self, 'notes_panel') and self.notes_panel:
-            if not self.notes_panel.maybe_save():
-                event.ignore()
-                return
-        
         # 1. Save last viewed app/path
         self._save_last_state()
-
         
         # 2. Save category view height (Persistent per system)
         if hasattr(self, '_category_fixed_height'):
@@ -566,32 +557,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # 3. Help Button
         self.help_btn = TitleBarButton("?", is_toggle=True)
-        try:
-            import os
-            from PyQt6.QtGui import QPixmap, QPainter, QFont, QColor
-            from PyQt6.QtCore import Qt
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            res_dir = os.path.join(project_root, "resource", "tags")
-            if not os.path.exists(res_dir): os.makedirs(res_dir, exist_ok=True)
-            help_icon_path = os.path.join(res_dir, "help_icon_v2.png")
-            
-            if not os.path.exists(help_icon_path):
-                pix = QPixmap(64, 64)
-                pix.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(pix)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                # Try Segoe UI Emoji for Windows color emoji support
-                font = QFont("Segoe UI Emoji", 48)
-                font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-                painter.setFont(font)
-                rect = pix.rect()
-                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "❔")
-                painter.end()
-                pix.save(help_icon_path)
-            
-            self.help_btn.set_icon_path(help_icon_path)
-        except Exception as e:
-            self.logger.error(f"Failed to generate help icon cache: {e}")
         self.help_btn.setObjectName("titlebar_help_btn")
         self.help_btn.clicked.connect(self.toggle_help)
         self.help_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -753,15 +718,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         if hasattr(self, 'pkg_title_lbl'): self.pkg_title_lbl.setText(_("<b>Packages</b>"))
         if hasattr(self, 'btn_import_pkg'): self.btn_import_pkg.setToolTip(_("Import Folder or Zip to Packages"))
-        
-        # Sync trash button state
-        if hasattr(self, 'btn_trash'):
-            from src.core.link_master.core_paths import get_trash_dir
-            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
-            if app_data and self.current_path: # Ensure current_path is defined
-                trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
-                # Compare current_path with trash_path to set button state
-                self.btn_trash.setChecked(self.current_path.replace('\\', '/') == trash_path)
         
         if hasattr(self, 'total_link_count_label'):
             self.total_link_count_label.setToolTip(_("Total Link Count"))
@@ -1523,13 +1479,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if target_root and os.path.isdir(target_root):
             os.startfile(target_root)
         else:
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(_("Error"))
-            msg_box.setText(_("Invalid target folder: {path}").format(path=target_root))
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            
-            msg_box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-            msg_box.exec()
+            QMessageBox.warning(self, "Error", f"Invalid target folder: {target_root}")
 
     def _load_apps(self):
         apps = self.registry.get_apps()
@@ -1679,8 +1629,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             if root_path and os.path.isdir(root_path):
                 self.storage_root = root_path
                 # Update Explorer Scope (with app_name for DB sync - Phase 18.13)
-                self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'], app_data=app_data)
-
+                self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'])
                 try:
                     self.explorer_panel.config_changed.disconnect()
                 except: pass
@@ -1744,8 +1693,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.size_worker = SizeScannerWorker(self.db, self.storage_root)
         self.size_worker.progress.connect(self._on_size_scan_progress)
         self.size_worker.all_finished.connect(self._on_size_scan_finished)
-        # Phase 7 FIX: Ensure thread is deleted after completion
-        self.size_worker.finished.connect(self.size_worker.deleteLater)
         self.size_worker.start()
 
     def _on_size_scan_progress(self, current, total):
@@ -1762,27 +1709,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.tools_panel.set_last_check_time(now_str)
         
         self._refresh_current_view()
-        # Phase 7 FIX: Clear Python reference for GC
-        self.size_worker = None
-        
         from PyQt6.QtWidgets import QMessageBox
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(_("完了"))
-        msg_box.setText(_("全てのパッケージ容量チェックが完了しました。"))
-        msg_box.setIcon(QMessageBox.Icon.Information)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg_box.setStyleSheet(enhanced_styled_msg_box)
-        msg_box.exec()
+        QMessageBox.information(self, "完了", "全てのパッケージ容量チェックが完了しました。")
 
     def _auto_register_folders(self, storage_root):
         """Auto-register folders to ensure they exist in DB, but let dynamic logic handle types."""
@@ -1878,13 +1806,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         is_already_open = self.drawer_widget.isVisible()
         current_tab = self.sidebar_tabs.currentIndex()
         
-        # Phase 36: Check for unsaved Quick Memo when switching AWAY from Notes tab
-        if current_tab == 2 and index != 2 and hasattr(self, 'notes_panel') and self.notes_panel:
-            if not self.notes_panel.maybe_save():
-                return  # User cancelled, abort tab switch
-        
         # Lazy Loading implementation
-
         if index == 0 and self.library_panel is None:
             self.library_panel = LibraryPanel(self, db=self.db)
             self.library_panel.request_register_library.connect(self._register_selected_as_library)
@@ -1964,17 +1886,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                  self.tools_panel.slider_deploy_opacity.setValue(int(self.deploy_button_opacity * 100))
 
         if is_already_open and current_tab == index:
-            # Phase 36: Check for unsaved Quick Memo when closing drawer from Notes tab
-            if current_tab == 2 and hasattr(self, 'notes_panel') and self.notes_panel:
-                if not self.notes_panel.maybe_save():
-                    return  # User cancelled, abort drawer close
-            
             # Cache splitter sizes before closing
             if hasattr(self, 'sidebar_splitter'):
                 self._last_splitter_sizes = self.sidebar_splitter.sizes()
             # Close it
             self.drawer_widget.hide()
-
             self.btn_libraries.setChecked(False)
             self.btn_presets.setChecked(False)
             self.btn_notes.setChecked(False)
@@ -2008,23 +1924,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         """Registers all currently selected items as libraries (requires metadata)."""
         if not self.selected_paths:
             from PyQt6.QtWidgets import QMessageBox
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(_("Library"))
-            msg_box.setText(_("Please select one or more items to register."))
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
-            msg_box.exec()
+            QMessageBox.warning(self, "Library", "Please select one or more items to register.")
             return
         
         # Create registration dialog with existing library dropdown
@@ -2050,23 +1950,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
         if self.library_panel:
             self.library_panel.refresh()
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(_("Library"))
-        msg_box.setText(_("Registered {count} item(s) to library: {name}").format(count=count, name=name))
-        msg_box.setIcon(QMessageBox.Icon.Information)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg_box.setStyleSheet(enhanced_styled_msg_box)
-        msg_box.exec()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Library", f"Registered {count} item(s) to library: {name}")
 
 
     def _update_notes_path(self):
@@ -2096,48 +1981,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _update_drawer_geometry(self,):
         """Update absolute position of the floating explorer panel."""
-        if not hasattr(self, 'explorer_panel') or not hasattr(self, 'btn_drawer'):
+        if not hasattr(self, 'explorer_panel') or not hasattr(self, 'content_wrapper'):
             return
-            
-        # Position relative to the toggle button
-        btn_pos = self.btn_drawer.mapTo(self, self.btn_drawer.rect().topRight())
-        
-        # Check available height
-        global_pos = self.mapToGlobal(self.rect().topLeft())
-        screen_geo = self.screen().availableGeometry()
-        
-        # Calculate Y and Height
-        y = btn_pos.y()
-        # Adjust height to fit within window, respecting bottom margin
-        window_height = self.height()
-        # Roughly header height (50) + margins
-        height = window_height - y - 20 
-        
+        # Position at the left edge of content_wrapper, below the header
+        pos = self.content_wrapper.mapTo(self, self.content_wrapper.rect().topLeft())
+        height = self.content_wrapper.height()
         # Use saved width or default to 280
         width = getattr(self, '_explorer_panel_width', 280)
-        
-        # X: Button Right + small margin (5px)
-        x = btn_pos.x() + 5
-        
-        self.explorer_panel.setGeometry(x, y, width, height)
+        self.explorer_panel.setGeometry(pos.x() + 20, pos.y(), width, height)
         self.explorer_panel.raise_()
-
-    def _on_explorer_target_changed(self, key):
-        """Handle target change from ExplorerPanel (Viewer Only)."""
-        app_data = self.app_combo.currentData()
-        if not app_data: return
-        
-        # Get target path but do NOT update active deployment state (current_target_key)
-        if key == 'source':
-            target_path = app_data.get('storage_root', '')
-        else:
-            target_path = app_data.get(key, "")
-            
-        # Switch Explorer View path ONLY (No interference with main card view)
-        if target_path and os.path.exists(target_path):
-            self.explorer_panel.set_storage_root(target_path)
-        else:
-            self.logger.warning(f"Target path not found for explorer view: {key} -> {target_path}")
     
     def _on_explorer_panel_width_changed(self, new_width: int):
         """Cache explorer panel width for persistence."""
@@ -2390,15 +2242,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Phase 28: Save last state on every navigation for startup restoration
         self._save_last_state()
         
-        # Phase 36: Synchronize Trash button state during navigation
-        if hasattr(self, 'btn_trash'):
-            from src.core.link_master.core_paths import get_trash_dir
-            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
-            if app_data:
-                trash_path = get_trash_dir(app_data['name']).replace('\\', '/')
-                target_norm = os.path.normpath(path).replace('\\', '/')
-                self.btn_trash.setChecked(target_norm == trash_path)
-
         self._update_breadcrumbs(path)
         
         # Phase 28: Use pooling instead of destruction
@@ -2448,8 +2291,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.explorer_panel.focus_on_path(rel_path)
             except:
                 pass
-
-
 
 
     # --- Target Switching ---
@@ -2688,11 +2529,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 import time
                 t_opt = time.perf_counter()
                 from src.components.sub_windows import OptionsWindow
-                # Pass 'self' as parent for reference, NOT for Qt parenting (which causes double transparency)
-                # OptionsWindow stores it as parent_debug_window for applying settings
-                self.options_window = OptionsWindow(self, self.db)
+                self.options_window = OptionsWindow(None, self.db)
                 self.logger.info(f"[Profile] OptionsWindow (Lazy) init took {time.perf_counter()-t_opt:.3f}s")
-
                 # Removed setParent to prevent darkening artifacts (Double Transparency)
                 # self.options_window.setParent(self, self.options_window.windowFlags())
                 self.options_window.closed.connect(self._on_options_window_closed)
@@ -2826,25 +2664,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             # Phase 32: Handle Unregister/Delete Request
             if data.get('is_unregister'):
-                msg_box = QMessageBox(self)
-                msg_box.setWindowTitle(_("Final Confirmation"))
-                msg_box.setText(_("This will permanently delete the database for '{name}'.\n"
-                                  "Are you absolutely sure?").format(name=app_data['name']))
-                msg_box.setIcon(QMessageBox.Icon.Warning)
-                msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                
-                enhanced_styled_msg_box = """
-                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                    QLabel { color: white; font-size: 13px; background: transparent; }
-                    QPushButton { 
-                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                    QPushButton:pressed { background-color: #2980b9; }
-                """
-                msg_box.setStyleSheet(enhanced_styled_msg_box)
-                reply = msg_box.exec()
+                reply = QMessageBox.warning(self, _("Final Confirmation"),
+                                          _("This will permanently delete the database for '{name}'.\n"
+                                            "Are you absolutely sure?").format(name=app_data['name']),
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                 if reply == QMessageBox.StandardButton.Yes:
                     # 1. Remove from Registry
                     self.registry.delete_app(self.current_app_id)
@@ -3175,111 +2998,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             QMenu::item:selected { background-color: #3498db; color: white; }
             QMenu::item:disabled { color: #555; }
         """
-    
-    def _show_styled_message(self, title, text, icon=QMessageBox.Icon.Information, details=None):
-        """Show a styled message box using standard application style."""
-        msg = QMessageBox(self)
-        msg.setWindowTitle(title)
-        msg.setIcon(icon)
-        msg.setText(text)
-        if details:
-            msg.setInformativeText(details)
-        msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-        return msg.exec()
 
     def _handle_deploy_single(self, rel_path):
         """Deploy a single item from context menu."""
-        if self._deploy_single(rel_path, update_ui=True):
-             # Refresh Link Master global count
-             if hasattr(self, '_update_total_link_count'):
-                 self._update_total_link_count()
-        else:
-            self._show_styled_message(_("Deploy Error"), f"Failed to deploy {rel_path}", QMessageBox.Icon.Warning)
-
-    def _handle_deploy_category(self, rel_path):
-        """Deploy category folder itself from context menu."""
-        result = self._deploy_category(rel_path, update_ui=False)
-        
-        # Case 1: Blocked due to internal conflicts
-        if result.get('blocked_reason'):
-            self._show_styled_message(
-                _("Category Deploy Blocked"),
-                _("Cannot deploy category due to internal conflicts:"),
-                QMessageBox.Icon.Warning,
-                result['blocked_reason']
-            )
-            return
-        
-        # Case 2: Needs swap (child packages are deployed)
-        if result.get('needs_swap'):
-            deployed = result.get('deployed_children', [])
-            deployed_names = [os.path.basename(p) for p in deployed]
-            
-            msg = QMessageBox(self)
-            msg.setWindowTitle(_("Swap Required"))
-            msg.setIcon(QMessageBox.Icon.Question)
-            msg.setText(_("The following packages are already deployed:"))
-            msg.setInformativeText("\n".join(deployed_names[:10]) + 
-                                   (f"\n... ({len(deployed)} total)" if len(deployed) > 10 else ""))
-            msg.setDetailedText(_("Deploying the category will unlink these packages and deploy the category folder instead."))
-            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            msg.button(QMessageBox.StandardButton.Yes).setText(_("Swap (Unlink and Deploy Category)"))
-            msg.button(QMessageBox.StandardButton.No).setText(_("Cancel"))
-            msg.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-            
-            if msg.exec() == QMessageBox.StandardButton.Yes:
-                # Perform swap
-                swap_result = self._deploy_category_with_swap(rel_path, deployed, update_ui=True)
-                if swap_result.get('success'):
-                    if hasattr(self, '_show_toast'):
-                        self._show_toast(_("Category deployed (swapped {count} packages)").format(count=len(deployed)))
-                    if hasattr(self, '_update_total_link_count'):
-                        self._update_total_link_count()
-                else:
-                    errors = swap_result.get('errors', [])
-                    if errors:
-                        self._show_styled_message(_("Category Deploy"), _("Errors occurred during deployment:"), QMessageBox.Icon.Warning, "\n".join(errors[:5]))
-            return
-        
-        # Case 3: Direct deploy (no conflicts, no swap needed)
-        if result.get('success'):
-            self.logger.info(f"Category deployed: {rel_path}")
-            # Refresh UI
-            self._refresh_tag_visuals()
-            self._refresh_category_cards()
-            if hasattr(self, '_update_total_link_count'):
-                self._update_total_link_count()
-            if hasattr(self, '_show_toast'):
-                self._show_toast(_("Category deployed"))
-        else:
-            errors = result.get('errors', [])
-            if errors:
-                self._show_styled_message(_("Category Deploy"), _("Errors occurred during deployment:"), QMessageBox.Icon.Warning, "\n".join(errors[:5]))
-
-
-    def _handle_unlink_category(self, rel_path):
-        """Unlink the category folder itself."""
-        # Unlink the category folder (same as unlink single)
-        try:
-            self._unlink_single(rel_path, update_ui=False, _cascade=True)
-        except Exception as e:
-            self.logger.error(f"Unlink category error: {e}")
-        
-        # Clear category deploy status
-        self.db.update_folder_display_config(rel_path, category_deploy_status=None)
-        
-        # Refresh UI
-        self._refresh_tag_visuals()
-        self._refresh_category_cards()
-        if hasattr(self, '_update_total_link_count'):
-            self._update_total_link_count()
-        
-        if hasattr(self, '_show_toast'):
-            self._show_toast(_("Category unlinked"))
-
+        if not self._deploy_single(rel_path, update_ui=True):
+            QMessageBox.warning(self, "Deploy Error", f"Failed to deploy {rel_path}")
 
     def _handle_unlink_single(self, rel_path):
-
         """Unlink a single item from context menu."""
         self._unlink_single(rel_path, update_ui=True)
 
@@ -3311,23 +3036,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.logger.info("Resetting all folder attributes for current app.")
         self.db.reset_app_folder_configs()
         self._refresh_current_view()
-        msg = QMessageBox(self)
-        msg.setWindowTitle(_("Success"))
-        msg.setText(_("All folder attributes have been reset."))
-        msg.setIcon(QMessageBox.Icon.Information)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg.setStyleSheet(enhanced_styled_msg_box)
-        msg.exec()
+        QMessageBox.information(self, "Success", "All folder attributes have been reset.")
 
     def _export_hierarchy_current(self):
         """Export properties starting from the current view level."""
@@ -3352,23 +3061,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'current_path') and self.current_path:
              self._load_package_contents(self.current_path)
              
-        msg = QMessageBox(self)
-        msg.setWindowTitle(_("Manual Rebuild"))
-        msg.setText(_("再構築が完了しました。"))
-        msg.setIcon(QMessageBox.Icon.Information)
-        
-        enhanced_styled_msg_box = """
-            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-            QLabel { color: white; font-size: 13px; background: transparent; }
-            QPushButton { 
-                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-            QPushButton:pressed { background-color: #2980b9; }
-        """
-        msg.setStyleSheet(enhanced_styled_msg_box)
-        msg.exec()
+        QMessageBox.information(self, "Manual Rebuild", "再構築が完了しました。")
 
 
     def _update_exe_links(self, app_data: dict):

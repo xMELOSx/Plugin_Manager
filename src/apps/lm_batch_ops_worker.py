@@ -38,11 +38,9 @@ class TagConflictWorker(QObject):
                     continue
                 
                 # Skip orphaned DB entries (folder no longer exists on disk)
-                # Only check if storage_root is available
-                if self.storage_root:
-                    abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
-                    if not os.path.exists(abs_check):
-                        continue
+                abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
+                if not os.path.exists(abs_check):
+                    continue
                     
                 if cfg.get('last_known_status') == 'linked':
                     linked_count += 1
@@ -77,7 +75,7 @@ class TagConflictWorker(QObject):
                                 'cat': cat_path
                             })
 
-            # print(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
+            print(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
 
             # Step 2: Identify Conflicts and Library Alts for ALL items
             conflict_count = 0
@@ -91,22 +89,19 @@ class TagConflictWorker(QObject):
                     continue
                 
                 # Skip orphaned DB entries (folder no longer exists on disk)
-                # Only check if storage_root is available
-                if self.storage_root:
-                    abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
-                    if not os.path.exists(abs_check):
-                        continue
+                abs_check = os.path.join(self.storage_root, p) if not os.path.isabs(p) else p
+                if not os.path.exists(abs_check):
+                    continue
                     
                 # Normalized path for matching
                 norm_p = p.replace('\\', '/')
                 rel_p = p
                 abs_p = p
-                if not os.path.isabs(p) and self.storage_root:
+                if not os.path.isabs(p):
                     abs_p = os.path.join(self.storage_root, p).replace('\\', '/')
-                elif self.storage_root:
+                else:
                     try: rel_p = os.path.relpath(p, self.storage_root).replace('\\', '/')
                     except: pass
-
                 
                 my_cat = os.path.dirname(rel_p).replace('\\', '/')
                 
@@ -174,7 +169,7 @@ class TagConflictWorker(QObject):
             # 2.7: Perform DB Update in Background Thread
             local_db.update_visual_flags_bulk(bulk_updates)
 
-            # print(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
+            print(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
             
             # 3. Return results (now includes abs_config_map)
             result = {

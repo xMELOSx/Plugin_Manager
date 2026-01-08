@@ -11,9 +11,6 @@ from PyQt6.QtCore import QThread, QTimer
 from src.core.lang_manager import _
 from src.core.link_master.deployer import DeploymentCollisionError
 from .lm_batch_ops_worker import TagConflictWorker
-from src.core.file_handler import FileHandler
-
-_file_handler = FileHandler()
 
 class LMDeploymentOpsMixin:
     """Mixin for deployment-related batch operations."""
@@ -200,216 +197,9 @@ class LMDeploymentOpsMixin:
         
         return None
 
-    def _deploy_category(self, category_rel_path: str, update_ui: bool = True) -> dict:
-        """Deploy the category folder itself (same behavior as deploying a package).
-        
-        Features:
-        - Deploys the CATEGORY FOLDER itself, not individual child packages
-        - Validates internal conflicts (same tag, same library within category) and blocks if found
-        - Detects deployed child packages and offers swap (unlink children, deploy category)
-        - Inherits global conflict tags from all child packages
-        - Shows deep blue border for category-deployed state
-        
-        Returns:
-            dict with keys:
-            - 'success' (bool): Whether category was deployed
-            - 'needs_swap' (bool): True if child packages are deployed and need to be swapped
-            - 'deployed_children' (list): List of deployed child rel_paths (for swap dialog)
-            - 'blocked_reason' (str or None): Reason if blocked due to internal conflicts
-            - 'inherited_tags' (list): Global conflict tags inherited from children
-            - 'errors' (list): Error messages
-        """
-        result = {
-            'success': False, 
-            'needs_swap': False,
-            'deployed_children': [],
-            'blocked_reason': None,
-            'inherited_tags': [],
-            'errors': []
-        }
-        
-        app_data = self.app_combo.currentData()
-        if not app_data:
-            result['errors'].append("No app selected")
-            return result
-        
-        target_root = app_data.get(self.current_target_key)
-        if not target_root:
-            result['errors'].append("No target directory")
-            return result
-        
-        category_abs = os.path.join(self.storage_root, category_rel_path)
-        if not os.path.isdir(category_abs):
-            result['errors'].append(f"Not a directory: {category_rel_path}")
-            return result
-        
-        # Step 1: Collect all child packages (immediate subdirectories)
-        child_packages = []
-        try:
-            for item in os.listdir(category_abs):
-                item_path = os.path.join(category_abs, item)
-                if os.path.isdir(item_path) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
-                    child_rel = os.path.join(category_rel_path, item).replace('\\', '/')
-                    child_packages.append(child_rel)
-        except Exception as e:
-            result['errors'].append(f"Failed to list children: {e}")
-            return result
-        
-        # Step 2: Validate internal conflicts (same tag/library within category)
-        tag_map = {}  # tag -> list of rel_paths
-        library_map = {}  # lib_name -> list of rel_paths
-        all_global_tags = set()  # Inherited from children with global scope
-        
-        for child_rel in child_packages:
-            config = self.db.get_folder_config(child_rel) or {}
-            
-            # Collect tags for conflict detection
-            conflict_scope = config.get('conflict_scope', 'disabled')
-            tags_raw = config.get('conflict_tags', '')
-            if tags_raw:
-                for tag in [t.strip().lower() for t in tags_raw.split(',') if t.strip()]:
-                    if conflict_scope != 'disabled':
-                        if tag not in tag_map:
-                            tag_map[tag] = []
-                        tag_map[tag].append(child_rel)
-                    
-                    # Inherit global scope tags
-                    if conflict_scope == 'global':
-                        all_global_tags.add(tag)
-            
-            # Check library (same library name within category)
-            if config.get('is_library', 0):
-                lib_name = (config.get('lib_name') or os.path.basename(child_rel)).strip().lower()
-                if lib_name:
-                    if lib_name not in library_map:
-                        library_map[lib_name] = []
-                    library_map[lib_name].append(child_rel)
-        
-        result['inherited_tags'] = list(all_global_tags)
-        
-        # Step 3: Block if internal conflicts exist
-        conflicts = []
-        for tag, paths in tag_map.items():
-            if len(paths) > 1:
-                conflicts.append(f"Tag '{tag}': {', '.join([os.path.basename(p) for p in paths])}")
-        
-        for lib, paths in library_map.items():
-            if len(paths) > 1:
-                conflicts.append(f"Library '{lib}': {', '.join([os.path.basename(p) for p in paths])}")
-        
-        if conflicts:
-            result['blocked_reason'] = "\n".join(conflicts)
-            return result
-        
-        # Step 4: Check if any child packages are already deployed (need swap)
-        deployed_children = []
-        for child_rel in child_packages:
-            child_config = self.db.get_folder_config(child_rel) or {}
-            # Phase 36 Fix: Real-time status check using Deployer (bypassing stale DB)
-            # status = child_config.get('last_known_status', 'none')
-            
-            # 1. Determine Target Path (Logic synced with ScannerWorker/ItemCard)
-            deploy_rule = child_config.get('deploy_rule') or child_config.get('deploy_type') or 'folder'
-            if deploy_rule == 'flatten': deploy_rule = 'files'
-            
-            child_target_link = None
-            if deploy_rule == 'tree' and target_root:
-                import json
-                skip_val = 0
-                rules_json = child_config.get('deployment_rules')
-                if rules_json:
-                    try:
-                        rules_obj = json.loads(rules_json)
-                        skip_val = int(rules_obj.get('skip_levels', 0))
-                    except: pass
-                
-                try:
-                    # child_rel is relative to storage_root
-                    normalized_rel = child_rel.replace('\\', '/')
-                    parts = normalized_rel.split('/')
-                    if len(parts) > skip_val:
-                        mirrored = "/".join(parts[skip_val:])
-                        child_target_link = os.path.join(target_root, mirrored)
-                    else:
-                        child_target_link = os.path.join(target_root, os.path.basename(child_rel))
-                except:
-                    child_target_link = os.path.join(target_root, os.path.basename(child_rel))
-            elif target_root:
-                child_target_link = os.path.join(target_root, os.path.basename(child_rel)) # Default/Folder/Files/Custom(basic)
-
-            # 2. Check Status via Deployer
-            status = 'none'
-            if child_target_link and getattr(self, 'deployer', None):
-                full_source = os.path.join(self.storage_root, child_rel)
-                st_info = self.deployer.get_link_status(child_target_link, expected_source=full_source)
-                status = st_info.get('status', 'none')
-            else:
-                 # Fallback to DB if deployer missing (unlikely)
-                 status = child_config.get('last_known_status', 'none')
-
-            if status == 'linked':
-                deployed_children.append(child_rel)
-        
-        if deployed_children:
-            result['needs_swap'] = True
-            result['deployed_children'] = deployed_children
-            # Don't auto-deploy - let the handler show swap confirmation
-            return result
-        
-        # Step 5: Deploy the CATEGORY FOLDER ITSELF (same as _deploy_single)
-        try:
-            deploy_success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
-            if deploy_success:
-                # Mark category as deployed
-                self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
-                result['success'] = True
-                self.logger.info(f"[CategoryDeploy] Deployed category: {category_rel_path}")
-            else:
-                result['errors'].append("Failed to deploy category folder")
-        except Exception as e:
-            result['errors'].append(f"Deploy error: {e}")
-        
-        # Step 6: Update UI
-        if update_ui and result['success']:
-            self._refresh_tag_visuals()
-            self._refresh_category_cards()
-        
-        return result
-
-    def _deploy_category_with_swap(self, category_rel_path: str, deployed_children: list, update_ui: bool = True) -> dict:
-        """Deploy category after unlinking deployed child packages (swap operation)."""
-        result = {'success': False, 'errors': []}
-        
-        # Step 1: Unlink all deployed children
-        for child_rel in deployed_children:
-            try:
-                self._unlink_single(child_rel, update_ui=False, _cascade=False)
-            except Exception as e:
-                result['errors'].append(f"Failed to unlink {os.path.basename(child_rel)}: {e}")
-        
-        # Step 2: Deploy the category folder itself
-        try:
-            deploy_success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
-            if deploy_success:
-                self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
-                result['success'] = True
-                self.logger.info(f"[CategoryDeploy+Swap] Deployed: {category_rel_path} (swapped {len(deployed_children)} packages)")
-            else:
-                result['errors'].append("Failed to deploy category folder")
-        except Exception as e:
-            result['errors'].append(f"Deploy error: {e}")
-        
-        # Step 3: Update UI
-        if update_ui and result['success']:
-            self._refresh_tag_visuals()
-            self._refresh_category_cards()
-        
-        return result
-
     def _deploy_single(self, rel_path, update_ui=True, show_result=False):
         """Deploy a single item by relative path. Core method for all deploy operations."""
         app_data = self.app_combo.currentData()
-
         if not app_data: return False
         target_root = app_data.get(self.current_target_key)
         if not target_root: return False
@@ -423,36 +213,6 @@ class LMDeploymentOpsMixin:
         
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path)
-
-        # Phase: Category-to-Package Swap Detection
-        parent_rel = os.path.dirname(rel_path).replace('\\', '/')
-        if parent_rel:
-            parent_config = self.db.get_folder_config(parent_rel) or {}
-            if parent_config.get('category_deploy_status') == 'deployed':
-                msg = _("The parent category '{parent_name}' is currently deployed.\n\n"
-                        "Deploying this package individually will require unlinking the entire category.\n"
-                        "Do you want to unlink the category and deploy this package instead?").format(parent_name=os.path.basename(parent_rel))
-                
-                # Check if _show_styled_message is available
-                box = QMessageBox(self)
-                box.setWindowTitle(_("Category Swap Check"))
-                box.setIcon(QMessageBox.Icon.Question)
-                box.setText(msg)
-                box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                box.button(QMessageBox.StandardButton.Yes).setText(_("Unlink Category & Deploy"))
-                box.button(QMessageBox.StandardButton.No).setText(_("Cancel"))
-                from src.ui.styles import DialogStyles
-                box.setStyleSheet(DialogStyles.ENHANCED_MSG_BOX)
-                
-                if box.exec() == QMessageBox.StandardButton.Yes:
-                     # Unlink category (we use _handle_unlink_category if available on self)
-                     if hasattr(self, '_handle_unlink_category'):
-                         self._handle_unlink_category(parent_rel)
-                     else:
-                         # Fallback to direct logic
-                         self.db.update_folder_display_config(parent_rel, category_deploy_status=None)
-                else:
-                     return False 
         
         # Phase 5: Resolve Deployment Rule and Transfer Mode
         deploy_rule = config.get('deploy_rule')
@@ -536,25 +296,9 @@ class LMDeploymentOpsMixin:
                                     name=lib_name, old_ver=old_ver, new_ver=new_ver
                                 )
                         
-                        msg_box = QMessageBox(self)
-                        msg_box.setWindowTitle(_("Library Switch"))
-                        msg_box.setText(msg)
-                        msg_box.setIcon(QMessageBox.Icon.Question)
-                        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                        
-                        enhanced_styled_msg_box = """
-                            QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                            QLabel { color: white; font-size: 13px; background: transparent; }
-                            QPushButton { 
-                                background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                                padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                            }
-                            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                            QPushButton:pressed { background-color: #2980b9; }
-                        """
-                        msg_box.setStyleSheet(enhanced_styled_msg_box)
-                        
-                        if msg_box.exec() == QMessageBox.StandardButton.Yes:
+                        reply = QMessageBox.question(self, _("Library Switch"), msg,
+                                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        if reply == QMessageBox.StandardButton.Yes:
                             self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
                         else:
@@ -581,25 +325,10 @@ class LMDeploymentOpsMixin:
                        scope=conflict_data['scope'], new_name=folder_name
                    )
             
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(_("Conflict Swap"))
-            msg_box.setText(msg)
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            reply = QMessageBox.warning(self, _("Conflict Swap"), msg, 
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
-            
-            if msg_box.exec() == QMessageBox.StandardButton.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 self.logger.info(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
                 self._unlink_single(conflict_data['path'], update_ui=True)
                 self._refresh_tag_visuals(target_tag=conflict_data.get('tag'))
@@ -633,23 +362,7 @@ class LMDeploymentOpsMixin:
                 detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
                 count += 1
                 
-            msg_box = QMessageBox(self.window())
-            msg_box.setWindowTitle(_("Deployment Collision"))
-            msg_box.setText(detail_txt)
-            msg_box.setIcon(QMessageBox.Icon.Critical)
-            
-            enhanced_styled_msg_box = """
-                QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                QLabel { color: white; font-size: 13px; background: transparent; }
-                QPushButton { 
-                    background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                    padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                QPushButton:pressed { background-color: #2980b9; }
-            """
-            msg_box.setStyleSheet(enhanced_styled_msg_box)
-            msg_box.exec()
+            QMessageBox.critical(self.window(), _("Deployment Collision"), detail_txt)
             return False
         
         if success:
@@ -663,23 +376,7 @@ class LMDeploymentOpsMixin:
                     p = os.path.basename(act.get('path'))
                     if t == 'backup': msg += _("- Backup created for {path}\n").format(path=p)
                     elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
-                msg_box = QMessageBox(self)
-                msg_box.setWindowTitle(_("Conflict Handled"))
-                msg_box.setText(msg)
-                msg_box.setIcon(QMessageBox.Icon.Information)
-                
-                enhanced_styled_msg_box = """
-                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                    QLabel { color: white; font-size: 13px; background: transparent; }
-                    QPushButton { 
-                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                    QPushButton:pressed { background-color: #2980b9; }
-                """
-                msg_box.setStyleSheet(enhanced_styled_msg_box)
-                msg_box.exec()
+                QMessageBox.information(self, _("Conflict Handled"), msg)
 
              # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
              self._update_card_by_path(full_src)
@@ -721,25 +418,13 @@ class LMDeploymentOpsMixin:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
                     # Phase 1.1.25: Preventative confirmation (centralized)
-                    msg_box = QMessageBox(self)
-                    msg_box.setWindowTitle(_("Cascaded Unlink Confirmation"))
-                    msg_box.setText(_("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)))
-                    msg_box.setIcon(QMessageBox.Icon.Question)
-                    msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                    
-                    enhanced_styled_msg_box = """
-                        QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                        QLabel { color: white; font-size: 13px; background: transparent; }
-                        QPushButton { 
-                            background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                            padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                        }
-                        QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                        QPushButton:pressed { background-color: #2980b9; }
-                    """
-                    msg_box.setStyleSheet(enhanced_styled_msg_box)
-                    
-                    if msg_box.exec() == QMessageBox.StandardButton.Yes:
+                    reply = QMessageBox.question(
+                        self, 
+                        _("Cascaded Unlink Confirmation"), 
+                        _("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
 
@@ -817,25 +502,13 @@ class LMDeploymentOpsMixin:
         # This was causing "Target not found" warnings and massive filesystem overhead.
         # self.deployer.remove_links_pointing_to(search_roots, full_src) 
         self.logger.debug(f"Unlink complete for: {rel_path} (targeted roots only)")
-        self.db.update_folder_display_config(
-            rel_path, 
-            last_known_status='unlinked',
-            has_logical_conflict=0,
-            has_name_conflict=0,
-            has_target_conflict=0,
-            is_library_alt_version=0
-        )
+        self.db.update_folder_display_config(rel_path, last_known_status='unlinked')
 
         if update_ui:
             self._update_card_by_path(full_src)
             if hasattr(self, '_update_total_link_count'):
                 self._update_total_link_count()
             
-            # Phase 33 BugFix: Ensure parent category borders (orange/partial) are refreshed
-            # when a single item is unlinked.
-            if hasattr(self, '_refresh_category_cards'):
-                self._refresh_category_cards()
-
             if hasattr(self, 'library_panel') and self.library_panel:
                 self.library_panel.refresh()
             
@@ -864,7 +537,7 @@ class LMDeploymentOpsMixin:
                     try:
                         if not os.listdir(curr):
                             self.logger.info(f"[Pruning] Removing empty directory: {curr}")
-                            _file_handler.remove_empty_dir(curr)
+                            os.rmdir(curr)
                             curr = os.path.dirname(curr)
                         else:
                             break
@@ -935,7 +608,7 @@ class LMDeploymentOpsMixin:
                 target_file = os.path.join(target_dir, f)
                 if os.path.exists(target_file) and not os.path.islink(target_file):
                     try:
-                        _file_handler.remove_path(target_file)
+                        os.remove(target_file)
                         deleted_count += 1
                         self.logger.debug(f"Deleted file: {target_file}")
                     except Exception as e:
@@ -959,7 +632,7 @@ class LMDeploymentOpsMixin:
                 try:
                     # Only remove if EMPTY
                     if not os.listdir(d):
-                        _file_handler.remove_empty_dir(d)
+                        os.rmdir(d)
                         deleted_count += 1
                         self.logger.debug(f"Pruned empty dir: {d}")
                 except Exception as e:
@@ -973,23 +646,7 @@ class LMDeploymentOpsMixin:
         
         for rel in rel_paths:
             if not self._deploy_single(rel, update_ui=False, show_result=False):
-                msg_box = QMessageBox(self)
-                msg_box.setWindowTitle(_("Deploy Error"))
-                msg_box.setText(_("Failed to deploy {rel}").format(rel=rel))
-                msg_box.setIcon(QMessageBox.Icon.Warning)
-                
-                enhanced_styled_msg_box = """
-                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                    QLabel { color: white; font-size: 13px; background: transparent; }
-                    QPushButton { 
-                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                    QPushButton:pressed { background-color: #2980b9; }
-                """
-                msg_box.setStyleSheet(enhanced_styled_msg_box)
-                msg_box.exec()
+                QMessageBox.warning(self, _("Deploy Error"), _("Failed to deploy {rel}").format(rel=rel))
                 break
         
         if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
@@ -1001,24 +658,7 @@ class LMDeploymentOpsMixin:
                 summary = _("Batch deployment finished with actions:\n")
                 if backups: summary += _("- Backups created: {count} items\n").format(count=len(backups))
                 if overwrites: summary += _("- Files overwritten: {count} items\n").format(count=len(overwrites))
-                
-                msg_box = QMessageBox(self)
-                msg_box.setWindowTitle(_("Batch Deployment Summary"))
-                msg_box.setText(summary)
-                msg_box.setIcon(QMessageBox.Icon.Information)
-                
-                enhanced_styled_msg_box = """
-                    QMessageBox { background-color: #1e1e1e; border: 1px solid #444; color: white; }
-                    QLabel { color: white; font-size: 13px; background: transparent; }
-                    QPushButton { 
-                        background-color: #3b3b3b; color: white; border: 1px solid #555; 
-                        padding: 6px 16px; min-width: 80px; border-radius: 4px; font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
-                    QPushButton:pressed { background-color: #2980b9; }
-                """
-                msg_box.setStyleSheet(enhanced_styled_msg_box)
-                msg_box.exec()
+                QMessageBox.information(self, _("Batch Deployment Summary"), summary)
 
         if not skip_refresh:
             abs_paths = [os.path.join(self.storage_root, rel) for rel in rel_paths]
@@ -1148,23 +788,6 @@ class LMDeploymentOpsMixin:
         if not target_root: return
         
         cat_lay = getattr(self, 'cat_layout', None)
-        
-        # Phase 36: Sync cached_configs with ACTUAL displayed package status (UI Truth > DB)
-        # Fixes Ghost Unlink where background thread overwrites status with stale DB data
-        pkg_lay = getattr(self, 'pkg_layout', None)
-        if pkg_lay:
-            for i in range(pkg_lay.count()):
-                item = pkg_lay.itemAt(i)
-                if item and item.widget():
-                    card = item.widget()
-                    # ItemCard must be imported or available in namespace, careful. 
-                    # Assuming card has 'is_package' attr.
-                    if getattr(card, 'is_package', False):
-                        rel_p = getattr(card, 'rel_path', '').replace('\\', '/')
-                        if rel_p:
-                            if rel_p not in cached_configs: cached_configs[rel_p] = {}
-                            cached_configs[rel_p]['last_known_status'] = getattr(card, 'link_status', 'none')
-
         if cat_lay:
             for i in range(cat_lay.count()):
                 item = cat_lay.itemAt(i)

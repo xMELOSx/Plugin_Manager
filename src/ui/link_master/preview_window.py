@@ -923,27 +923,14 @@ class PreviewWindow(QWidget):
                 storage_root=self.storage_root,
                 thumbnail_manager=getattr(self, 'thumbnail_manager', None)
             )
-            # Phase 35: Standardize on Non-modal for all property edits
-            dialog.config_saved.connect(self._on_detail_config_saved)
-            self._active_detail_dialog = dialog # Prevent GC
-            dialog.show()
+            if dialog.exec():
+                # Refresh parent if possible
+                if self.parent() and hasattr(self.parent(), 'refresh') and callable(self.parent().refresh):
+                    self.parent().refresh()
         except Exception as e:
             import traceback
             traceback.print_exc()
             QMessageBox.warning(self, "Error", f"Failed to open editor: {e}")
-
-    def _on_detail_config_saved(self, data):
-        """Callback for non-modal detail edit save."""
-        # Refresh current window with new data if applicable
-        if self.folder_path:
-            # We might want to reload the folder config from DB or just update from 'data'
-            # For simplicity, let's update local config and UI
-            self.folder_config.update(data)
-            self._load_folder_properties()
-            
-        # Refresh parent if possible
-        if self.parent() and hasattr(self.parent(), 'refresh') and callable(self.parent().refresh):
-            self.parent().refresh()
 
     def _open_preview_editor(self):
         """フルプレビュー編集ダイアログを開く。"""

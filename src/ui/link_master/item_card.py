@@ -231,8 +231,6 @@ class ItemCard(QFrame):
         if 'folder_type' in kwargs:
             self.is_package = (kwargs['folder_type'] == 'package')
 
-
-
         self.is_registered = kwargs.get('is_registered', getattr(self, 'is_registered', True))
         self.is_misplaced = kwargs.get('is_misplaced', getattr(self, 'is_misplaced', False))
         self.is_partial = kwargs.get('is_partial', getattr(self, 'is_partial', False))
@@ -269,21 +267,6 @@ class ItemCard(QFrame):
         self.has_unlinked_children = kwargs.get('has_unlinked', getattr(self, 'has_unlinked_children', False))
         self.has_favorite = kwargs.get('has_favorite', getattr(self, 'has_favorite', False))
         self.has_conflict_children = kwargs.get('has_conflict_children', getattr(self, 'has_conflict_children', False))
-        
-        # Category Deploy Status (Phase: Category Deploy Enhancement)
-        self.category_deploy_status = kwargs.get('category_deploy_status', getattr(self, 'category_deploy_status', None))
-
-        # Phase 14/33 Fix: For categories, derive link_status from hierarchical children status
-        # This ensures the Unlink button/Direct actions update immediately during UI refresh
-        if not getattr(self, 'is_package', True):
-            if self.has_conflict_children:
-                self.link_status = 'conflict'
-            elif self.has_partial_children:
-                self.link_status = 'partial'
-            elif self.has_linked_children:
-                self.link_status = 'linked'
-            else:
-                self.link_status = 'none'
 
         # 4. Update Config/Rules
         self.target_override = kwargs.get('target_override', self.target_override)
@@ -399,14 +382,8 @@ class ItemCard(QFrame):
         if hasattr(self, 'score_dial'):
             self.score_dial.setValue(self.score)
 
-        # Phase 34: Invalidate style cache to ensure immediate visual refresh
-        if hasattr(self, '_last_style_state'):
-            del self._last_style_state
-            
         self._update_style()
         self._update_icon_overlays()
-        # Phase 34: Physical update call
-        self.update()
 
     def _check_link_status(self):
         if not self.deployer: return
@@ -488,17 +465,6 @@ class ItemCard(QFrame):
         status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
         self.link_status = status.get('status', 'none')
         
-        # Phase: Category Proxy Check - REMOVED to allow individual deployment switching (Swap)
-        self.is_parent_deployed = False
-        if self.db:
-            try:
-                rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
-                p_rel = os.path.dirname(rel).replace('\\', '/')
-                if p_rel and p_rel != '.':
-                    p_cfg = self.db.get_folder_config(p_rel) or {}
-                    self.is_parent_deployed = (p_cfg.get('category_deploy_status') == 'deployed')
-            except: pass
-        
         # Debug: Log detection result (commented out for performance)
         # import logging
         # logging.getLogger("ItemCard").debug(f"[CheckLink] {self.folder_name}: target={target_link}, tm={transfer_mode}, status={self.link_status}")
@@ -513,8 +479,6 @@ class ItemCard(QFrame):
         old_status = getattr(self, '_prev_link_status', 'none')
         if self.link_status != old_status:
              self._prev_link_status = self.link_status
-             self._update_style()
-             self._update_icon_overlays()
              self.deploy_changed.emit()
 
         # Phase 28: is_partial logic MUST match ScannerWorker
@@ -744,8 +708,7 @@ class ItemCard(QFrame):
             has_target_conflict=getattr(self, 'has_target_conflict', False),
             has_linked_children=getattr(self, 'has_linked_children', False),
             has_unlinked_children=getattr(self, 'has_unlinked_children', False),
-            has_partial_children=getattr(self, 'has_partial_children', False),
-            category_deploy_status=getattr(self, 'category_deploy_status', None)
+            has_partial_children=getattr(self, 'has_partial_children', False)
         )
 
         # Update name label color for hidden state

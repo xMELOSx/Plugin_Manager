@@ -24,48 +24,19 @@ class ScannerWorker(QObject):
         self.search_config = None # {query, logic, selected_tags, is_global, non_inheritable_tags}
 
     def _is_package_auto(self, abs_path):
-        """Heuristic: Distinguish between a Category (folder of folders) and a Package (final item).
-        
-        Logic:
-        1. If it has NO subdirectories, it's definitely a Package.
-        2. If it contains significant files (not just thumbnails), it's a Package.
-        3. If it contains ONLY subdirectories (and maybe a thumbnail/config), it's a Category.
-        """
+        """Heuristic: Check if folder contains package-like config files."""
         if not abs_path or not os.path.isdir(abs_path):
             return False
-            
-        thumb_names = {
-            "cover.jpg", "cover.png", "preview.jpg", "preview.png",
-            "icon.jpg", "icon.png", "thumb.jpg", "thumb.png",
-            "folder.jpg", "folder.png"
-        }
-        
-        has_subdirs = False
-        has_content_files = False
-        
+        package_indicators = {'.json', '.ini', '.yaml', '.toml', '.yml'}
         try:
             with os.scandir(abs_path) as it:
                 for entry in it:
-                    if entry.name.startswith('.'): continue
-                    
-                    if entry.is_dir():
-                        has_subdirs = True
-                    elif entry.is_file():
-                        # If it's not a common thumbnail name, it's likely package content
-                        if entry.name.lower() not in thumb_names:
-                            has_content_files = True
-                            
-            # Heuristic decision:
-            # If it has files that aren't thumbnails -> Package
-            if has_content_files:
-                return True
-            # If it has subdirs and NO files -> Category
-            if has_subdirs:
-                return False
-            # Fallback for empty or file-only (non-thumb) folders
-            return True
-        except:
-            return True
+                    if entry.is_file():
+                        ext = os.path.splitext(entry.name)[1].lower()
+                        if ext in package_indicators:
+                            return True
+        except: pass
+        return False
 
     
     def set_db(self, db):
@@ -157,7 +128,7 @@ class ScannerWorker(QObject):
             items_sorted = sorted(results, key=sort_final)
             
             t_worker_end = time.perf_counter()
-            self.logger.debug(f"[WorkerProfile] context={self.context} total={t_worker_end-t_run_start:.3f}s "
+            self.logger.info(f"[WorkerProfile] context={self.context} total={t_worker_end-t_run_start:.3f}s "
                              f"(Scan:{t_scan_end-t_scan_start:.3f}s / "
                              f"Detect:{t_detect_end-t_detect_start:.3f}s / "
                              f"Sort:{t_worker_end-t_detect_end:.3f}s)")
@@ -192,7 +163,7 @@ class ScannerWorker(QObject):
             t_en_child += res.get('_profile_child', 0)
             t_en_auto += res.get('_profile_auto', 0)
             
-        self.logger.debug(f"[WorkerProfile] _standard_scan items={len(items)} "
+        self.logger.info(f"[WorkerProfile] _standard_scan items={len(items)} "
                          f"Total:{t_en_total:.3f}s (Link:{t_en_link:.3f}s / Child:{t_en_child:.3f}s / Auto:{t_en_auto:.3f}s)")
         # Clean up optimization map after use
         if hasattr(self, '_parent_config_map'):
@@ -344,62 +315,12 @@ class ScannerWorker(QObject):
         t_auto_end = time.perf_counter()
 
         # 2. Link Status - ALWAYS check for all items (reverted from package-only)
-        # Reverted faked status for children. We keep the flag for reference.
-        is_parent_deployed = False
-        try:
-            parent_rel = os.path.dirname(item_rel).replace('\\', '/')
-            if parent_rel and parent_rel != '.':
-                parent_cfg = folder_configs.get(parent_rel, {})
-                is_parent_deployed = (parent_cfg.get('category_deploy_status') == 'deployed')
-        except: pass
-
+        # The item type detection is unreliable for many mod types, so we must check link status for everything.
         t_link_start = time.perf_counter()
         target_override = item_config.get('target_override')
-        
-        # Determine deploy rule for target resolving
-        deploy_rule = item_config.get('deploy_rule')
-        if not deploy_rule or deploy_rule in ('default', 'inherit'):
-            deploy_rule = self.app_data.get('deployment_type', 'folder')
-
-        if deploy_rule == 'flatten': deploy_rule = 'files'
-
-        # target_link calculation must match ItemCard._check_link_status
-        if target_override:
-            target_link = target_override
-        elif deploy_rule == 'files':
-            target_link = self.target_root
-        elif deploy_rule == 'tree':
-            # Phase 36: Reconstruct hierarchy for tree mode (synced with ItemCard L426-446)
-            skip_val = 0
-            deployment_rules_json = item_config.get('deployment_rules')
-            if deployment_rules_json:
-                try:
-                    rules_obj = json.loads(deployment_rules_json)
-                    skip_val = int(rules_obj.get('skip_levels', 0))
-                except: pass
-            
-            parts = item_rel.split('/') if item_rel else []
-            if len(parts) > skip_val:
-                mirrored = "/".join(parts[skip_val:])
-                target_link = os.path.join(self.target_root, mirrored)
-            else:
-                target_link = self.target_root
-        else:
-            target_link = os.path.join(self.target_root, item['name'])
-
-        
-        # Phase 33: Categories derive status from children, NOT from physical symlink check
-        # Matching ItemCard logic at L396
-        if is_actually_package:
-            status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
-            link_status = status_info.get('status', 'none')
-        else:
-            link_status = 'none'
-        
-        # Override logic REMOVED to allow individual deployment switching (Swap)
-        # if is_parent_deployed and link_status == 'none':
-        #     link_status = 'linked'
-            
+        target_link = target_override or os.path.join(self.target_root, item['name'])
+        status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
+        link_status = status_info.get('status', 'none')
         t_link_end = time.perf_counter()
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)
