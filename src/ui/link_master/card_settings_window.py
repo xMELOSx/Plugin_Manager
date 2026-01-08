@@ -25,7 +25,7 @@ class CardSettingsWindow(QWidget):
         self.setWindowTitle(_("Card Settings"))
         # Use Tool window look but independent
         self.setWindowFlags(Qt.WindowType.Window) 
-        self.resize(360, 650)
+        self.resize(400, 800)
         self.settings = current_settings
         self.locked = display_mode_locked
         
@@ -96,22 +96,15 @@ class CardSettingsWindow(QWidget):
         self.tabs.setSizePolicy(self.tabs.sizePolicy().horizontalPolicy(), self.tabs.sizePolicy().verticalPolicy())
         
         # 1. Text Mode
-        self.tabs.addTab(self._create_mode_tab("text_list"), "T Text")
+        self.tabs.addTab(self._create_mode_tab("text_list"), _("T Text"))
         # 2. Image Mode
-        self.tabs.addTab(self._create_mode_tab("mini_image"), "🖼 Image")
+        self.tabs.addTab(self._create_mode_tab("mini_image"), _("🖼 Image"))
         # 3. Combined Mode
-        self.tabs.addTab(self._create_mode_tab("image_text"), "🖼T Both")
+        self.tabs.addTab(self._create_mode_tab("image_text"), _("🖼T Both"))
         
         main_layout.addWidget(self.tabs)
         
-        # --- General Settings (Opacity) ---
-        gen_group = QFrame()
-        gen_group.setStyleSheet("background: #333; border-radius: 6px;")
-        gen_layout = QVBoxLayout(gen_group)
-        gen_layout.setContentsMargins(10, 10, 10, 10)
-        
-        gen_layout.addWidget(QLabel("<b>General Options</b>"))
-        
+        # --- General Settings (Opacity) - No Frame ---
         # Deploy Button Opacity
         row = QHBoxLayout()
         from src.ui.custom_slider import CustomSlider
@@ -153,8 +146,7 @@ class CardSettingsWindow(QWidget):
         op_slider.valueChanged.connect(update_opacity)
         op_spin.valueChanged.connect(update_opacity)
         
-        gen_layout.addLayout(row)
-        main_layout.addWidget(gen_group)
+        main_layout.addLayout(row)
 
     def _create_mode_tab(self, mode):
         """Create a tab page for a specific display mode."""
@@ -174,7 +166,7 @@ class CardSettingsWindow(QWidget):
         c_layout.setContentsMargins(5, 5, 5, 5)
         
         # --- Category Section ---
-        c_layout.addWidget(QLabel("<b>📁 Categories</b>"))
+        c_layout.addWidget(QLabel(_("<b>📁 Categories</b>")))
         c_cat = QFrame()
         c_cat.setStyleSheet("background: #383838; border-radius: 6px; padding: 5px;")
         l_cat = QVBoxLayout(c_cat)
@@ -183,7 +175,7 @@ class CardSettingsWindow(QWidget):
         c_layout.addWidget(c_cat)
         
         # --- Package Section ---
-        c_layout.addWidget(QLabel("<b>📦 Packages</b>"))
+        c_layout.addWidget(QLabel(_("<b>📦 Packages</b>")))
         c_pkg = QFrame()
         c_pkg.setStyleSheet("background: #383838; border-radius: 6px; padding: 5px;")
         l_pkg = QVBoxLayout(c_pkg)

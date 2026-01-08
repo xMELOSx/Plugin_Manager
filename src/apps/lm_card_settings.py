@@ -167,7 +167,7 @@ class LMCardSettingsMixin:
         self.card_settings[attr_name] = value
         setattr(self, attr_name, value)
         # self._save_card_settings() # Phase 1.1.5: Save only on OK
-        self._apply_card_params_to_layout_debounced(type_, mode)
+        self._apply_card_params_to_layout(type_, mode)
 
     def _set_mode_param(self, type_: str, mode: str, param: str, value: int):
         """モードごとのカードパラメータを設定。"""

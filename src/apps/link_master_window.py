@@ -820,8 +820,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if type_ == 'global' and param == 'deploy_button_opacity':
              self.deploy_button_opacity = value
              self.card_settings['deploy_button_opacity'] = value
-             self._apply_card_params_to_layout_debounced('category', self.cat_display_override or 'mini_image')
-             self._apply_card_params_to_layout_debounced('package', self.pkg_display_override or 'mini_image')
+             self._apply_card_params_to_layout('category', self.cat_display_override or 'mini_image')
+             self._apply_card_params_to_layout('package', self.pkg_display_override or 'mini_image')
         else:
              self._set_mode_param(type_, mode, param, value)
 

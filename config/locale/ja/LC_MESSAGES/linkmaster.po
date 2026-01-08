@@ -1460,7 +1460,7 @@ msgid "<b>📓 Card Settings</b>"
 msgstr "<b>📓 カード設定</b>"
 
 msgid "Lock Display Mode (Persist)"
-msgstr "表示モードをロック (永続化)"
+msgstr "表示モードをロック"
 
 # FullPreviewDialog
 msgid "Manage Full Previews"
@@ -2225,3 +2225,52 @@ msgstr "<b>構造を維持</b>: 特定の階層から構造を維持します。
 
 msgid "More detailed overrides (individual file redirections, excludes, etc.) can be managed via the <b>Edit Individual Redirections</b> button below."
 msgstr "個別のファイル転送先や除外設定などは、下部にある<b>「個別に転送先を編集」</b>ボタンからさらに詳細に設定可能です。"
+
+# Card Settings New
+msgid "Card Settings"
+msgstr "カード設定"
+
+msgid "<b>📓 Card Settings</b>"
+msgstr "<b>📓 カード設定</b>"
+
+msgid "General Options"
+msgstr "一般設定"
+
+msgid "Btn Opacity"
+msgstr "ボタン透明度"
+
+msgid "T Text"
+msgstr "T テキスト"
+
+msgid "🖼 Image"
+msgstr "🖼 画像"
+
+msgid "🖼T Both"
+msgstr "🖼T 両方"
+
+msgid "<b>📁 Categories</b>"
+msgstr "<b>📁 カテゴリ</b>"
+
+msgid "<b>📦 Packages</b>"
+msgstr "<b>📦 パッケージ</b>"
+
+msgid "Scale"
+msgstr "拡大率"
+
+msgid "Width"
+msgstr "幅"
+
+msgid "Height"
+msgstr "高さ"
+
+msgid "Img W"
+msgstr "画像幅"
+
+msgid "Img H"
+msgstr "画像高さ"
+
+msgid "Show Link Icon"
+msgstr "リンクアイコンを表示"
+
+msgid "Show Deploy Button"
+msgstr "Deployボタンを表示"
