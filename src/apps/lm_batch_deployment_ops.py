@@ -5,6 +5,7 @@ Handles symlinking, dependency resolution, and tag conflict checks.
 import os
 import logging
 import time
+from src.ui.link_master.item_card_style import COMMON_DIALOG_STYLE
 from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtCore import QThread, QTimer
 
@@ -207,9 +208,38 @@ class LMDeploymentOpsMixin:
         full_src = os.path.join(self.storage_root, rel_path)
         
         # Phase 28: Optimization - DO NOT call _unlink_single (sweepy) before every deploy.
-        # The deployer.deploy_with_rules will handle conflict at the SPECIFIC target path.
-        # This prevents "Target not found" warnings on un-related targets like GIMI2 when only GIMI is active.
-        # self._unlink_single(rel_path, update_ui=False, _cascade=False) 
+        # self._unlink_single(rel_path, update_ui=False, _cascade=False)
+        
+        # Phase 5: Reverse Swap Check (Package -> Category)
+        # If deploying a package and its parent category is currently deployed,
+        # ask to unlink the category first.
+        try:
+            parent_rel = os.path.dirname(rel_path).replace('\\', '/')
+            if parent_rel and parent_rel != '.':
+                parent_config = self.db.get_folder_config(parent_rel) or {}
+                if parent_config.get('category_deploy_status') == 'deployed':
+                    # Confirm swap
+                    msg = QMessageBox(self)
+                    msg.setWindowTitle(_("Package Deploy"))
+                    msg.setText(_("Parent category '{cat}' is currently deployed.\nDeploying this package requires unlinking the category.\n\nProceed?").format(cat=os.path.basename(parent_rel)))
+                    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+                    msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                    msg.setStyleSheet(COMMON_DIALOG_STYLE)
+                    
+                    if msg.exec() != QMessageBox.StandardButton.Yes:
+                        return False
+                    
+                    # Unlink Category
+                    self.logger.info(f"[Swap] Unlinking parent category: {parent_rel}")
+                    self._unlink_single(parent_rel, update_ui=False)
+                    # Clear DB status
+                    self.db.update_folder_display_config(parent_rel, category_deploy_status=None)
+                    
+                    # Force update UI to remove blue border from category
+                    if update_ui:
+                        self._force_refresh_visible_cards()
+        except Exception as e:
+            self.logger.error(f"Reverse swap check failed: {e}")
         
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path.rstrip('\\/'))
@@ -897,11 +927,27 @@ class LMDeploymentOpsMixin:
                     _("Cannot deploy category: Tag conflict with '{name}'.").format(name=conflict.get('name', 'unknown')))
                 return
         
-        # --- Execute swap: Unlink any linked child packages ---
         if linked_children:
+            # Phase 5: Swap Confirmation Dialog
+            msg = QMessageBox(self)
+            msg.setWindowTitle(_("Category Deploy"))
+            msg.setText(_("Deploying this category will unlink {count} active packages:\n\n{names}\n\nProceed?").format(
+                count=len(linked_children),
+                names="\n".join([os.path.basename(p) for p in linked_children[:5]]) + ("\n..." if len(linked_children) > 5 else "")
+            ))
+            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+            msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+            msg.setStyleSheet(COMMON_DIALOG_STYLE)
+            
+            if msg.exec() != QMessageBox.StandardButton.Yes:
+                self.logger.info("[CategoryDeploy] Cancelled by user.")
+                return
+
             self.logger.info(f"[CategoryDeploy] Swapping {len(linked_children)} child packages")
             for child_rel in linked_children:
                 self._unlink_single(child_rel, update_ui=False)
+                # Phase 5: Ensure button reset for unlinked packages
+                self.db.update_folder_display_config(child_rel, last_known_status='none')
         
         # --- Deploy the category itself ---
         success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
@@ -912,6 +958,13 @@ class LMDeploymentOpsMixin:
             self.logger.info(f"[CategoryDeploy] SUCCESS: {category_rel_path}")
         else:
             self.logger.error(f"[CategoryDeploy] FAILED: {category_rel_path}")
+            # If failed, warn user (with style)
+            warn = QMessageBox(self)
+            warn.setWindowTitle(_("Deployment Failed"))
+            warn.setText(_("Failed to deploy category."))
+            warn.setIcon(QMessageBox.Icon.Warning)
+            warn.setStyleSheet(COMMON_DIALOG_STYLE)
+            warn.exec()
         
         # --- Immediate UI refresh ---
         self._force_refresh_visible_cards()
@@ -957,8 +1010,13 @@ class LMDeploymentOpsMixin:
                     if hasattr(card, 'path'):
                         rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
                         config = self.db.get_folder_config(rel) or {}
-                        if hasattr(card, 'update_link_status'):
-                            new_status = config.get('last_known_status', 'none')
-                            card.update_link_status(new_status)
+                        if hasattr(card, 'update_data'):
+                            # Use full update_data to ensure deploy button state (green/Link) is reset
+                            # update_link_status is partial and might miss some overlay states
+                            card.update_data(
+                                link_status=config.get('last_known_status', 'none'),
+                                is_visible=config.get('is_visible', 1),
+                                category_deploy_status=config.get('category_deploy_status')
+                            )
                         if hasattr(card, '_update_style'):
                             card._update_style()

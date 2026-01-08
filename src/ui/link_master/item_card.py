@@ -689,6 +689,7 @@ class ItemCard(QFrame):
             getattr(self, 'has_unlinked_children', False),
             getattr(self, 'has_partial_children', False),
             getattr(self, 'is_hidden', False), # Phase 33: Track visibility for immediate color change
+            getattr(self, 'category_deploy_status', None), # Phase 5: Ensure deep blue border updates
             mode
         )
         

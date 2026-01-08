@@ -89,3 +89,28 @@ COLOR_FOCUSED_BORDER = "#5DADE2"
 COLOR_SELECTED_BORDER = "#3498DB"
 COLOR_HOVER_BORDER = "#666666"
 COLOR_CATEGORY_DEPLOYED = "#2980b9"  # Deep blue for deployed categories
+
+# Phase 5: Common Dialog Style (White text on dark bg)
+COMMON_DIALOG_STYLE = """
+    QMessageBox {
+        background-color: #2b2b2b;
+        color: #ffffff;
+    }
+    QMessageBox QLabel {
+        color: #cccccc;
+    }
+    QPushButton {
+        background-color: #444;
+        color: #fff;
+        border: none;
+        padding: 6px;
+        border-radius: 4px;
+        min-width: 80px;
+    }
+    QPushButton:hover {
+        background-color: #555;
+    }
+    QPushButton:pressed {
+        background-color: #333;
+    }
+"""
