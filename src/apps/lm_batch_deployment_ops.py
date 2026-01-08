@@ -833,3 +833,132 @@ class LMDeploymentOpsMixin:
         else:
             self.logger.info(f"[DirectAction] Deploying {rel}")
             self._deploy_single(rel)
+
+    # =========================================================================
+    # Category Deploy: Deploy the category itself using its own properties
+    # =========================================================================
+
+    def _handle_deploy_category(self, category_rel_path):
+        """
+        Deploy the CATEGORY ITSELF (not child packages) using category's properties.
+        This swaps with any deployed child packages.
+        """
+        if not self.storage_root: return
+        
+        category_abs = os.path.join(self.storage_root, category_rel_path)
+        if not os.path.isdir(category_abs): return
+        
+        config = self.db.get_folder_config(category_rel_path) or {}
+        app_data = self.app_combo.currentData() or {}
+        
+        # --- Pre-flight checks ---
+        # 1. Check internal conflicts: packages with same conflict_tag or same library
+        child_conflict_tags = set()
+        child_libraries = set()
+        linked_children = []
+        
+        try:
+            for item in os.listdir(category_abs):
+                child_path = os.path.join(category_abs, item)
+                if os.path.isdir(child_path) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
+                    child_rel = os.path.join(category_rel_path, item).replace('\\', '/')
+                    child_cfg = self.db.get_folder_config(child_rel) or {}
+                    
+                    # Collect conflict tags
+                    child_tag = child_cfg.get('conflict_tag')
+                    if child_tag:
+                        if child_tag in child_conflict_tags:
+                            QMessageBox.warning(self, _("Category Deploy"), 
+                                _("Cannot deploy category: Duplicate conflict tag '{tag}' found.").format(tag=child_tag))
+                            return
+                        child_conflict_tags.add(child_tag)
+                    
+                    # Collect library names
+                    lib_name = child_cfg.get('library_name')
+                    if lib_name:
+                        if lib_name in child_libraries:
+                            QMessageBox.warning(self, _("Category Deploy"), 
+                                _("Cannot deploy category: Duplicate library '{lib}' found.").format(lib=lib_name))
+                            return
+                        child_libraries.add(lib_name)
+                    
+                    # Track linked children for swap
+                    if child_cfg.get('last_known_status') == 'linked':
+                        linked_children.append(child_rel)
+        except Exception as e:
+            self.logger.error(f"Failed to scan category for deploy: {e}")
+            return
+        
+        # 2. Check external tag conflicts (inherited from children)
+        for tag in child_conflict_tags:
+            conflict = self._check_tag_conflict(category_rel_path, {'conflict_tag': tag}, app_data)
+            if conflict:
+                QMessageBox.warning(self, _("Category Deploy"),
+                    _("Cannot deploy category: Tag conflict with '{name}'.").format(name=conflict.get('name', 'unknown')))
+                return
+        
+        # --- Execute swap: Unlink any linked child packages ---
+        if linked_children:
+            self.logger.info(f"[CategoryDeploy] Swapping {len(linked_children)} child packages")
+            for child_rel in linked_children:
+                self._unlink_single(child_rel, update_ui=False)
+        
+        # --- Deploy the category itself ---
+        success = self._deploy_single(category_rel_path, update_ui=False, show_result=False)
+        
+        if success:
+            # Update category_deploy_status in DB
+            self.db.update_folder_display_config(category_rel_path, category_deploy_status='deployed')
+            self.logger.info(f"[CategoryDeploy] SUCCESS: {category_rel_path}")
+        else:
+            self.logger.error(f"[CategoryDeploy] FAILED: {category_rel_path}")
+        
+        # --- Immediate UI refresh ---
+        self._force_refresh_visible_cards()
+
+    def _handle_unlink_category(self, category_rel_path):
+        """
+        Unlink the CATEGORY ITSELF and clear category_deploy_status.
+        """
+        if not self.storage_root: return
+        
+        # Unlink the category
+        self._unlink_single(category_rel_path, update_ui=False)
+        
+        # Clear category_deploy_status in DB
+        self.db.update_folder_display_config(category_rel_path, category_deploy_status=None)
+        self.logger.info(f"[CategoryUnlink] {category_rel_path}")
+        
+        # --- Immediate UI refresh ---
+        self._force_refresh_visible_cards()
+
+    def _force_refresh_visible_cards(self):
+        """Force immediate refresh of all visible ItemCards."""
+        # Refresh category area
+        if hasattr(self, '_cat_layout'):
+            for i in range(self._cat_layout.count()):
+                item = self._cat_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if hasattr(card, 'path'):
+                        rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
+                        config = self.db.get_folder_config(rel) or {}
+                        if hasattr(card, 'update_data'):
+                            card.update_data(category_deploy_status=config.get('category_deploy_status'))
+                        if hasattr(card, '_update_style'):
+                            card._update_style()
+        
+        # Refresh package area
+        if hasattr(self, '_pkg_layout'):
+            for i in range(self._pkg_layout.count()):
+                item = self._pkg_layout.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    if hasattr(card, 'path'):
+                        rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
+                        config = self.db.get_folder_config(rel) or {}
+                        if hasattr(card, 'update_link_status'):
+                            new_status = config.get('last_known_status', 'none')
+                            card.update_link_status(new_status)
+                        if hasattr(card, '_update_style'):
+                            card._update_style()

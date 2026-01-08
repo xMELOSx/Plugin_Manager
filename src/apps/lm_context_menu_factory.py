@@ -116,7 +116,29 @@ def create_item_context_menu(window, rel_path):
             # Phase 28: Check Tag Conflict
             tag_conflict = window._check_tag_conflict(rel_path, config, app_data)
             
-            if status == 'linked':
+            # Phase: Detect if this is a Category (has subfolders with packages)
+            is_category = False
+            child_count = 0
+            try:
+                for item in os.listdir(full_src):
+                    if os.path.isdir(os.path.join(full_src, item)) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
+                        child_count += 1
+                        if child_count > 0:
+                            is_category = True
+                            break
+            except:
+                pass
+            
+            if is_category:
+                # Category-specific menu
+                category_status = config.get('category_deploy_status')
+                if category_status == 'deployed':
+                    act_unlink_cat = menu.addAction(_("🔗 Unlink Category (Unlink All)"))
+                    act_unlink_cat.triggered.connect(lambda: window._handle_unlink_category(rel_path))
+                else:
+                    act_dep_cat = menu.addAction(_("📦 Deploy Category (All Packages)"))
+                    act_dep_cat.triggered.connect(lambda: window._handle_deploy_category(rel_path))
+            elif status in ('linked', 'partial'):
                 act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))
                 act_rem.triggered.connect(lambda: window._handle_unlink_single(rel_path))
             elif status == 'conflict':
