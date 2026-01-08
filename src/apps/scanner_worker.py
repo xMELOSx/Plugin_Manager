@@ -267,33 +267,36 @@ class ScannerWorker(QObject):
 
     def _detect_logical_conflicts(self, results, folder_configs):
         """
-        Detects duplicate deployment targets (global).
-        NOTE: Name conflict detection has been REMOVED as it was not desired functionality.
+        DISABLED: This method was detecting duplicate deployment targets (global).
+        NOTE: This feature is intentionally disabled per user request.
         """
+        # =====================================================================
+        # DISABLED: [競合] label feature was not desired.
+        # The code below has been commented out to prevent the 
+        # "has_target_conflict" flag from ever being set to True.
+        # =====================================================================
+        pass  # No-op function - feature disabled
         # 1. Global Target Map
         # Map: NormalizedTargetPath -> [RelPath]
-        target_map = {}
-        for rel_path, cfg in folder_configs.items():
-            t_override = cfg.get('target_override')
-            if t_override:
-                # Resolve potential relative paths to absolute for reliable comparison
-                try:
-                    norm_t = self.deployer._normalize_path(t_override)
-                    if norm_t not in target_map: target_map[norm_t] = []
-                    target_map[norm_t].append(rel_path)
-                except: continue
-
-        # 2. Mark Results with Target Conflict only
-        for r in results:
-            # Global Target Conflict check
-            t_override = r['config'].get('target_override')
-            if t_override:
-                norm_t = self.deployer._normalize_path(t_override)
-                colliders = target_map.get(norm_t, [])
-                # If more than one item in DB points here, or it collides with another result
-                if len(colliders) > 1:
-                    r['has_target_conflict'] = True
-                    r['has_conflict'] = True
+        # target_map = {}
+        # for rel_path, cfg in folder_configs.items():
+        #     t_override = cfg.get('target_override')
+        #     if t_override:
+        #         try:
+        #             norm_t = self.deployer._normalize_path(t_override)
+        #             if norm_t not in target_map: target_map[norm_t] = []
+        #             target_map[norm_t].append(rel_path)
+        #         except: continue
+        #
+        # # 2. Mark Results with Target Conflict only
+        # for r in results:
+        #     t_override = r['config'].get('target_override')
+        #     if t_override:
+        #         norm_t = self.deployer._normalize_path(t_override)
+        #         colliders = target_map.get(norm_t, [])
+        #         if len(colliders) > 1:
+        #             r['has_target_conflict'] = True
+        #             r['has_conflict'] = True
 
     def _enrich_item(self, item, item_abs_path, parent_path, folder_configs):
         # Rel Path for config check (standardize to '/')

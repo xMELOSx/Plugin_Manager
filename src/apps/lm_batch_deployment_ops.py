@@ -523,24 +523,25 @@ class LMDeploymentOpsMixin:
             self._refresh_tag_visuals()
         
         # Phase 7: Pruning - Remove newly empty parent directories up to target roots
+        # Use normalized paths for robust comparison
+        norm_search_roots = {os.path.normpath(r).lower() for r in search_roots if r}
+
         for search_root in search_roots:
             if not search_root or not os.path.exists(search_root): continue
             
-            # Determine the path that was targeted for this mod in this root
-            # We don't know the EXACT rule used during deploy, so we try parent of the likely targets
-            likely_targets = [
-                os.path.join(search_root, os.path.basename(rel_path)), # folder mode
-                # For tree/custom, it depends on rel_path. We can try to reconstruct it or just use the exhaustive list.
-                # Actually, the deployer.remove_links_pointing_to already cleans up empty dirs it finds.
-                # But we want to be more proactive for "tree" modes where intermediate folders were created.
-            ]
-            
-            # If we know it's tree/custom, we can be more specific. 
-            # For now, let's just use the rel_path mapped to search_root as a candidate for clearing.
             candidate = os.path.join(search_root, rel_path.replace('\\', '/'))
             curr = os.path.dirname(candidate)
             
-            while curr and len(curr) > len(search_root):
+            while curr:
+                # Normalize and check if we've reached a search root or higher
+                norm_curr = os.path.normpath(curr).lower()
+                if norm_curr in norm_search_roots:
+                    break
+                
+                # Double-check length just in case normalization is tricky
+                if len(curr) <= len(search_root):
+                    break
+
                 if os.path.exists(curr) and os.path.isdir(curr):
                     try:
                         if not os.listdir(curr):
@@ -635,8 +636,20 @@ class LMDeploymentOpsMixin:
         # Sort by path length descending to process deepest dirs first
         deleted_dirs.sort(key=lambda x: len(x), reverse=True)
         
+        # Determine if target_root should be protected
+        app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
+        protected_roots = set()
+        if app_data:
+             for k in ['target_root', 'target_root_2', 'target_root_3']:
+                  if k in app_data and app_data[k]:
+                       protected_roots.add(os.path.normpath(app_data[k]).lower())
+
         for d in deleted_dirs:
             if os.path.isdir(d):
+                # Skip deletion if it's one of the main target roots
+                if os.path.normpath(d).lower() in protected_roots:
+                     continue
+
                 try:
                     # Only remove if EMPTY
                     if not os.listdir(d):

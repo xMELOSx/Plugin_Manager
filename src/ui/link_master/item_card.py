@@ -504,8 +504,10 @@ class ItemCard(QFrame):
         if not hasattr(self, 'name_label'): return
 
         final_name = self.display_name
-        if getattr(self, 'has_name_conflict', False) or getattr(self, 'has_target_conflict', False):
-            final_name = _("[Conflict] {name}").format(name=final_name)
+        # DISABLED: [競合] label feature was not desired functionality.
+        # Keeping this code commented for reference but it is no longer active.
+        # if getattr(self, 'has_name_conflict', False) or getattr(self, 'has_target_conflict', False):
+        #     final_name = _("[Conflict] {name}").format(name=final_name)
 
         # Color setup
         name_color = "#888" if getattr(self, 'is_hidden', False) else "#ddd"

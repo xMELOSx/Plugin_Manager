@@ -238,16 +238,20 @@ class LMFileOpsMixin:
         self.preview_window.show()
 
     def _batch_edit_properties_selected(self):
-        """Opens property edit dialog (Single or Batch mode)."""
+        """Opens property edit dialog (Single or Batch mode). Non-modal."""
         if not self.selected_paths: return
         app_data = self.app_combo.currentData()
         if not app_data: return
         
         from src.ui.link_master.dialogs import FolderPropertiesDialog
         
-        if len(self.selected_paths) == 1:
+        # Capture paths to avoid issues if selection changes while non-modal dialog is open
+        target_paths = list(self.selected_paths)
+        is_batch = len(target_paths) > 1
+        
+        if not is_batch:
             # Single Mode
-            path = list(self.selected_paths)[0]
+            path = target_paths[0]
             storage_root = app_data.get('storage_root')
             try:
                 rel = os.path.relpath(path, storage_root).replace('\\', '/')
@@ -269,32 +273,6 @@ class LMFileOpsMixin:
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
                 app_pkg_style_default=app_data.get('default_package_style', 'image')
             )
-            # Phase 36 Debug: Verify registry and app_data are accessible
-            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] parent has registry: {hasattr(self, 'registry')}")
-            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] app_name: {app_data.get('name')}")
-            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] deployment_rule_b: {app_data.get('deployment_rule_b')}")
-            
-            if dialog.exec():
-                data = dialog.get_data()
-                LINK_AFFECTING_KEYS = {
-                    'folder_type', 'deploy_type', 'conflict_policy', 
-                    'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
-                }
-                impacts_link = any(k in data and data[k] != current_config.get(k) for k in LINK_AFFECTING_KEYS)
-                
-                self.db.update_folder_display_config(rel, **data)
-                
-                abs_norm = path.replace('\\', '/')
-                card = self._get_active_card_by_path(abs_norm)
-                if card:
-                    card.update_data(**data)
-                    if card.link_status == 'linked' and impacts_link:
-                        self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
-                        self._deploy_single(rel)
-                
-                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
-                if any(k in data for k in TAG_AFFECTING_KEYS):
-                     self._refresh_tag_visuals()
         else:
             # Batch Mode
             dialog = FolderPropertiesDialog(
@@ -310,32 +288,75 @@ class LMFileOpsMixin:
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
                 app_pkg_style_default=app_data.get('default_package_style', 'image')
             )
+            current_config = {}
+
+        # Store reference to prevent garbage collection
+        if not hasattr(self, '_property_edit_dialogs'):
+            self._property_edit_dialogs = []
+        # Cleanup old closed ones
+        self._property_edit_dialogs = [d for d in self._property_edit_dialogs if d.isVisible()]
+        self._property_edit_dialogs.append(dialog)
+        
+        # Connect accepted signal
+        dialog.accepted.connect(lambda d=dialog, b=is_batch, p=target_paths, c=current_config: 
+                                 self._on_property_edit_accepted(d, b, p, c))
+        
+        dialog.show()
+
+    def _on_property_edit_accepted(self, dialog, is_batch, target_paths, original_config):
+        """Handle saving and UI updates after non-modal property dialog is accepted."""
+        data = dialog.get_data()
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        
+        LINK_AFFECTING_KEYS = {
+            'folder_type', 'deploy_type', 'conflict_policy', 
+            'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
+        }
+        TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+        
+        if not is_batch:
+            # Single Mode Update
+            path = target_paths[0]
+            try:
+                rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                if rel == ".": rel = ""
+            except: rel = ""
             
-            if dialog.exec():
-                data = dialog.get_data()
-                storage_root = app_data.get('storage_root')
-                batch_updates = {k: v for k, v in data.items() if v is not None}
-                if not batch_updates: return
-                
-                for path in self.selected_paths:
-                    try:
-                        rel = os.path.relpath(path, storage_root).replace('\\', '/')
-                        if rel == ".": rel = ""
-                        self.db.update_folder_display_config(rel, **batch_updates)
-                        
-                        abs_norm = path.replace('\\', '/')
-                        card = self._get_active_card_by_path(abs_norm)
-                        if card:
-                            card.update_data(**batch_updates)
-                            if card.link_status == 'linked' and any(k in batch_updates for k in {'deploy_type', 'conflict_policy', 'deployment_rules'}):
-                                self.logger.info(f"Auto-syncing batch item {rel}...")
-                                self._deploy_single(rel)
-                    except Exception as e:
-                        self.logger.error(f"Batch update failed for {path}: {e}")
-                
-                TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
-                if any(k in batch_updates for k in TAG_AFFECTING_KEYS):
-                     self._refresh_tag_visuals()
+            impacts_link = any(k in data and data[k] != original_config.get(k) for k in LINK_AFFECTING_KEYS)
+            self.db.update_folder_display_config(rel, **data)
+            
+            abs_norm = path.replace('\\', '/')
+            card = self._get_active_card_by_path(abs_norm)
+            if card:
+                card.update_data(**data)
+                if card.link_status == 'linked' and impacts_link:
+                    self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
+                    self._deploy_single(rel)
+        else:
+            # Batch Mode Update
+            batch_updates = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
+            if not batch_updates: return
+            
+            for path in target_paths:
+                try:
+                    rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                    if rel == ".": rel = ""
+                    self.db.update_folder_display_config(rel, **batch_updates)
+                    
+                    abs_norm = path.replace('\\', '/')
+                    card = self._get_active_card_by_path(abs_norm)
+                    if card:
+                        card.update_data(**batch_updates)
+                        if card.link_status == 'linked' and any(k in batch_updates for k in {'deploy_type', 'conflict_policy', 'deployment_rules'}):
+                            self.logger.info(f"Auto-syncing batch item {rel}...")
+                            self._deploy_single(rel)
+                except Exception as e:
+                    self.logger.error(f"Batch update failed for {path}: {e}")
+        
+        if any(k in data for k in TAG_AFFECTING_KEYS):
+             self._refresh_tag_visuals()
 
     def _set_visibility_single(self, rel_path, visible: bool, update_ui=True):
         """Set visibility for a single item."""
