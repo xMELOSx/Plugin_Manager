@@ -296,32 +296,30 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Use Source to REPLACE pixels to exact opacity. 
-        # Prevents both accumulation (darker) and flicker (clearing).
+        # 1. Calculate geometry properties early
+        radius = self.border_radius if not self.isMaximized() and not self.isFullScreen() else 0
+        rect = self.rect()
+        
+        # 2. Draw Background
+        # Use Source to REPLACE pixels to exact opacity. Prevents accumulation.
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-        
-        # Calculate color with opacity
         bg_alpha = int(self._bg_opacity * 255)
-        # Standard background color #1e1e1e (30,30,30)
+        # Base Color: Neutral Dark #1e1e1e (30,30,30)
         bg_color = QColor(30, 30, 30, bg_alpha)
-        
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
         
-        radius = self.border_radius if not self.isMaximized() and not self.isFullScreen() else 0
-        
-        # Consistent drawing for both modes
         if radius > 0:
-            painter.drawRoundedRect(self.rect(), radius, radius)
+            painter.drawRoundedRect(rect, radius, radius)
         else:
-            painter.drawRect(self.rect())
+            painter.drawRect(rect)
         
-        # Draw border (SourceOver to blend ON TOP of background)
+        # 3. Draw Border
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         if radius > 0:
             from PyQt6.QtGui import QPen
             painter.setPen(QPen(QColor(80, 80, 80, 100), 1))
-            painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), radius, radius)
+            painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), radius, radius)
         
         painter.end()
         # Debug: Log paint event occasionally or on specific state
@@ -523,14 +521,20 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             # 2. Universal Drag vs Interactive detection
             child = self.childAt(local_pos)
             
-            # Whitelist of interactive components that SHOULD handle their own clicks
-            interactive_types = (QAbstractButton, QPushButton, QLineEdit, QTextEdit, QComboBox, QSlider, QScrollArea)
+            # Whitelist: Components that SHOULD handle clicks (HTCLIENT)
+            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider
+            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView)
+            interactive_names = ["Sidebar", "ItemCard", "QuickTagPanel", "title_bar_controls"]
             
-            # If we hit an interactive component, return HTCLIENT (1)
-            if isinstance(child, interactive_types):
-                return False, 1 # HTCLIENT
-                
-            # For everything else (Empty space, Labels, Backgrounds, TitleBar widget), return HTCAPTION (2)
+            # Check the widget under the mouse or its parents
+            curr = child
+            while curr:
+                # If we hit an interactive class or a specifically named panel, return HTCLIENT
+                if isinstance(curr, interactive_types) or curr.objectName() in interactive_names:
+                    return False, 1 # HTCLIENT: Interaction required
+                curr = curr.parentWidget()
+            
+            # Everything else (Labels, Background gaps, TitleBar empty area, root container) is DRAGGABLE
             return True, 2 # HTCAPTION
             
         return False, 0 
@@ -640,20 +644,13 @@ class FramelessDialog(QDialog, Win32Mixin):
         # 3. Force DWM Dark mode
         force_dark_mode(self)
         
-        # Mixin Inits
-        self.init_drag()
-        self.init_resize()
+        # 3. Apply WinAPI Styles (same stability as FramelessWindow)
+        self._native_styles_applied = False
         
         # State
         self.border_radius = 8
-        self._bg_opacity = 0.95 # Dialogs usually more opaque
+        self._bg_opacity = 0.95
         self._content_opacity = 1.0
-        
-        # Initialize Mixin States securely
-        self._is_resizing = False
-        self._is_dragging = False
-        self._resize_edge = None
-        self._drag_pos = None
 
         self._init_frameless_ui()
         
@@ -743,36 +740,33 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.update()
 
     def paintEvent(self, event):
-        """Paint background directly using CompositionMode_Source to prevent transparency accumulation."""
+        """Paint background directly to prevent OS/Qt state interference."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Use Source to REPLACE pixels to exact opacity. 
-        # Prevents both accumulation (darker) and flicker (clearing).
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        # 1. Geometry properties
+        radius = self.border_radius if not self.isMaximized() else 0
+        rect = self.rect()
         
-        # Calculate color with opacity
+        # 2. Draw Background
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         bg_alpha = int(self._bg_opacity * 255)
-        bg_alpha = max(0, min(255, bg_alpha))
-        bg_color = QColor(43, 43, 43, bg_alpha)
+        # Consistent Dark Color
+        bg_color = QColor(30, 30, 30, bg_alpha)
         
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
-        
-        rect = self.rect()
-        radius = self.border_radius if not self.isMaximized() else 0
         
         if self.isMaximized():
             painter.drawRect(rect)
         else:
             painter.drawRoundedRect(rect, radius, radius)
         
-        # Draw border (SourceOver to blend ON TOP of background)
+        # 3. Draw Border
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-        border_alpha = int(self._bg_opacity * 255)
         if radius > 0:
             from PyQt6.QtGui import QPen
-            painter.setPen(QPen(QColor(68, 68, 68, border_alpha), 1))
+            painter.setPen(QPen(QColor(80, 80, 80, 100), 1))
             painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), radius, radius)
             
         painter.end()
@@ -794,8 +788,6 @@ class FramelessDialog(QDialog, Win32Mixin):
             old = self.content_layout.takeAt(0).widget()
             if old: old.deleteLater()
         self.content_layout.addWidget(widget)
-        widget.installEventFilter(self)
-        widget.setAttribute(Qt.WidgetAttribute.WA_Hover)
 
     def setWindowTitle(self, title: str):
         super().setWindowTitle(title)
@@ -827,94 +819,81 @@ class FramelessDialog(QDialog, Win32Mixin):
                 self._update_stylesheet()
         super().changeEvent(event)
 
-    def set_default_icon(self):
-        """Set a default system icon if no specific icon is provided."""
-        from PyQt6.QtWidgets import QStyle, QApplication
-        icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
-        if not icon.isNull():
-             self.icon_label.setPixmap(icon.pixmap(24, 24))
-             self.icon_label.setVisible(True)
-             self.setWindowIcon(icon)
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._native_styles_applied:
+            self._apply_native_styles()
+            self._native_styles_applied = True
 
-    def eventFilter(self, obj, event):
-        # Resize Cursor Hover Handling
-        if event.type() in [QEvent.Type.MouseMove, QEvent.Type.HoverMove]:
-            if getattr(self, 'resizable', False) and not self.isMaximized() and not getattr(self, '_is_resizing', False) and not getattr(self, '_is_dragging', False):
-                pos = event.position().toPoint() if event.type() == QEvent.Type.HoverMove else event.pos()
-                if obj != self:
-                    pos = self.mapFromGlobal(obj.mapToGlobal(pos))
+    def _apply_native_styles(self):
+        """Apply Windows styles for snap/shadows."""
+        if os.name == 'nt':
+            try:
+                hwnd = int(self.winId())
+                GWL_STYLE = -16
+                WS_CAPTION = 0x00C00000
+                WS_THICKFRAME = 0x00040000
                 
-                edges = self._get_resize_edges(pos)
-                self._update_cursor(edges)
+                style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+                ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME)
+                
+                user32 = ctypes.windll.user32
+                user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)
+            except: pass
+
+    def nativeEvent(self, eventType, message):
+        """Standard NCHITTEST for Dialogs."""
+        try:
+            if eventType == b"windows_generic_MSG":
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+            else: return False, 0
+        except: return False, 0
         
-        elif event.type() == QEvent.Type.HoverLeave:
-             self.setCursor(Qt.CursorShape.ArrowCursor)
+        if msg.message == 0x0112: # WM_SYSCOMMAND
+            if (msg.wParam & 0xFFF0) == 0xF030: # SC_MAXIMIZE
+                self.toggle_maximize()
+                return True, 0
 
-        # Dragging logic - Check if title_bar exists first to avoid AttributeError during init
-        if hasattr(self, 'title_bar') and obj == self.title_bar:
-            if event.type() == QEvent.Type.MouseButtonPress:
-                if event.button() == Qt.MouseButton.LeftButton:
-                    self._is_dragging = True
-                    self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                    return True
-            elif event.type() == QEvent.Type.MouseMove:
-                if self._is_dragging:
-                    self.move(event.globalPosition().toPoint() - self._drag_pos)
-                    return True
-            elif event.type() == QEvent.Type.MouseButtonRelease:
-                self._is_dragging = False
-                return True
-            elif event.type() == QEvent.Type.MouseButtonDblClick:
-                 self.toggle_maximize()
-                 return True
-
-        return super().eventFilter(obj, event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            # 1. Resize (Delegated to ResizableMixin)
-            if not self.isMaximized() and not self.isFullScreen():
-                if self.handle_resize_press(event):
-                    return
+        if msg.message == 0x0083: # WM_NCCALCSIZE
+            return True, 0
             
-            # 2. Drag (Delegated to DraggableMixin)
-            child = self.childAt(event.pos())
-            if isinstance(child, (QPushButton, QCheckBox)): 
-                 pass # Ignored
-            else:
-                self.handle_drag_press(event)
-        
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        # Resize (Delegated to ResizableMixin)
-        if not self.isMaximized() and not self.isFullScreen():
-            self.handle_resize_move(event)
-            # ResizableMixin handles _resizing state internally
-            if getattr(self, '_resizing', False): return
-
-        # Drag (Delegated to DraggableMixin)
-        if not self.isMaximized() and not self.isFullScreen():
-            self.handle_drag_move(event)
+        if msg.message == 0x0084: # WM_NCHITTEST
+            x_phys = ctypes.c_short(msg.lParam & 0xffff).value
+            y_phys = ctypes.c_short((msg.lParam >> 16) & 0xffff).value
+            r = self.devicePixelRatioF()
+            pt_logical = QPoint(int(x_phys / r), int(y_phys / r))
+            pt = self.mapFromGlobal(pt_logical)
+            lx, ly = pt.x(), pt.y()
+            w, h = self.width(), self.height()
             
-        # Cursor update handled by ResizableMixin logic mostly, but explicit update for hover
-        if not getattr(self, '_resizing', False) and not getattr(self, 'draggable', False):
-             edges = self._get_resize_edges(event.pos())
-             self._update_cursor(edges)
-             
-        super().mouseMoveEvent(event)
+            # Resize
+            margin = 8
+            if lx < margin and ly < margin: return True, 13
+            if lx > w - margin and ly < margin: return True, 14
+            if lx < margin and ly > h - margin: return True, 16
+            if lx > w - margin and ly > h - margin: return True, 17
+            if lx < margin: return True, 10
+            if lx > w - margin: return True, 11
+            if ly < margin: return True, 12
+            if ly > h - margin: return True, 15
+            
+            # Refined Drag Hit-Test (Dialog)
+            child = self.childAt(pt)
+            from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider
+            interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView)
+            interactive_names = ["Sidebar", "MainContent", "ItemCard", "QuickTagPanel"]
+            
+            curr = child
+            while curr:
+                if isinstance(curr, interactive_types) or curr.objectName() in interactive_names:
+                    return False, 1 # HTCLIENT
+                curr = curr.parentWidget()
+                
+            return True, 2 # HTCAPTION
+            
+        return False, 0
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.handle_drag_release(event)
-            self.handle_resize_release(event)
-            
-            # Cursor reset
-            self.setCursor(Qt.CursorShape.ArrowCursor) 
-            edges = self._get_resize_edges(event.pos())
-            self._update_cursor(edges)
-            
-        super().mouseReleaseEvent(event)
+    # Legacy mouse events removed in favor of nativeEvent
 
     def center_on_screen(self):
         """Center the dialog on its current screen."""
