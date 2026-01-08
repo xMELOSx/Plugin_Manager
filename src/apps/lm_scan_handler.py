@@ -41,6 +41,11 @@ class LMScanHandlerMixin:
         if not self._validate_scan_context(original_path, context, app_id):
             return
             
+        # Phase 34: Scan Suppression during Critical Operations (e.g. Category Deployment)
+        if getattr(self, '_scan_suppressed', False):
+            self.logger.info(f"[Scan] Results ignored due to suppression (Context: {context})")
+            return
+            
         app_data = self.app_combo.currentData()
         if not app_data: return
         storage_root = app_data.get('storage_root')
@@ -581,6 +586,10 @@ class LMScanHandlerMixin:
         """Refresh link status for all Package cards (updates green/conflict borders)."""
         import time
         t_start = time.perf_counter()
+        
+        # Phase 34: Suppression Check
+        if getattr(self, '_scan_suppressed', False):
+            return
         
         from src.ui.link_master.item_card import ItemCard
         pkg_count = 0

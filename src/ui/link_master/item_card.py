@@ -1114,30 +1114,42 @@ class ItemCard(QFrame):
         # Use deploy_with_rules for Phase 16 & 18.15
         if hasattr(self.deployer, 'clear_actions'): self.deployer.clear_actions()
 
-        success = self.deployer.deploy_with_rules(self.path, target_link, self.deployment_rules,
-                                                deploy_type=self.deploy_type,
-                                                conflict_policy=self.conflict_policy)
+        # Phase 34: Suppress Scanning during Category Deployment
+        # Prevents package mis-detection (Green Border) during folder structure creation
+        is_category = (not self.is_package)
+        main_window = self.window()
+        
+        if is_category and hasattr(main_window, '_scan_suppressed'):
+            main_window._scan_suppressed = True
+            
+        try:
+            success = self.deployer.deploy_with_rules(self.path, target_link, self.deployment_rules,
+                                                    deploy_type=self.deploy_type,
+                                                    conflict_policy=self.conflict_policy)
 
-        if success:
-            # Phase 1.1.6: Show Conflict Action Result
-            if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
-                actions = self.deployer.last_actions
-                msg = _("Deployment successful with conflict handling:\n")
-                for act in actions:
-                    t = act.get('type')
-                    p = os.path.basename(act.get('path'))
-                    if t == 'backup':
-                        msg += _("- Backup created for {path}\n").format(path=p)
-                    elif t == 'overwrite':
-                        msg += _("- Overwritten existing {path}\n").format(path=p)
+            if success:
+                # Phase 1.1.6: Show Conflict Action Result
+                if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
+                    actions = self.deployer.last_actions
+                    msg = _("Deployment successful with conflict handling:\n")
+                    for act in actions:
+                        t = act.get('type')
+                        p = os.path.basename(act.get('path'))
+                        if t == 'backup':
+                            msg += _("- Backup created for {path}\n").format(path=p)
+                        elif t == 'overwrite':
+                            msg += _("- Overwritten existing {path}\n").format(path=p)
 
-                QMessageBox.information(self, _("Conflict Handled"), msg)
+                    QMessageBox.information(self, _("Conflict Handled"), msg)
 
-            self._check_link_status()
-            self._update_style()
-            self.deploy_changed.emit()  # Notify parent to refresh
-        else:
-             QMessageBox.warning(self, _("Error"), _("Deploy failed. Check logs or permissions."))
+                self._check_link_status()
+                self._update_style()
+                self.deploy_changed.emit()  # Notify parent to refresh
+            else:
+                QMessageBox.warning(self, _("Error"), _("Deploy failed. Check logs or permissions."))
+        finally:
+            if is_category and hasattr(main_window, '_scan_suppressed'):
+                main_window._scan_suppressed = False
 
 
     def _remove_link(self):
