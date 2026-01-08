@@ -459,8 +459,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     
     def closeEvent(self, event):
         """Save geometry and UI state on close, and close subwindows."""
+        # 0. Phase 36: Check for unsaved Quick Memo
+        if hasattr(self, 'notes_panel') and self.notes_panel:
+            if not self.notes_panel.maybe_save():
+                event.ignore()
+                return
+        
         # 1. Save last viewed app/path
         self._save_last_state()
+
         
         # 2. Save category view height (Persistent per system)
         if hasattr(self, '_category_fixed_height'):
@@ -1646,7 +1653,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             if root_path and os.path.isdir(root_path):
                 self.storage_root = root_path
                 # Update Explorer Scope (with app_name for DB sync - Phase 18.13)
-                self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'])
+                self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'], app_data=app_data)
+
                 try:
                     self.explorer_panel.config_changed.disconnect()
                 except: pass
@@ -1844,7 +1852,13 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         is_already_open = self.drawer_widget.isVisible()
         current_tab = self.sidebar_tabs.currentIndex()
         
+        # Phase 36: Check for unsaved Quick Memo when switching AWAY from Notes tab
+        if current_tab == 2 and index != 2 and hasattr(self, 'notes_panel') and self.notes_panel:
+            if not self.notes_panel.maybe_save():
+                return  # User cancelled, abort tab switch
+        
         # Lazy Loading implementation
+
         if index == 0 and self.library_panel is None:
             self.library_panel = LibraryPanel(self, db=self.db)
             self.library_panel.request_register_library.connect(self._register_selected_as_library)
@@ -1924,11 +1938,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                  self.tools_panel.slider_deploy_opacity.setValue(int(self.deploy_button_opacity * 100))
 
         if is_already_open and current_tab == index:
+            # Phase 36: Check for unsaved Quick Memo when closing drawer from Notes tab
+            if current_tab == 2 and hasattr(self, 'notes_panel') and self.notes_panel:
+                if not self.notes_panel.maybe_save():
+                    return  # User cancelled, abort drawer close
+            
             # Cache splitter sizes before closing
             if hasattr(self, 'sidebar_splitter'):
                 self._last_splitter_sizes = self.sidebar_splitter.sizes()
             # Close it
             self.drawer_widget.hide()
+
             self.btn_libraries.setChecked(False)
             self.btn_presets.setChecked(False)
             self.btn_notes.setChecked(False)

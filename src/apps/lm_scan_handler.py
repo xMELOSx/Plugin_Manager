@@ -303,6 +303,7 @@ class LMScanHandlerMixin:
             has_target_conflict=r.get('has_target_conflict', False),
             is_misplaced=r.get('is_misplaced', False) if (not is_package and context != "contents") else False,
             is_package=is_package,
+
             is_trash_view=r.get('is_trash_view', False),
             loader=self.image_loader,
             deployer=self.deployer,
@@ -322,7 +323,8 @@ class LMScanHandlerMixin:
             lib_name=item_config.get('lib_name', ''),
             is_library=r.get('is_library', 0),
             is_library_alt_version=r.get('is_library_alt_version', False),
-            category_deploy_status=item_config.get('category_deploy_status'), # Phase: Category Deploy Fix
+            category_deploy_status=item_config.get('category_deploy_status') if not is_package else None,  # Phase 36: Only for categories
+
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
@@ -556,9 +558,25 @@ class LMScanHandlerMixin:
         # Phase 28 Optimization: Fetch DB once!
         all_configs_raw = self.db.get_all_folder_configs()
         cached_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
+
+        # Phase 36: Sync cached_configs with ACTUAL displayed package status
+        # This fixes "Ghost Unlink" on category borders by trusting UI over stale DB.
+        if self.pkg_layout:
+             for i in range(self.pkg_layout.count()):
+                 item = self.pkg_layout.itemAt(i)
+                 if item and item.widget():
+                     card = item.widget()
+                     if isinstance(card, ItemCard) and getattr(card, 'is_package', False):
+                         # Override DB status with actual card status
+                         rel_p = card.rel_path.replace('\\', '/')
+                         if rel_p not in cached_configs: cached_configs[rel_p] = {}
+                         cached_configs[rel_p]['last_known_status'] = card.link_status
+
         
         cat_count = 0
-        for layout in [self.cat_layout, self.pkg_layout]:
+        # Phase 32: Do NOT scan pkg_layout here! It causes 'Ghost Unlink' on packages
+        # because they might be misidentified as categories if is_package is stale.
+        for layout in [self.cat_layout]:
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
@@ -588,7 +606,7 @@ class LMScanHandlerMixin:
         QApplication.processEvents()
         
         # Also refresh package card borders (green for linked, red for conflict)
-        self._refresh_package_cards()
+        # self._refresh_package_cards()
         
         t_total_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
@@ -720,7 +738,7 @@ class LMScanHandlerMixin:
         if not app_data: return
         
         storage_root = app_data.get('storage_root')
-        target_roots = [r for r in [app_data.get('target_root'), app_data.get('target_root_2')] if r and os.path.exists(r)]
+        target_roots = [r for r in [app_data.get('target_root'), app_data.get('target_root_2'), app_data.get('target_root_3'), app_data.get('target_root_4')] if r and os.path.exists(r)]
         if not (storage_root and os.path.exists(storage_root)): return
 
         self.logger.info("Starting manual rebuild of link status cache...")

@@ -1467,15 +1467,28 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self) # Support numpad
         self.save_shortcut_win.activated.connect(self.accept)
 
-        self.ok_btn = QPushButton(_("Save"))
-        self.ok_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; border-radius: 4px; padding: 6px;")
-        self.ok_btn.setFixedWidth(160)
+        self.ok_btn = QPushButton(_("変更を反映して閉じる (Alt+Enter)"))
+        self.ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.ok_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #2980b9; color: white; font-weight: bold; 
+                border-radius: 4px; padding: 8px 16px; 
+            }
+            QPushButton:hover { background-color: #3498db; }
+        """)
         self.ok_btn.clicked.connect(self.accept)
         
-        self.cancel_btn = QPushButton(_("Cancel"))
-        self.cancel_btn.setStyleSheet("background-color: #444; color: white; border: 1px solid #555; border-radius: 4px; padding: 6px;")
-        self.cancel_btn.setFixedWidth(160)
+        self.cancel_btn = QPushButton(_("キャンセル"))
+        self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cancel_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #444; color: white; 
+                border: 1px solid #555; border-radius: 4px; padding: 8px 16px; 
+            }
+            QPushButton:hover { background-color: #555; border-color: #777; }
+        """)
         self.cancel_btn.clicked.connect(self.reject)
+
         
         btn_layout.addStretch()
         btn_layout.addWidget(self.cancel_btn)

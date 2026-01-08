@@ -231,6 +231,8 @@ class ItemCard(QFrame):
         if 'folder_type' in kwargs:
             self.is_package = (kwargs['folder_type'] == 'package')
 
+
+
         self.is_registered = kwargs.get('is_registered', getattr(self, 'is_registered', True))
         self.is_misplaced = kwargs.get('is_misplaced', getattr(self, 'is_misplaced', False))
         self.is_partial = kwargs.get('is_partial', getattr(self, 'is_partial', False))

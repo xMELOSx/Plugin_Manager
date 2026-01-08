@@ -330,7 +330,8 @@ class ScannerWorker(QObject):
         # Determine deploy rule for target resolving
         deploy_rule = item_config.get('deploy_rule')
         if not deploy_rule or deploy_rule in ('default', 'inherit'):
-            deploy_rule = self.app_data.get('deployment_rule', 'folder')
+            deploy_rule = self.app_data.get('deployment_type', 'folder')
+
         if deploy_rule == 'flatten': deploy_rule = 'files'
 
         # target_link calculation must match ItemCard._check_link_status
@@ -338,8 +339,25 @@ class ScannerWorker(QObject):
             target_link = target_override
         elif deploy_rule == 'files':
             target_link = self.target_root
+        elif deploy_rule == 'tree':
+            # Phase 36: Reconstruct hierarchy for tree mode (synced with ItemCard L426-446)
+            skip_val = 0
+            deployment_rules_json = item_config.get('deployment_rules')
+            if deployment_rules_json:
+                try:
+                    rules_obj = json.loads(deployment_rules_json)
+                    skip_val = int(rules_obj.get('skip_levels', 0))
+                except: pass
+            
+            parts = item_rel.split('/') if item_rel else []
+            if len(parts) > skip_val:
+                mirrored = "/".join(parts[skip_val:])
+                target_link = os.path.join(self.target_root, mirrored)
+            else:
+                target_link = self.target_root
         else:
             target_link = os.path.join(self.target_root, item['name'])
+
         
         # Phase 33: Categories derive status from children, NOT from physical symlink check
         # Matching ItemCard logic at L396

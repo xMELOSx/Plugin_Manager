@@ -15,6 +15,7 @@ class NotesPanel(QWidget):
         self.storage_path = storage_path # e.g. root/resource/app/[app]/notes/
         self.current_app_id = None
         self._note_order = [] # List of filenames
+        self._is_dirty = False # Phase 36: Track unsaved changes
         self._init_ui()
 
     def _init_ui(self):
@@ -66,6 +67,7 @@ class NotesPanel(QWidget):
         self.editor = QTextEdit(self)
         self.editor.setPlaceholderText(_("Select a note to edit..."))
         self.editor.setStyleSheet("background-color: #222; color: #eee; border: 1px solid #444;")
+        self.editor.textChanged.connect(self._on_text_changed) # Phase 36: Track dirty state
         self.editor.hide() # Hidden until note selected
         layout.addWidget(self.editor, 1)
         
@@ -211,7 +213,22 @@ class NotesPanel(QWidget):
 
     def _on_item_clicked(self, item):
         if not item: return
-        self.current_note = item.text()
+        
+        # Phase 36: Check for unsaved changes before switching notes
+        new_note = item.text()
+        current = getattr(self, 'current_note', None)
+        if current and current != new_note and self._is_dirty:
+            if not self.maybe_save():
+                # User cancelled - restore selection to current note
+                for i in range(self.list_widget.count()):
+                    if self.list_widget.item(i).text() == current:
+                        self.list_widget.blockSignals(True)
+                        self.list_widget.setCurrentRow(i)
+                        self.list_widget.blockSignals(False)
+                        return
+                return
+        
+        self.current_note = new_note
         path = os.path.join(self.storage_path, self.current_note)
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -222,6 +239,39 @@ class NotesPanel(QWidget):
             self._save_last_note(self.current_note)
         except Exception as e:
             QMessageBox.critical(self, _("Error"), _("Failed to read note: {e}").format(e=e))
+        finally:
+            self._is_dirty = False # Reset dirty on load
+
+    def _on_text_changed(self):
+        """Mark content as dirty when text changes."""
+        self._is_dirty = True
+
+    def is_dirty(self):
+        """Return True if there are unsaved changes."""
+        return self._is_dirty
+
+    def maybe_save(self) -> bool:
+        """Prompt user to save if dirty. Returns True if safe to proceed, False to cancel."""
+        if not self._is_dirty:
+            return True
+        
+        note_name = getattr(self, 'current_note', None) or _("current note")
+        result = QMessageBox.question(
+            self,
+            _("Unsaved Changes"),
+            _("The note '{name}' has unsaved changes. Save before leaving?").format(name=note_name),
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save
+        )
+        
+        if result == QMessageBox.StandardButton.Save:
+            self._save_current_note()
+            return True
+        elif result == QMessageBox.StandardButton.Discard:
+            self._is_dirty = False
+            return True
+        else:  # Cancel
+            return False
 
     def _save_current_note(self):
         if not hasattr(self, 'current_note') or not self.current_note: return
@@ -229,6 +279,7 @@ class NotesPanel(QWidget):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(self.editor.toPlainText())
+            self._is_dirty = False # Phase 36: Clear dirty on save
             # self.refresh() # Don't clear editor on save
         except Exception as e:
             QMessageBox.critical(self, _("Error"), _("Failed to save note: {e}").format(e=e))

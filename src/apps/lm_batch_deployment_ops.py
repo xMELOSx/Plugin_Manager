@@ -305,7 +305,48 @@ class LMDeploymentOpsMixin:
         deployed_children = []
         for child_rel in child_packages:
             child_config = self.db.get_folder_config(child_rel) or {}
-            status = child_config.get('last_known_status', 'none')
+            # Phase 36 Fix: Real-time status check using Deployer (bypassing stale DB)
+            # status = child_config.get('last_known_status', 'none')
+            
+            # 1. Determine Target Path (Logic synced with ScannerWorker/ItemCard)
+            deploy_rule = child_config.get('deploy_rule') or child_config.get('deploy_type') or 'folder'
+            if deploy_rule == 'flatten': deploy_rule = 'files'
+            
+            child_target_link = None
+            if deploy_rule == 'tree' and target_root:
+                import json
+                skip_val = 0
+                rules_json = child_config.get('deployment_rules')
+                if rules_json:
+                    try:
+                        rules_obj = json.loads(rules_json)
+                        skip_val = int(rules_obj.get('skip_levels', 0))
+                    except: pass
+                
+                try:
+                    # child_rel is relative to storage_root
+                    normalized_rel = child_rel.replace('\\', '/')
+                    parts = normalized_rel.split('/')
+                    if len(parts) > skip_val:
+                        mirrored = "/".join(parts[skip_val:])
+                        child_target_link = os.path.join(target_root, mirrored)
+                    else:
+                        child_target_link = os.path.join(target_root, os.path.basename(child_rel))
+                except:
+                    child_target_link = os.path.join(target_root, os.path.basename(child_rel))
+            elif target_root:
+                child_target_link = os.path.join(target_root, os.path.basename(child_rel)) # Default/Folder/Files/Custom(basic)
+
+            # 2. Check Status via Deployer
+            status = 'none'
+            if child_target_link and getattr(self, 'deployer', None):
+                full_source = os.path.join(self.storage_root, child_rel)
+                st_info = self.deployer.get_link_status(child_target_link, expected_source=full_source)
+                status = st_info.get('status', 'none')
+            else:
+                 # Fallback to DB if deployer missing (unlikely)
+                 status = child_config.get('last_known_status', 'none')
+
             if status == 'linked':
                 deployed_children.append(child_rel)
         
@@ -1107,6 +1148,23 @@ class LMDeploymentOpsMixin:
         if not target_root: return
         
         cat_lay = getattr(self, 'cat_layout', None)
+        
+        # Phase 36: Sync cached_configs with ACTUAL displayed package status (UI Truth > DB)
+        # Fixes Ghost Unlink where background thread overwrites status with stale DB data
+        pkg_lay = getattr(self, 'pkg_layout', None)
+        if pkg_lay:
+            for i in range(pkg_lay.count()):
+                item = pkg_lay.itemAt(i)
+                if item and item.widget():
+                    card = item.widget()
+                    # ItemCard must be imported or available in namespace, careful. 
+                    # Assuming card has 'is_package' attr.
+                    if getattr(card, 'is_package', False):
+                        rel_p = getattr(card, 'rel_path', '').replace('\\', '/')
+                        if rel_p:
+                            if rel_p not in cached_configs: cached_configs[rel_p] = {}
+                            cached_configs[rel_p]['last_known_status'] = getattr(card, 'link_status', 'none')
+
         if cat_lay:
             for i in range(cat_lay.count()):
                 item = cat_lay.itemAt(i)
