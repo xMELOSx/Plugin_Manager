@@ -1366,7 +1366,53 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                 border: 1px solid #555; padding: 4px; border-radius: 4px;
             }
         """)
-        adv_form.addRow(_("Deployment Rules (JSON):"), self.rules_edit)
+        
+        # Help Button for JSON Rules
+        json_help_btn = QPushButton()
+        json_help_btn.setFixedSize(24, 24)
+        json_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        try:
+             import os
+             from PyQt6.QtGui import QIcon
+             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+             icon_path = os.path.join(project_root, "resource", "tags", "help_icon_v2.png")
+             if os.path.exists(icon_path):
+                 json_help_btn.setIcon(QIcon(icon_path))
+                 json_help_btn.setIconSize(json_help_btn.size() * 0.8)
+             else:
+                 json_help_btn.setText("?")
+        except:
+             json_help_btn.setText("?")
+             
+        json_help_tooltip = (
+            _("<b>Deployment Rules JSON format:</b>") + "<br><br>" +
+            _("<b>exclude</b>: List of patterns to skip.") + "<br>" +
+            "<pre>{\"exclude\": [\"*.txt\", \"docs/\"]}</pre><br>" +
+            _("<b>rename</b>: Dictionary of filename mappings.") + "<br>" +
+            "<pre>{\"rename\": {\"old.dll\": \"new.dll\"}}</pre><br>" +
+            _("<b>skip_levels</b>: Number of folder levels to flatten.") + "<br>" +
+            "<pre>{\"skip_levels\": 1}</pre>"
+        )
+        json_help_btn.setToolTip(json_help_tooltip)
+        
+        json_help_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: transparent; border: 1px solid #555; border-radius: 4px; 
+            }
+            QPushButton:hover { background-color: #444; border-color: #3498db; }
+        """)
+        
+        rules_layout = QHBoxLayout()
+        rules_layout.addWidget(self.rules_edit)
+        
+        btn_box = QVBoxLayout()
+        btn_box.setContentsMargins(0, 0, 0, 0)
+        btn_box.addWidget(json_help_btn)
+        btn_box.addStretch()
+        rules_layout.addLayout(btn_box)
+
+        adv_form.addRow(_("Deployment Rules (JSON):"), rules_layout)
 
         # Phase 3.7: Shortcut to File Management (Now AFTER Rules) - Full width
         if not self.batch_mode:

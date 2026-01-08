@@ -2096,15 +2096,60 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _update_drawer_geometry(self,):
         """Update absolute position of the floating explorer panel."""
-        if not hasattr(self, 'explorer_panel') or not hasattr(self, 'content_wrapper'):
+        if not hasattr(self, 'explorer_panel') or not hasattr(self, 'btn_drawer'):
             return
-        # Position at the left edge of content_wrapper, below the header
-        pos = self.content_wrapper.mapTo(self, self.content_wrapper.rect().topLeft())
-        height = self.content_wrapper.height()
+            
+        # Position relative to the toggle button
+        btn_pos = self.btn_drawer.mapTo(self, self.btn_drawer.rect().topRight())
+        
+        # Check available height
+        global_pos = self.mapToGlobal(self.rect().topLeft())
+        screen_geo = self.screen().availableGeometry()
+        
+        # Calculate Y and Height
+        y = btn_pos.y()
+        # Adjust height to fit within window, respecting bottom margin
+        window_height = self.height()
+        # Roughly header height (50) + margins
+        height = window_height - y - 20 
+        
         # Use saved width or default to 280
         width = getattr(self, '_explorer_panel_width', 280)
-        self.explorer_panel.setGeometry(pos.x() + 50, pos.y(), width, height)
+        
+        # X: Button Right + small margin (5px)
+        x = btn_pos.x() + 5
+        
+        self.explorer_panel.setGeometry(x, y, width, height)
         self.explorer_panel.raise_()
+
+    def _on_explorer_target_changed(self, key):
+        """Handle target change from ExplorerPanel."""
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        
+        self.current_target_key = key
+        
+        if key == 'source':
+            # Revert to Source Root
+            source_root = app_data.get('storage_root', '')
+            if source_root and os.path.exists(source_root):
+                self.explorer_panel.set_storage_root(source_root)
+                self.logger.info(f"Explorer Switched to Source View: {source_root}")
+            return
+
+        target_path = app_data.get(key, "")
+        
+        # Switch Explorer View to Target Logic ONLY (Do NOT change Main View)
+        if target_path and os.path.exists(target_path):
+            self.explorer_panel.set_storage_root(target_path)
+        else:
+            self.logger.warning(f"Target path not found for {key}: {target_path}")
+
+        # Update target name label (if visible)
+        if hasattr(self, 'target_name_lbl'):
+             self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
+             
+        self.logger.info(f"Explorer Target Tree Switched: {key} -> {target_path}")
     
     def _on_explorer_panel_width_changed(self, new_width: int):
         """Cache explorer panel width for persistence."""

@@ -63,6 +63,7 @@ class ExplorerPanel(QWidget):
         self.btn_targets = {}
         # Use list of tuples to preserve order; primary target first, then additional
         target_list = [
+            ('source', 'Src'),
             ('target_root', _("Main")),
             ('target_root_2', "A"),
             ('target_root_3', "B"),
