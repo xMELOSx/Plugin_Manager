@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon
+from PyQt6.QtGui import QPixmap, QPainter, QFont, QIcon, QColor, QPen
 from src.core.lang_manager import _
 
 
@@ -42,36 +42,61 @@ class DeployOverlay(QPushButton):
         
         if link_status == 'linked':
             icon_pixmap = self._get_emoji_pixmap("🔗", 16)
-            base_color = f"rgba(39, 174, 96, {opacity})"
-            hover_color = "rgba(46, 204, 113, 0.95)"
-            border_color = "#1e8449"
+            self._base_color = QColor(39, 174, 96, int(255 * opacity))
+            self._hover_color = QColor(46, 204, 113, 242) # 0.95 * 255
+            self._border_color = QColor("#1e8449")
             self.setToolTip(_("Linked (Unlink)"))
         elif link_status == 'conflict':
             icon_pixmap = self._get_emoji_pixmap("⚠", 16)
-            base_color = f"rgba(231, 76, 60, {opacity})"
-            hover_color = "rgba(241, 100, 85, 0.95)"
-            border_color = "#943126"
+            self._base_color = QColor(231, 76, 60, int(255 * opacity))
+            self._hover_color = QColor(241, 100, 85, 242)
+            self._border_color = QColor("#943126")
             self.setToolTip(_("Conflict (Occupy)"))
         else:
             icon_pixmap = self._get_emoji_pixmap("🚀", 16)
-            base_color = f"rgba(52, 152, 219, {opacity})"
-            hover_color = "rgba(93, 173, 226, 0.95)"
-            border_color = "#2471a3"
+            self._base_color = QColor(52, 152, 219, int(255 * opacity))
+            self._hover_color = QColor(93, 173, 226, 242)
+            self._border_color = QColor("#2471a3")
             self.setToolTip(_("Not Linked (Deploy)"))
 
         self.setIcon(QIcon(icon_pixmap))
         self.setIconSize(QSize(16, 16))
         self.setText("")
+        
+        # Remove stylesheet to prevent interference
+        self.setStyleSheet("")
+        self.update()
 
-        style = f"""
-            QPushButton {{ 
-                background-color: {base_color}; 
-                color: white; 
-                border-radius: 12px; 
-                border: 1px solid {border_color}; 
-            }}
-            QPushButton:hover {{ 
-                background-color: {hover_color}; 
-            }}
-        """
-        self.setStyleSheet(style)
+    def paintEvent(self, event):
+        """Custom painting for high performance opacity updates."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Determine background color
+        bg = getattr(self, '_base_color', QColor(52, 152, 219, 200))
+        if self.underMouse():
+             bg = getattr(self, '_hover_color', QColor(93, 173, 226, 242))
+             
+        border = getattr(self, '_border_color', QColor("#2471a3"))
+        
+        # Draw Circle Background
+        painter.setBrush(bg)
+        painter.setPen(QPen(border, 1))
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        painter.drawEllipse(rect)
+        
+        # Draw Icon
+        if not self.icon().isNull():
+             # Center icon manually to ensure perfect alignment
+             # icon_rect 16x16 centered in 24x24
+             icon_x = (self.width() - 16) // 2
+             icon_y = (self.height() - 16) // 2
+             self.icon().paint(painter, icon_x, icon_y, 16, 16)
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)

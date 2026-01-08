@@ -177,6 +177,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         self._init_ui()
         
+        # Initialize Toast for notifications
+        # Position below header/tag bar (approx 100px)
+        self._toast = Toast(self, y_offset=100)
+        
         
         # Sub Windows - Moved to lazy loading in toggle_options to prevent alpha stacking on startup
         self.options_window = None
@@ -808,6 +812,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._save_card_settings()
         if hasattr(self, 'btn_card_settings'): self.btn_card_settings.setChecked(False)
         if self.card_settings_window: self.card_settings_window.hide()
+        
+        # Show Toast on Main Window (User Request)
+        if hasattr(self, '_toast') and self._toast:
+            self._toast.show_message(_("Card size saved!"), color="#5dade2", duration=2000)
+
+    def _on_card_settings_closed(self):
+        """Handle independent window closed via X button."""
+        if hasattr(self, 'btn_card_settings'):
+            self.btn_card_settings.setChecked(False)
 
     def _cancel_settings_window(self):
         """Handle cancel/reset from independent window."""
@@ -869,6 +882,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.card_settings_window.lockToggled.connect(self._on_display_lock_toggled)
             self.card_settings_window.saveRequested.connect(self._save_card_settings_window)
             self.card_settings_window.cancelRequested.connect(self._cancel_settings_window)
+            self.card_settings_window.closed.connect(self._on_card_settings_closed)
             
             # Connect Tab Change (Directly access tabs widget)
             if hasattr(self.card_settings_window, 'tabs'):

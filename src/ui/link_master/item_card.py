@@ -588,7 +588,12 @@ class ItemCard(QFrame):
         is_lib = bool(getattr(self, 'is_library', 0))
         
         # Performance Guard: Skip if nothing changed
-        current_state = (display_mode, is_fav, has_urls, status, is_lib, self.width(), self.height())
+        current_state = (
+            display_mode, is_fav, has_urls, status, is_lib, self.width(), self.height(),
+            getattr(self, '_deploy_btn_opacity', 0.8),
+            getattr(self, 'show_link_overlay', True),
+            getattr(self, 'show_deploy_btn', True)
+        )
         if hasattr(self, '_last_icon_overlay_state') and self._last_icon_overlay_state == current_state:
             # Debug-level logging to avoid overhead
             # import logging

@@ -19,13 +19,14 @@ class CardSettingsWindow(QWidget):
     lockToggled = pyqtSignal(bool)
     saveRequested = pyqtSignal()
     cancelRequested = pyqtSignal()
+    closed = pyqtSignal()
 
     def __init__(self, current_settings, display_mode_locked):
         super().__init__()
         self.setWindowTitle(_("Card Settings"))
-        # Use Tool window look but independent
-        self.setWindowFlags(Qt.WindowType.Window) 
-        self.resize(400, 800)
+        # Use Tool window look but independent, hidden from taskbar
+        self.setWindowFlags(Qt.WindowType.Tool) 
+        self.resize(400, 850)
         self.settings = current_settings
         self.locked = display_mode_locked
         
@@ -300,3 +301,8 @@ class CardSettingsWindow(QWidget):
         row.addWidget(lbl)
         row.addStretch()
         return row
+
+    def closeEvent(self, event):
+        """Emit closed signal when window is closed."""
+        self.closed.emit()
+        super().closeEvent(event)
