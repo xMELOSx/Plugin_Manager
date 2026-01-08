@@ -269,6 +269,11 @@ class LMFileOpsMixin:
                 app_cat_style_default=app_data.get('default_category_style', 'image'),
                 app_pkg_style_default=app_data.get('default_package_style', 'image')
             )
+            # Phase 36 Debug: Verify registry and app_data are accessible
+            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] parent has registry: {hasattr(self, 'registry')}")
+            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] app_name: {app_data.get('name')}")
+            print(f"[DEBUG lm_batch_file_ops._batch_edit_properties_selected] deployment_rule_b: {app_data.get('deployment_rule_b')}")
+            
             if dialog.exec():
                 data = dialog.get_data()
                 LINK_AFFECTING_KEYS = {

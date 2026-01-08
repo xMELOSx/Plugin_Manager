@@ -1195,12 +1195,45 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
-        # New Rule Options
-        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit)"), "inherit")
-        self.deploy_rule_override_combo.addItem(_("whole folder"), "folder")
-        self.deploy_rule_override_combo.addItem(_("all files (flatten)"), "files")
-        self.deploy_rule_override_combo.addItem(_("tree (relative)"), "tree")
-        self.deploy_rule_override_combo.addItem(_("Custom (Individual Settings)"), "custom")
+        # New Rule Options - Phase 36: Read deploy rule based on currently selected target in target_combo
+        # Get the current target selection from target_combo (0=App Default, 1=Primary, 2=Secondary, 3=Tertiary, 4=Custom)
+        target_data = self.target_combo.currentData()
+        
+        # Determine which deployment rule to read based on target selection
+        # 0 = App Default (use app's last_target), 1 = Primary, 2 = Secondary, 3 = Tertiary, 4 = Custom
+        if target_data == 0 or target_data is None:
+            # App Default - use app's current target setting
+            last_target = self.current_app_data.get('last_target', 'target_root')
+            target_map = {'target_root': 1, 'target_root_2': 2, 'target_root_3': 3}
+            effective_target = target_map.get(last_target, 1)
+        elif target_data == 4:
+            # Custom - use Primary as fallback
+            effective_target = 1
+        else:
+            # Direct selection (1=Primary, 2=Secondary, 3=Tertiary)
+            effective_target = target_data
+        
+        # Map target number to rule key: 1=Primary, 2=Secondary, 3=Tertiary
+        rule_key_map = {
+            1: 'deployment_rule',       # Primary
+            2: 'deployment_rule_b',     # Secondary  
+            3: 'deployment_rule_c'      # Tertiary
+        }
+        app_rule_key = rule_key_map.get(effective_target, 'deployment_rule')
+        actual_default_rule = self.current_app_data.get(app_rule_key) or self.current_app_data.get('deployment_rule', 'folder')
+        
+        # Map rule to display name
+        rule_display_map = {'folder': 'Folder', 'files': 'Flat', 'tree': 'Tree', 'custom': 'Custom'}
+        default_display = rule_display_map.get(actual_default_rule, actual_default_rule.capitalize())
+        
+        # Phase 36 Debug: Show what's being used
+        print(f"[DEBUG Deploy Rule Init] target_data={target_data}, effective_target={effective_target}, app_rule_key={app_rule_key}, actual_default_rule={actual_default_rule}, default_display={default_display}")
+        
+        self.deploy_rule_override_combo.addItem(_("Target Default (Inherit: {mode})").format(mode=default_display), "inherit")
+        self.deploy_rule_override_combo.addItem(_("Folder"), "folder")
+        self.deploy_rule_override_combo.addItem(_("Flat"), "files")
+        self.deploy_rule_override_combo.addItem(_("Tree"), "tree")
+        self.deploy_rule_override_combo.addItem(_("Custom"), "custom")
         
         curr_rule = self.current_config.get('deploy_rule')
         if not curr_rule:
@@ -1216,6 +1249,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.deploy_rule_override_combo.setCurrentIndex(0)
             
         adv_form.addRow(_("Deploy Rule:"), self.deploy_rule_override_combo)
+        
+        # Phase 36: Now that deploy_rule_override_combo exists, trigger initial update based on current target selection
+        # and reconnect signal for real-time updates
+        self._on_target_choice_changed()
 
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
@@ -1406,6 +1443,52 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         btn_layout.addWidget(self.ok_btn)
         
         self.root_layout.addLayout(btn_layout)
+    
+    def _on_target_choice_changed(self):
+        """Handle target selection changes - update custom path visibility and deploy rule default."""
+        data = self.target_combo.currentData()
+        
+        # Phase 36 Debug: Verify method is being called
+        print(f"[DEBUG _on_target_choice_changed CALLED] data={data}, has_combo={hasattr(self, 'deploy_rule_override_combo')}")
+        
+        # Show/hide custom path editor
+        is_custom = (data == 4)
+        if hasattr(self, 'manual_path_container'):
+            self.manual_path_container.setVisible(is_custom)
+        
+        # Phase 36: Update deploy rule default label based on selected target
+        if hasattr(self, 'deploy_rule_override_combo'):
+            # Determine which target is selected
+            target_key = 'target_root'  # Default
+            if data == 2:
+                target_key = 'target_root_2'
+            elif data == 3:
+                target_key = 'target_root_3'
+            
+            # Map target key to rule key
+            rule_key_map = {
+                'target_root': 'deployment_rule',
+                'target_root_2': 'deployment_rule_b',
+                'target_root_3': 'deployment_rule_c'
+            }
+            app_rule_key = rule_key_map.get(target_key, 'deployment_rule')
+            actual_default_rule = self.current_app_data.get(app_rule_key) or self.current_app_data.get('deployment_rule', 'folder')
+            
+            # Map rule to display name
+            rule_display_map = {'folder': 'Folder', 'files': 'Flat', 'tree': 'Tree', 'custom': 'Custom'}
+            default_display = rule_display_map.get(actual_default_rule, actual_default_rule.capitalize())
+            
+            # Phase 36 Debug: Show values during target change + full app_data rules
+            dr = self.current_app_data.get('deployment_rule')
+            drb = self.current_app_data.get('deployment_rule_b')
+            drc = self.current_app_data.get('deployment_rule_c')
+            print(f"[DEBUG _on_target_choice_changed] data={data}, target_key={target_key}")
+            print(f"[DEBUG _on_target_choice_changed] current_app_data deployment_rules: A={dr}, B={drb}, C={drc}")
+            print(f"[DEBUG _on_target_choice_changed] app_rule_key={app_rule_key}, actual_default_rule={actual_default_rule}, default_display={default_display}")
+            
+            # Update the first (or second in batch mode) item's text
+            default_idx = 1 if self.batch_mode else 0
+            self.deploy_rule_override_combo.setItemText(default_idx, _("Target Default (Inherit: {mode})").format(mode=default_display))
     
     def _open_actual_folder(self):
         """Open the folder in Explorer."""
