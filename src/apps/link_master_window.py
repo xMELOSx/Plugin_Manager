@@ -2123,33 +2123,21 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.explorer_panel.raise_()
 
     def _on_explorer_target_changed(self, key):
-        """Handle target change from ExplorerPanel."""
+        """Handle target change from ExplorerPanel (Viewer Only)."""
         app_data = self.app_combo.currentData()
         if not app_data: return
         
-        self.current_target_key = key
-        
+        # Get target path but do NOT update active deployment state (current_target_key)
         if key == 'source':
-            # Revert to Source Root
-            source_root = app_data.get('storage_root', '')
-            if source_root and os.path.exists(source_root):
-                self.explorer_panel.set_storage_root(source_root)
-                self.logger.info(f"Explorer Switched to Source View: {source_root}")
-            return
-
-        target_path = app_data.get(key, "")
-        
-        # Switch Explorer View to Target Logic ONLY (Do NOT change Main View)
+            target_path = app_data.get('storage_root', '')
+        else:
+            target_path = app_data.get(key, "")
+            
+        # Switch Explorer View path ONLY (No interference with main card view)
         if target_path and os.path.exists(target_path):
             self.explorer_panel.set_storage_root(target_path)
         else:
-            self.logger.warning(f"Target path not found for {key}: {target_path}")
-
-        # Update target name label (if visible)
-        if hasattr(self, 'target_name_lbl'):
-             self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
-             
-        self.logger.info(f"Explorer Target Tree Switched: {key} -> {target_path}")
+            self.logger.warning(f"Target path not found for explorer view: {key} -> {target_path}")
     
     def _on_explorer_panel_width_changed(self, new_width: int):
         """Cache explorer panel width for persistence."""
@@ -2463,38 +2451,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
 
 
-    def _on_explorer_target_changed(self, key):
-        """Handle target change from ExplorerPanel. switch context and CURRENT VIEW to the target folder."""
-        app_data = self.app_combo.currentData()
-        if not app_data: return
-        
-        self.current_target_key = key
-        target_path = app_data.get(key, "")
-        
-        # Switch Explorer View to Target Logic
-        if target_path and os.path.exists(target_path):
-            # Change Explorer Tree to show Target Folder
-            self.explorer_panel.set_storage_root(target_path)
-            # Switch Main/Bottom View to Target Folder
-            self._load_items_for_path(target_path, force=True)
-        else:
-            # If target not valid, maybe revert to Source? Or stay? 
-             # For now, just log warning.
-            self.logger.warning(f"Target path not found for {key}: {target_path}")
-
-        # Update target name label (if visible)
-        if hasattr(self, 'target_name_lbl'):
-             self.target_name_lbl.setText(os.path.basename(target_path) if target_path else _("Not Set"))
-             
-        # Record last target
-        self.db.update_app(app_data['id'], {'last_target': key})
-        app_data['last_target'] = key
-        
-        self.logger.info(f"Explorer Switched to Target View: {key} -> {target_path}")
-        
-        # Refresh visuals (Scanner context update)
-        self._refresh_current_view()
-        self._refresh_tag_visuals()
 
     # --- Target Switching ---
     

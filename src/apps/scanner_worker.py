@@ -24,19 +24,48 @@ class ScannerWorker(QObject):
         self.search_config = None # {query, logic, selected_tags, is_global, non_inheritable_tags}
 
     def _is_package_auto(self, abs_path):
-        """Heuristic: Check if folder contains package-like config files."""
+        """Heuristic: Distinguish between a Category (folder of folders) and a Package (final item).
+        
+        Logic:
+        1. If it has NO subdirectories, it's definitely a Package.
+        2. If it contains significant files (not just thumbnails), it's a Package.
+        3. If it contains ONLY subdirectories (and maybe a thumbnail/config), it's a Category.
+        """
         if not abs_path or not os.path.isdir(abs_path):
             return False
-        package_indicators = {'.json', '.ini', '.yaml', '.toml', '.yml'}
+            
+        thumb_names = {
+            "cover.jpg", "cover.png", "preview.jpg", "preview.png",
+            "icon.jpg", "icon.png", "thumb.jpg", "thumb.png",
+            "folder.jpg", "folder.png"
+        }
+        
+        has_subdirs = False
+        has_content_files = False
+        
         try:
             with os.scandir(abs_path) as it:
                 for entry in it:
-                    if entry.is_file():
-                        ext = os.path.splitext(entry.name)[1].lower()
-                        if ext in package_indicators:
-                            return True
-        except: pass
-        return False
+                    if entry.name.startswith('.'): continue
+                    
+                    if entry.is_dir():
+                        has_subdirs = True
+                    elif entry.is_file():
+                        # If it's not a common thumbnail name, it's likely package content
+                        if entry.name.lower() not in thumb_names:
+                            has_content_files = True
+                            
+            # Heuristic decision:
+            # If it has files that aren't thumbnails -> Package
+            if has_content_files:
+                return True
+            # If it has subdirs and NO files -> Category
+            if has_subdirs:
+                return False
+            # Fallback for empty or file-only (non-thumb) folders
+            return True
+        except:
+            return True
 
     
     def set_db(self, db):
