@@ -741,8 +741,8 @@ class LMBatchOpsMixin:
             }
         
         self.db.update_visual_flags_bulk(bulk_updates)
-
-        print(f"[Profile] Tag UI Refresh: Updated {change_count}/{card_count} visible cards, synced {len(bulk_updates)} DB configs (BULK). Total Time: {time.time()-start_t:.3f}s")
+ 
+        self.logger.debug(f"[Profile] Tag UI Refresh: Updated {change_count}/{card_count} visible cards, synced {len(bulk_updates)} DB configs (BULK). Total Time: {time.time()-start_t:.3f}s")
         
         # 2. Refresh Category Borders (Physical + Logical via children status)
         self._refresh_category_cards_cached(cached_configs)

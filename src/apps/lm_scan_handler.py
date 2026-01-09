@@ -389,7 +389,7 @@ class LMScanHandlerMixin:
 
         
         duration = time.perf_counter() - start_t
-        self.logger.info(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
+        self.logger.debug(f"[Profile] _on_scan_results_ready ({context}) took {duration:.3f}s")
 
     def _update_cat_button_styles(self, view_config, level_default):
         """Update category display mode button styles."""
@@ -462,7 +462,7 @@ class LMScanHandlerMixin:
         """Called when scan is complete."""
         self._hide_search_indicator()
         if hasattr(self, '_nav_start_t') and self._nav_start_t:
-            self.logger.info(f"[Profile] Category Navigation/Redraw took {time.time()-self._nav_start_t:.3f}s")
+            self.logger.debug(f"[Profile] Category Navigation/Redraw took {time.time()-self._nav_start_t:.3f}s")
             self._nav_start_t = None
 
     def _scan_children_status(self, folder_path: str, target_root: str, cached_configs: dict = None) -> tuple:
@@ -574,13 +574,13 @@ class LMScanHandlerMixin:
                             card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
         
         t_cat_end = time.perf_counter()
-        self.logger.info(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
+        self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
         
         # Also refresh package card borders (green for linked, red for conflict)
         self._refresh_package_cards()
         
         t_total_end = time.perf_counter()
-        self.logger.info(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
+        self.logger.debug(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
 
     def _refresh_package_cards(self):
         """Refresh link status for all Package cards (updates green/conflict borders)."""
@@ -603,7 +603,7 @@ class LMScanHandlerMixin:
                     card._update_style()
         
         t_end = time.perf_counter()
-        self.logger.info(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
+        self.logger.debug(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
 
     def _set_cat_display_mode(self, mode):
         """Change display mode for all category cards."""

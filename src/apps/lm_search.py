@@ -205,7 +205,7 @@ class LMSearchMixin:
             else:
                 include_tags.add(tag.lower())
         
-        self.logger.info(f"[Search] terms={terms}, not_terms={not_terms}, include_tags={include_tags}, exclude_tags={exclude_tags}, mode={mode}")
+        self.logger.debug(f"[Search] terms={terms}, not_terms={not_terms}, include_tags={include_tags}, exclude_tags={exclude_tags}, mode={mode}")
         
         # Get non-inheritable tags
         non_inheritable = getattr(self, 'non_inheritable_tags', set())
@@ -308,17 +308,17 @@ class LMSearchMixin:
 
         all_results = search_two_levels(storage_root)
         
-        self.logger.info(f"[Search] Total results: {len(all_results)}")
+        self.logger.debug(f"[Search] Total results: {len(all_results)}")
         
         # Debug: Log types of each result
         for r in all_results[:10]:  # First 10 for debugging
-            self.logger.info(f"[Search] Result: {r['name']} -> type={r['type']}, rel_path={r['rel_path']}")
+            self.logger.debug(f"[Search] Result: {r['name']} -> type={r['type']}, rel_path={r['rel_path']}")
         
         # Split results by type
         cat_results = [r for r in all_results if r['type'] == 'category']
         pkg_results = [r for r in all_results if r['type'] == 'package']
         
-        self.logger.info(f"[Search] Before mode filter: cats={len(cat_results)}, pkgs={len(pkg_results)}, mode={mode}")
+        self.logger.debug(f"[Search] Before mode filter: cats={len(cat_results)}, pkgs={len(pkg_results)}, mode={mode}")
 
         
         # Apply search mode filtering
@@ -465,7 +465,7 @@ class LMSearchMixin:
         self._refresh_category_cards()
         
         if hasattr(self, 'logger'):
-            self.logger.info(f"[Profile] Search display finished.")
+            self.logger.debug(f"[Profile] Search display finished.")
     
     def _show_search_indicator(self):
         """Show floating search indicator overlay with animated dots."""

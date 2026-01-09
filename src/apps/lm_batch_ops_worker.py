@@ -1,6 +1,9 @@
 from PyQt6.QtCore import QObject, pyqtSignal
 import os
+import logging
 from src.core.link_master.database import LinkMasterDB
+
+logger = logging.getLogger("TagConflictWorker")
 
 class TagConflictWorker(QObject):
     """
@@ -18,8 +21,7 @@ class TagConflictWorker(QObject):
         
     def run(self):
         if not self.storage_root:
-            import logging
-            logging.error("TagConflictWorker Error: storage_root is None")
+            logger.debug("TagConflictWorker: storage_root is None, skipping run.")
             self.finished.emit(None)
             return
 
@@ -83,7 +85,7 @@ class TagConflictWorker(QObject):
                                 'cat': cat_path
                             })
 
-            print(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
+            logger.debug(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
 
             # Step 2: Identify Conflicts and Library Alts for ALL items
             conflict_count = 0
@@ -139,11 +141,11 @@ class TagConflictWorker(QObject):
                         if m.get('path') == p: continue
                         if scope == 'global' or m['scope'] == 'global':
                             has_logical_conflict = True
-                            print(f"[ConflictDebug] TAG GLOBAL: '{p}' conflicts with '{m.get('path')}' via tag '{tag}'")
+                            logger.debug(f"[ConflictDebug] TAG GLOBAL: '{p}' conflicts with '{m.get('path')}' via tag '{tag}'")
                             break
                         if scope == 'category' and m['cat'] == my_cat:
                             has_logical_conflict = True
-                            print(f"[ConflictDebug] TAG CATEGORY: '{p}' conflicts with '{m.get('path')}' via tag '{tag}' in category '{my_cat}'")
+                            logger.debug(f"[ConflictDebug] TAG CATEGORY: '{p}' conflicts with '{m.get('path')}' via tag '{tag}' in category '{my_cat}'")
                             break
                 
                 # C. Global Physical Occupancy Check
@@ -153,12 +155,12 @@ class TagConflictWorker(QObject):
                     norm_target = target_path.replace('\\', '/').lower()
                     if norm_target in active_targets_map and active_targets_map[norm_target] != p:
                         has_logical_conflict = True
-                        print(f"[ConflictDebug] PHYSICAL OCCUPANCY: '{p}' conflicts with '{active_targets_map[norm_target]}' at target '{norm_target}'")
+                        logger.debug(f"[ConflictDebug] PHYSICAL OCCUPANCY: '{p}' conflicts with '{active_targets_map[norm_target]}' at target '{norm_target}'")
                 
                 # D. Physical status override
                 if not has_logical_conflict and status == 'conflict':
                     has_logical_conflict = True
-                    print(f"[ConflictDebug] DB STATUS: '{p}' has 'conflict' status in DB")
+                    logger.debug(f"[ConflictDebug] DB STATUS: '{p}' has 'conflict' status in DB")
 
                 # Step 2.6: Persistent marking
                 cfg['has_logical_conflict'] = has_logical_conflict
@@ -179,7 +181,7 @@ class TagConflictWorker(QObject):
             # 2.7: Perform DB Update in Background Thread
             local_db.update_visual_flags_bulk(bulk_updates)
 
-            print(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
+            logger.debug(f"[Profile] TagConflictWorker: Detected {conflict_count} conflicts, {alt_count} library alts. Time: {time.time()-start_t:.3f}s")
             
             # 3. Return results (now includes abs_config_map)
             result = {
@@ -194,6 +196,6 @@ class TagConflictWorker(QObject):
             
         except Exception as e:
             import traceback
-            print(f"TagConflictWorker Error: {e}")
-            traceback.print_exc()
+            logger.error(f"TagConflictWorker Error: {e}")
+            logger.error(traceback.format_exc())
             self.finished.emit(None)

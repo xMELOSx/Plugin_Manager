@@ -78,7 +78,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.scanner = Scanner()
         self.image_loader = ImageLoader()
         self.deployer = Deployer()
-        self.logger.info(f"[Profile] Core (Scanner/Deployer) init took {time.perf_counter()-t_base:.3f}s")
+        self.logger.debug(f"[Profile] Core (Scanner/Deployer) init took {time.perf_counter()-t_base:.3f}s")
         t_pool = time.perf_counter()
         
         # Phase 19: Multi-Selection State
@@ -87,7 +87,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Phase 28: Card Pooling
         self._init_card_pool()
-        self.logger.info(f"[Profile] _init_card_pool took {time.perf_counter()-t_pool:.3f}s")
+        self.logger.debug(f"[Profile] _init_card_pool took {time.perf_counter()-t_pool:.3f}s")
         t_misc = time.perf_counter()
         
         # Initialize Thumbnail Manager (resource/app in Project Root)
@@ -101,7 +101,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         t_thumb = time.perf_counter()
         self.thumbnail_manager = ThumbnailManager(resource_path)
-        self.logger.info(f"[Profile] ThumbnailManager init took {time.perf_counter()-t_thumb:.3f}s")
+        self.logger.debug(f"[Profile] ThumbnailManager init took {time.perf_counter()-t_thumb:.3f}s")
         t_thread = time.perf_counter()
         
         # Threaded Scanner Setup
@@ -116,14 +116,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Connect the run method to the thread's started signal for both workers
         self.scanner_thread.started.connect(self.cat_scanner_worker.run)
         self.scanner_thread.started.connect(self.pkg_scanner_worker.run)
-
+ 
         self.cat_scanner_worker.results_ready.connect(self._on_scan_results_ready)
         self.pkg_scanner_worker.results_ready.connect(self._on_scan_results_ready)
         self.cat_scanner_worker.finished.connect(self._on_scan_finished)
         self.pkg_scanner_worker.finished.connect(self._on_scan_finished)
         
         self.scanner_thread.start()
-        self.logger.info(f"[Profile] Scanner thread start took {time.perf_counter()-t_thread:.3f}s")
+        self.logger.debug(f"[Profile] Scanner thread start took {time.perf_counter()-t_thread:.3f}s")
         t_icon = time.perf_counter()
         
         # Icon Setup (User Request)
@@ -131,7 +131,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if os.path.exists(icon_path):
             self.set_window_icon_from_path(icon_path)
             self.icon_label.mousePressEvent = self._icon_mouse_press
-        self.logger.info(f"[Profile] Icon setup took {time.perf_counter()-t_icon:.3f}s")
+        self.logger.debug(f"[Profile] Icon setup took {time.perf_counter()-t_icon:.3f}s")
         t_win_state = time.perf_counter()
         
         # State
@@ -140,7 +140,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.selected_paths = set()
         self.non_inheritable_tags = set()
         self.current_path = None  # Track current path for reload
-
+ 
         self.storage_root = None  # Unified storage root path
         
         # Preset Filter State
@@ -152,29 +152,29 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.link_filter_mode = None  # 'linked', 'unlinked', or None
         self.favorite_filter_mode = False
         self.show_hidden = False  # Show hidden folders toggle
-
+ 
         # Phase 4 Style Sync: Base Button Styles
         self.btn_normal_style = "background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px;"
         self.btn_selected_style = "background-color: #3498db; color: #fff; border: 1px solid #5dade2; border-radius: 4px; padding: 2px; font-weight: bold;"
         self.btn_no_override_style = "background-color: #2c3e50; color: #888; border: 1px solid #444; border-radius: 4px; padding: 2px;"
-
+ 
         # Initialize panel attributes to None to avoid early Access AttributeError
         self.library_panel = None
         self.presets_panel = None
         self.notes_panel = None
         self.tools_panel = None
         self.explorer_panel = None
-
+ 
         
         self.resize(1400, 850)
-        self.logger.info(f"[Profile] Window/State setup took {time.perf_counter()-t_win_state:.3f}s")
+        self.logger.debug(f"[Profile] Window/State setup took {time.perf_counter()-t_win_state:.3f}s")
         
         # Explorer is now embedded, not a window
         
         self._init_title_buttons()
         # Drag & Drop Support
         self.setAcceptDrops(True)
-        self.logger.info(f"[Profile] Misc setup took {time.perf_counter()-t_misc:.3f}s")
+        self.logger.debug(f"[Profile] Misc setup took {time.perf_counter()-t_misc:.3f}s")
         
         self._init_ui()
         
@@ -190,14 +190,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # self.help_window = HelpWindow()
         # self.help_window.setParent(self, self.help_window.windowFlags())
         # self.help_window.closed.connect(self._on_help_window_closed)
-
+ 
         t_load = time.perf_counter()
         self._load_apps()
         # Connect to language change signal for real-time translation
         from src.core.lang_manager import get_lang_manager
         get_lang_manager().language_changed.connect(self.retranslate_ui)
         
-        self.logger.info(f"[Profile] _load_apps took {time.perf_counter()-t_load:.3f}s")
+        self.logger.debug(f"[Profile] _load_apps took {time.perf_counter()-t_load:.3f}s")
         
         t_options = time.perf_counter()
         self.load_options("link_master")
@@ -213,9 +213,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # print(f"DEBUG: Window Creation - Transparency 1 (windowOpacity): {self.windowOpacity()}")
         # print(f"DEBUG: Window Creation - Transparency 2 (bg_opacity): {getattr(self, '_bg_opacity', 'N/A')}")
         
-        self.logger.info(f"[Profile] load_options took {time.perf_counter()-t_options:.3f}s")
+        self.logger.debug(f"[Profile] load_options took {time.perf_counter()-t_options:.3f}s")
         
-        self.logger.info(f"[Profile] Total LinkMasterWindow startup took {time.perf_counter()-self._init_start_t :.3f}s")
+        self.logger.info(f"--- Dionys Control Startup Complete ---")
+        self.logger.debug(f"[Profile] Total LinkMasterWindow startup took {time.perf_counter()-self._init_start_t :.3f}s")
         
         # Centralized Card Settings State (Phase 19.x)
         self.card_settings = {}
@@ -225,7 +226,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._init_mode_settings()
         
         # Restore last selected app and path (Handled by _restore_last_state via QTimer)
-
+ 
         
         # Display Overrides & Lock State (Phase 25)
         self.cat_display_override = None
@@ -237,7 +238,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._restore_ui_state()
         
         t_init_end = time.perf_counter()
-        self.logger.info(f"[Profile] _init_ui total took {t_init_end - self._init_start_t:.3f}s")
+        self.logger.debug(f"[Profile] _init_ui total took {t_init_end - self._init_start_t:.3f}s")
         
         # Ensure Icon Alt-Click is connected (Fixes Debug Launch)
         if hasattr(self, 'icon_label'):
@@ -1508,13 +1509,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             if getattr(self, 'library_panel', None):
                 self.library_panel.set_app(self.current_app_id, self.db)
-
+ 
             # Refresh notes and presets
             self._update_notes_path()
             if self.sidebar_tabs.currentIndex() == 1 and self.drawer_widget.isVisible() and self.notes_panel:
                 self.notes_panel.refresh()
-
-            self._refresh_tag_visuals()
 
             # Sync Target Buttons
             self.btn_target_a.setChecked(self.current_target_key == "target_root")
@@ -1549,6 +1548,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             root_path = app_data.get('storage_root')
             if root_path and os.path.isdir(root_path):
                 self.storage_root = root_path
+                self._refresh_tag_visuals() # Fixed: Must be after storage_root is set
                 # Update Explorer Scope (with app_name for DB sync - Phase 18.13)
                 self.explorer_panel.set_storage_root(root_path, app_id=app_data['id'], app_name=app_data['name'])
                 try:
@@ -2705,10 +2705,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             event.ignore() 
 
     def _open_debug_window(self):
-        print("[Debug] LinkMasterWindow._open_debug_window called")
+        self.logger.debug("[Debug] LinkMasterWindow._open_debug_window called")
         # Enforce Singleton
         if hasattr(self, 'debug_window') and self.debug_window.isVisible():
-            print("[Debug] Existing DebugWindow found. Activating.")
+            self.logger.debug("[Debug] Existing DebugWindow found. Activating.")
             self.debug_window.activateWindow()
             self.debug_window.raise_()
             return
@@ -2721,7 +2721,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         importlib.reload(src.ui.link_master.debug_window)
         from src.ui.link_master.debug_window import LinkMasterDebugWindow
         
-        print(f"[Debug] Creating NEW LinkMasterDebugWindow instance. (Class ID: {id(LinkMasterDebugWindow)})")
+        self.logger.debug(f"[Debug] Creating NEW LinkMasterDebugWindow instance. (Class ID: {id(LinkMasterDebugWindow)})")
         
         # Get Current App Data
         app_data = self.app_combo.currentData()

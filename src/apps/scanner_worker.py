@@ -128,7 +128,7 @@ class ScannerWorker(QObject):
             items_sorted = sorted(results, key=sort_final)
             
             t_worker_end = time.perf_counter()
-            self.logger.info(f"[WorkerProfile] context={self.context} total={t_worker_end-t_run_start:.3f}s "
+            self.logger.debug(f"[WorkerProfile] context={self.context} total={t_worker_end-t_run_start:.3f}s "
                              f"(Scan:{t_scan_end-t_scan_start:.3f}s / "
                              f"Detect:{t_detect_end-t_detect_start:.3f}s / "
                              f"Sort:{t_worker_end-t_detect_end:.3f}s)")
@@ -163,7 +163,7 @@ class ScannerWorker(QObject):
             t_en_child += res.get('_profile_child', 0)
             t_en_auto += res.get('_profile_auto', 0)
             
-        self.logger.info(f"[WorkerProfile] _standard_scan items={len(items)} "
+        self.logger.debug(f"[WorkerProfile] _standard_scan items={len(items)} "
                          f"Total:{t_en_total:.3f}s (Link:{t_en_link:.3f}s / Child:{t_en_child:.3f}s / Auto:{t_en_auto:.3f}s)")
         # Clean up optimization map after use
         if hasattr(self, '_parent_config_map'):

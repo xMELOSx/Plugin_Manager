@@ -7,8 +7,8 @@ from src.core import core_handler
 from src.core.lang_manager import _
 import os
 import logging
-import ctypes
-from ctypes import wintypes
+
+
 
 class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
     def __init__(self, parent=None, main_window=None, app_data=None):
@@ -37,66 +37,38 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         self.app_data = app_data
         
+        # Dragging state
+        self._drag_active = False
+        self._drag_pos = QPoint()
+        
         self.init_ui()
         
-    def showEvent(self, event):
-        super().showEvent(event)
-        # Window must be shown to manipulate HWND
-        hwnd = int(self.winId())
-        user32 = ctypes.windll.user32
-        
-        # Get Current Style
-        style = user32.GetWindowLongW(hwnd, -16)
-        
-        # WS_CAPTION(0xC00000) | WS_THICKFRAME(0x40000) | WS_MAXIMIZEBOX(0x10000) | WS_MINIMIZEBOX(0x20000)
-        # Combine flags to ensure OS treats it as a full window with shadow/resize/snap
-        new_style = style | 0x00C00000 | 0x00040000 | 0x00010000 | 0x00020000
-        user32.SetWindowLongW(hwnd, -16, new_style)
-        
-        # Notify Frame Change
-        # 0x0020 = SWP_FRAMECHANGED, 0x0002 = SWP_NOMOVE, 0x0001 = SWP_NOSIZE, 0x0004 = SWP_NOZORDER
-        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
-                
-    def nativeEvent(self, event_type, message):
-        try:
-            msg = wintypes.MSG.from_address(int(message))
+    # --- Qt-based Dragging Implementation ---
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check for interactive widgets to avoid dragging when clicking buttons/combos
+            child = self.childAt(event.position().toPoint())
             
-            if msg.message == 0x0084: # WM_NCHITTEST
-                pos = QPoint(wintypes.LOWORD(msg.lParam), wintypes.HIWORD(msg.lParam))
-                local_pos = self.mapFromGlobal(pos)
-                lx, ly = local_pos.x(), local_pos.y()
-                w, h = self.width(), self.height()
-                
-                # Screen DPI scaling logic
-                ratio = self.screen().devicePixelRatio()
-                margin = int(8 * ratio)
-                
-                # --- 1. Resize Logic (Return OS Constants) ---
-                if lx < margin:
-                    if ly < margin: return True, 13 # HTTOPLEFT
-                    if ly > h - margin: return True, 16 # HTBOTTOMLEFT
-                    return True, 10 # HTLEFT
-                if lx > w - margin:
-                    if ly < margin: return True, 14 # HTTOPRIGHT
-                    if ly > h - margin: return True, 17 # HTBOTTOMRIGHT
-                    return True, 11 # HTRIGHT
-                if ly < margin: return True, 12 # HTTOP
-                if ly > h - margin: return True, 15 # HTBOTTOM
+            from PyQt6.QtWidgets import QPushButton, QComboBox, QSpinBox, QCheckBox, QLineEdit, QSlider, QAbstractSlider, QScrollArea
+            interactive_types = (QPushButton, QComboBox, QSpinBox, QCheckBox, QLineEdit, QSlider, QAbstractSlider, QScrollArea)
+            
+            if isinstance(child, interactive_types):
+                return # Let standard interaction take place
 
-                # --- 2. Exclude Interactive Widgets ---
-                child = self.childAt(lx, ly)
-                from PyQt6.QtWidgets import QPushButton, QComboBox, QSpinBox, QCheckBox, QScrollArea, QLineEdit, QAbstractSlider
-                if isinstance(child, (QPushButton, QComboBox, QSpinBox, QCheckBox, QScrollArea, QLineEdit, QAbstractSlider)):
-                    return True, 1 # HTCLIENT
+            # Start dragging
+            self._drag_active = True
+            # globalPosition() handles DPI scaling correctly across different screens
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
 
-                # --- 3. Background/Labels = Drag Area ---
-                # print(f"[Debug] HIT: HTCAPTION (2) at {lx},{ly}") # Uncomment for spam
-                return True, 2 # HTCAPTION (Drag)
+    def mouseMoveEvent(self, event):
+        if self._drag_active and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
 
-        except Exception as e:
-            pass
-
-        return super().nativeEvent(event_type, message)
+    def mouseReleaseEvent(self, event):
+        self._drag_active = False
+        event.accept()
 
     # ... toggle_options and init_ui skipped ...
 
@@ -337,9 +309,9 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         msg = f"Top-Level Widgets Count: {len(widgets)}\n\n" + "\n".join(details)
         QMessageBox.information(self, "Window Count Debug", msg)
-        print(f"\n=== TOP LEVEL WIDGETS: {len(widgets)} ===")
+        self.logger.debug(f"=== TOP LEVEL WIDGETS: {len(widgets)} ===")
         for d in details:
-            print(f"  {d}")
+            self.logger.debug(f"  {d}")
 
     def _on_language_changed(self, index):
         """Handle language selection change."""
@@ -359,9 +331,8 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         msg = f"[Debug] Log Level changed to {text}"
         logging.log(level, msg)
         
-        # Explicit print to confirm change if DEBUG (in case Main Loop swallows log)
-        if level <= logging.DEBUG:
-            print(f"{msg} (PRINT FORCE)")
+        # Confirmatory log
+        self.logger.debug(f"{msg} (Standardized)")
 
     def _on_alpha_boost_changed(self, value):
         """Update max_alpha_boost in parent window."""
