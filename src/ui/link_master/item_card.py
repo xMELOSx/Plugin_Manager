@@ -62,6 +62,7 @@ class ItemCard(QFrame):
                  show_link: bool = True, show_deploy: bool = True, deploy_button_opacity: float = 0.8,
                  is_library: int = 0, lib_name: str = '', **kwargs):
         super().__init__(parent)
+        self.setObjectName("ItemCard")
         self.path = path # Source Path (Absolute)
         self.norm_path = (path or "").replace('\\', '/')
         self.folder_name = os.path.basename(path) # Physical folder name for links
@@ -71,6 +72,7 @@ class ItemCard(QFrame):
         self.target_dir = target_dir
         self.target_override = target_override
         self.deployment_rules = deployment_rules
+        self.deploy_rule = deployment_rules # Direct alias for check_link_status
         self.deploy_type = deploy_type # Phase 18.15 (Resolved)
         self.conflict_policy = conflict_policy # Phase 18.15 (Resolved)
         self.app_deploy_default = app_deploy_default # Phase 18.15

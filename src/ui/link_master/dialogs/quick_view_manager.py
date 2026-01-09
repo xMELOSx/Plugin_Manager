@@ -819,9 +819,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self.table.setColumnWidth(1, 40)  # Icon
         self.table.setColumnWidth(2, 40)  # Fav
         self.table.setColumnWidth(3, 60)  # Score
-        self.table.setColumnWidth(4, 150) # Folder Name
-        # Display Name column should stretch to fill space
+        self.table.setColumnWidth(4, 180) # Folder Name (Increased)
+        self.table.setColumnWidth(5, 300) # Display Name (Increased)
+        self.table.horizontalHeader().setMinimumSectionSize(32)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        # Force minimum widths via header
+        self.table.horizontalHeader().resizeSection(4, 180)
+        self.table.horizontalHeader().resizeSection(5, 300)
         
         # Set Tag/Separator Column widths
         for i, col_info in enumerate(self._all_tag_columns):
@@ -1368,10 +1373,12 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             # Enforce min/max widths for tag columns (index 6+)
             # Phase 1.1.180: Narrow widths as requested (33px fits the 31px button perfectly)
             for i in range(6, self.table.columnCount()):
-                if self.table.columnWidth(i) < 33:
-                    self.table.setColumnWidth(i, 33)
+                # Only apply to tags, not the final spacer
+                if i < self.table.columnCount() - 1:
+                    if self.table.columnWidth(i) < 33:
+                        self.table.setColumnWidth(i, 33)
             
-            # Phase 1.1.181: Protect Name/Folder columns from over-shrinking
+            # Phase 1.1.181: Protect Name/Folder columns from over-shrinking during dynamic resize
             if self.table.columnWidth(5) < 200:
                 self.table.setColumnWidth(5, 200)
             if self.table.columnWidth(4) < 120:

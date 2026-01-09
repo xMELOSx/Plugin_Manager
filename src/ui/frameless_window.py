@@ -194,7 +194,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             QSpinBox::down-button, QDoubleSpinBox::down-button {{
                 background-color: #333;
                 border-left: 1px solid #555;
-                width: 20px;
+                width: 16px;
                 border-radius: 0px;
             }}
             QSpinBox::up-button {{ border-top-right-radius: 4px; }}
@@ -205,20 +205,12 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 background-color: #444;
             }}
             QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-bottom: 4px solid #eee;
-                width: 0; height: 0;
-                margin-bottom: 1px;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwb2x5Z29uIHBvaW50cz0iMCwzIDYsMyAzLDAiIGZpbGw9IiNlZWUiLz48L3N2Zz4=");
+                width: 6px; height: 3px;
             }}
             QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #eee;
-                width: 0; height: 0;
-                margin-top: 1px;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDYsMCAzLDMiIGZpbGw9IiNlZWUiLz48L3N2Zz4=");
+                width: 6px; height: 3px;
             }}
 
             QScrollBar:vertical {{
@@ -421,7 +413,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             child = self.childAt(local_pos)
             from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractSpinBox
             interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox)
-            interactive_names = ["Sidebar", "ItemCard", "QuickTagPanel", "title_bar_controls", "BreadcrumbContainer", "SearchBar", "deploy_mode_indicator", "titlebar_icon"]
+            interactive_names = ["Sidebar", "MainContent", "ItemCard", "ItemCardPool", "QuickTagPanel", "title_bar_controls", "BreadcrumbContainer", "SearchBar", "deploy_mode_indicator", "titlebar_icon", "LinkMasterDebugWindow", "OptionsWindow", "DebugWindow"]
             
             curr = child
             while curr:
@@ -597,7 +589,7 @@ class FramelessDialog(QDialog, Win32Mixin):
             QSpinBox::down-button, QDoubleSpinBox::down-button {{
                 background-color: #333;
                 border-left: 1px solid #555;
-                width: 20px;
+                width: 16px;
                 border-radius: 0px;
             }}
             QSpinBox::up-button {{ border-top-right-radius: 4px; }}
@@ -608,20 +600,12 @@ class FramelessDialog(QDialog, Win32Mixin):
                 background-color: #444;
             }}
             QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-bottom: 4px solid #eee;
-                width: 0; height: 0;
-                margin-bottom: 1px;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwb2x5Z29uIHBvaW50cz0iMCwzIDYsMyAzLDAiIGZpbGw9IiNlZWUiLz48L3N2Zz4=");
+                width: 6px; height: 3px;
             }}
             QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #eee;
-                width: 0; height: 0;
-                margin-top: 1px;
+                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjMiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDYsMCAzLDMiIGZpbGw9IiNlZWUiLz48L3N2Zz4=");
+                width: 6px; height: 3px;
             }}
 
             QPushButton {{
@@ -687,7 +671,7 @@ class FramelessDialog(QDialog, Win32Mixin):
             child = self.childAt(pt)
             from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QAbstractItemView, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractSpinBox
             interactive_types = (QAbstractButton, QLineEdit, QTextEdit, QComboBox, QSlider, QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox)
-            interactive_names = ["Sidebar", "MainContent", "ItemCard", "QuickTagPanel", "deploy_mode_indicator", "titlebar_icon"]
+            interactive_names = ["Sidebar", "MainContent", "ItemCard", "ItemCardPool", "QuickTagPanel", "deploy_mode_indicator", "titlebar_icon", "LinkMasterDebugWindow", "OptionsWindow", "DebugWindow"]
             curr = child
             while curr:
                 if isinstance(curr, interactive_types) or curr.objectName() in interactive_names or curr.__class__.__name__ == "ClickableLabel":

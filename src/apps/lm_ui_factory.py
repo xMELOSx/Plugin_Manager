@@ -22,6 +22,7 @@ def setup_ui(window):
     """Factory entry point to build the LinkMasterWindow UI."""
     t_start = time.perf_counter()
     main_widget = QWidget(window)
+    main_widget.setObjectName("MainContent")
     main_widget.setStyleSheet("""
         QWidget { background-color: transparent; }
         QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
@@ -549,6 +550,7 @@ def _setup_main_card_view(window, right_layout):
     cat_group_layout.addLayout(cat_header)
     
     window.cat_container = QWidget(cat_group)
+    window.cat_container.setObjectName("ItemCardPool") # Whitelisted via class or parent
     window.cat_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     window.cat_container.customContextMenuRequested.connect(window._show_cat_context_menu)
     window.cat_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
@@ -629,6 +631,7 @@ def _setup_main_card_view(window, right_layout):
     pkg_group_layout.addLayout(pkg_header)
     
     window.pkg_container = QWidget(pkg_group)
+    window.pkg_container.setObjectName("ItemCardPool") # Whitelisted via class or parent
     window.pkg_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     window.pkg_container.customContextMenuRequested.connect(window._show_pkg_context_menu)
     window.pkg_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)

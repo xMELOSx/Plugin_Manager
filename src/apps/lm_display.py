@@ -235,9 +235,11 @@ class LMDisplayMixin:
 
     def _toggle_show_hidden(self):
         """Toggle visibility of hidden folders."""
+        self.show_hidden = not self.show_hidden
+        
         # Restore requested icon for hidden state: '=' if not showing, '👁' if showing
         if hasattr(self, 'btn_show_hidden'):
-             self.btn_show_hidden.toggle()
+             self.btn_show_hidden.toggle() # Update checked state for stylesheet
              self.btn_show_hidden.setText("👁" if self.show_hidden else "＝")
              
         self._set_btn_show_hidden_style()

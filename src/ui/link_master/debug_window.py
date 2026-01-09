@@ -14,6 +14,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         app_data: dict containing 'storage_root', 'target_root'
         """
         super().__init__()
+        self.setObjectName("LinkMasterDebugWindow")
         # Tool flag allows stacking above parent without staying on top of all apps
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
         self.parent_window = parent # Store parent LinkMasterWindow
