@@ -258,11 +258,7 @@ class Deployer:
         
         if policy == 'overwrite':
             try:
-                if os.path.islink(path) or os.path.isfile(path):
-                    os.unlink(path)
-                elif os.path.isdir(path):
-                    import shutil
-                    shutil.rmtree(path)
+                core_handler.remove_path(path)
                 self.logger.info(f"Policy: OVERWRITE - removed {path}")
                 self.last_actions.append({'type': 'overwrite', 'path': path})
                 return 'overwrite'
@@ -274,10 +270,10 @@ class Deployer:
             try:
                 import time
                 backup_path = f"{path}.bak_{int(time.time())}"
-                os.rename(path, backup_path)
+                core_handler.move_path(path, backup_path)
                 self.logger.info(f"Policy: BACKUP - moved {path} to {backup_path}")
                 self.last_actions.append({'type': 'backup', 'path': path, 'backup_path': backup_path})
-                # Register for auto-restore on unlink (persisted to database)
+                # Registering backup path logic remains unchanged (DB access)
                 self._db.register_backup(path, backup_path)
                 return 'backup'
             except Exception as e:

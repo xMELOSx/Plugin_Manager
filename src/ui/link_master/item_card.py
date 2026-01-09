@@ -180,19 +180,23 @@ class ItemCard(QFrame):
         self.deploy_btn = DeployOverlay(self)
         self.deploy_btn.clicked.connect(self.toggle_deployment)
 
-    def toggle_deployment(self):
-        """Phase 30: Direct deployment trigger from card button."""
+    def toggle_deployment(self, path=None, is_package=None):
+        """Phase 30: Direct deployment trigger from card button or public API."""
         if not self.deployer: return
         
         # If this is a category (folder) but we are in Package View, 
         # it might be allowed to deploy as a package via debug flag.
-        is_acting_as_package = self.is_package
-        if not self.is_package and self.context == "contents":
+        is_acting_as_package = is_package if is_package is not None else self.is_package
+        if self.context == "contents":
+             is_acting_as_package = True
+        elif not is_acting_as_package:
              if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
                   is_acting_as_package = True
         
-        # Emit signal to parent with path and type
-        self.request_deployment_toggle.emit(self.path, is_acting_as_package)
+        # Emit signal to parent with path and type. 
+        # Window's LMDeploymentOpsMixin should catch this and run unified logic.
+        target_path = path if path else self.path
+        self.request_deployment_toggle.emit(target_path, is_acting_as_package)
 
         # Phase 28: Enable drag-drop for thumbnail images
         self.setAcceptDrops(True)
@@ -1155,81 +1159,6 @@ class ItemCard(QFrame):
                 return
             curr = curr.parent()
 
-    def _deploy_link(self):
-        if not self.deployer: return
-
-        # Flatten mode deploys directly into target_dir
-        if self.target_override:
-            target_link = self.target_override
-        elif self.deploy_type == 'flatten' and self.target_dir:
-            target_link = self.target_dir
-        elif self.target_dir:
-            target_link = os.path.join(self.target_dir, self.folder_name)
-        else:
-            return
-
-        # Use deploy_with_rules for Phase 16 & 18.15
-        if hasattr(self.deployer, 'clear_actions'): self.deployer.clear_actions()
-
-        # Phase 34: Suppress Scanning during Category Deployment
-        # Prevents package mis-detection (Green Border) during folder structure creation
-        is_category = (not self.is_package)
-        main_window = self.window()
-        
-        if is_category and hasattr(main_window, '_scan_suppressed'):
-            main_window._scan_suppressed = True
-            
-        try:
-            success = self.deployer.deploy_with_rules(self.path, target_link, self.deployment_rules,
-                                                    deploy_rule=self.deploy_type,
-                                                    conflict_policy=self.conflict_policy)
-
-            if success:
-                # Phase 1.1.6: Show Conflict Action Result
-                if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
-                    actions = self.deployer.last_actions
-                    msg = _("Deployment successful with conflict handling:\n")
-                    for act in actions:
-                        t = act.get('type')
-                        p = os.path.basename(act.get('path'))
-                        if t == 'backup':
-                            msg += _("- Backup created for {path}\n").format(path=p)
-                        elif t == 'overwrite':
-                            msg += _("- Overwritten existing {path}\n").format(path=p)
-
-                    QMessageBox.information(self, _("Conflict Handled"), msg)
-
-                self._check_link_status()
-                self._update_style()
-                self.deploy_changed.emit()  # Notify parent to refresh
-            else:
-                QMessageBox.warning(self, _("Error"), _("Deploy failed. Check logs or permissions."))
-        finally:
-            if is_category and hasattr(main_window, '_scan_suppressed'):
-                main_window._scan_suppressed = False
-
-
-    def _remove_link(self):
-        if not self.deployer: return
-
-        # Flatten mode: target is target_dir directly
-        if self.target_override:
-            target_link = self.target_override
-        elif self.deploy_type == 'flatten' and self.target_dir:
-            target_link = self.target_dir
-        elif self.target_dir:
-            target_link = os.path.join(self.target_dir, self.folder_name)
-        else:
-            return
-
-        if self.deployer.remove_link(target_link, source_path_hint=self.path):
-             self._check_link_status()
-             self._update_style()
-             self.deploy_changed.emit()  # Notify parent to refresh
-        else:
-             QMessageBox.warning(self, "Error", "Remove failed.")
-
-
     def _show_full_preview(self):
         """Show the high-res preview dialog (supporting multiple files)."""
         import os
@@ -1279,22 +1208,6 @@ class ItemCard(QFrame):
         # Use partial update instead of full refresh
         self.update_hidden(self.is_hidden)
         # logger.debug("[Profiling] Used update_hidden for partial update (no deploy_changed emit)")
-
-    def toggle_deployment(self, path=None, is_package=None):
-        """Phase 19.5: Public API to toggle deployment state."""
-        if not self.deployer or not self.target_dir: return
-        
-        # Phase 35: Redirect to category logic via signal if it's a category
-        effective_is_package = is_package if is_package is not None else self.is_package
-        if not effective_is_package:
-            self.request_deployment_toggle.emit(self.path, False)
-            return
-
-        self._check_link_status()
-        if self.link_status == 'linked':
-            self._remove_link()
-        elif self.link_status == 'none':
-            self._deploy_link()
 
     def set_display_mode(self, mode: str):
         """Set display mode: 'text_list', 'mini_image', 'image_text'.

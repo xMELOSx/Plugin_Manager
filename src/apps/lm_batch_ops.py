@@ -348,11 +348,11 @@ class LMBatchOpsMixin:
         )
         self.preview_window.show()
 
-    def _deploy_single_from_rel_path(self, rel_path: str):
+    def _deploy_single_from_rel_path_LEGACY(self, rel_path: str):
         """Wrapper for library panel deploy signal."""
         self._deploy_single(rel_path, update_ui=True)
 
-    def _unlink_single_from_rel_path(self, rel_path: str):
+    def _unlink_single_from_rel_path_LEGACY(self, rel_path: str):
         """Wrapper for library panel unlink signal."""
         self._unlink_single(rel_path, update_ui=True)
 
@@ -655,7 +655,7 @@ class LMBatchOpsMixin:
         """Clean up the Python reference to the thread."""
         self._tag_sync_thread = None
 
-    def _on_card_deployment_requested(self, path):
+    def _on_card_deployment_requested_LEGACY(self, path):
         """Phase 30: Handle direct deployment toggle from card overlay button."""
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -833,7 +833,7 @@ class LMBatchOpsMixin:
         
         return None
 
-    def _deploy_single(self, rel_path, update_ui=True):
+    def _deploy_single_LEGACY(self, rel_path, update_ui=True):
         """Deploy a single item by relative path. Core method for all deploy operations."""
         app_data = self.app_combo.currentData()
         if not app_data: return False
@@ -990,7 +990,7 @@ class LMBatchOpsMixin:
         
         return success
     
-    def _unlink_single(self, rel_path, update_ui=True, _cascade=True):
+    def _unlink_single_LEGACY(self, rel_path, update_ui=True, _cascade=True):
         """Remove link for a single item by relative path. Core method for all unlink operations."""
         app_data = self.app_combo.currentData()
         if not app_data: return False
@@ -1079,20 +1079,22 @@ class LMBatchOpsMixin:
     
     def _update_card_by_path(self, abs_path):
         """Update a single card's visual state by its absolute path."""
-        # Phase 28 Fix: Normalize path for matching to avoid case-sensitivity issues
+        # Normalize path for matching to avoid case-sensitivity issues
         target_path = os.path.normpath(abs_path).lower() if os.name == 'nt' else abs_path
         
-        # INFO LOGGING for UI Update debugging
-        self.logger.info(f"[UIUpdate] Targeting: {target_path}")
-
+        # INFO Logging for debugging (as requested)
+        self.logger.info(f"[CardUpdate] Looking for: {target_path}")
+        
+        # Search both layouts (Category and Package)
         layouts_to_search = [
-            ('cat_layout', getattr(self, 'cat_layout', None)),
-            ('pkg_layout', getattr(self, 'pkg_layout', None))
+            ('cat', getattr(self, 'cat_layout', None)),
+            ('pkg', getattr(self, 'pkg_layout', None))
         ]
         
+        card_found = False
+        
         for layout_name, layout in layouts_to_search:
-            if not layout:
-                continue
+            if not layout: continue
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
@@ -1100,24 +1102,35 @@ class LMBatchOpsMixin:
                     if isinstance(w, ItemCard):
                         w_path = os.path.normpath(w.path).lower() if os.name == 'nt' else w.path
                         if w_path == target_path:
-                            self.logger.info(f"[UIUpdate] HIT in {layout_name}: {getattr(w, 'display_name', 'Unknown')}")
+                            self.logger.info(f"[CardUpdate] HIT in {layout_name}_layout: {getattr(w, 'display_name', w.folder_name)}")
+                            
                             # Clear overlay cache to force icon refresh
                             if hasattr(w, '_last_icon_overlay_state'):
                                 del w._last_icon_overlay_state
                             if hasattr(w, '_last_style_state'):
                                 del w._last_style_state
-                            # Directly set link_status to 'linked' after deployment
-                            w.link_status = 'linked'
-                            w.update_link_status('linked')
                             
-                            # 🚨 FORCE immediate deploy button update
-                            if hasattr(w, 'deploy_btn') and w.deploy_btn:
-                                w.deploy_btn.setStatus('linked', getattr(w, '_deploy_btn_opacity', 0.8), 
-                                                        is_category=not w.is_package)
-                                w.deploy_btn.update()
+                            # Force update explicitly
+                            if getattr(w, 'is_package', True):
+                                w.link_status = 'linked' # Force status attribute
+                                w.update_link_status('linked') # Force visual update
+                                
+                                # Force Deploy Button Overlay Update directly
+                                if hasattr(w, 'deploy_btn') and w.deploy_btn:
+                                    op = getattr(w, '_deploy_btn_opacity', 0.8)
+                                    w.deploy_btn.setStatus('linked', op, is_category=False)
+                                    w.deploy_btn.update()
+                            else:
+                                # For categories, we need a hierarchical refresh!
+                                if hasattr(self, '_refresh_category_cards'):
+                                    self._refresh_category_cards()
                             
-                            # Force immediate widget repaint
                             w.update()
+                            card_found = True
+                            # Don't break immediately, as same path might exist in both views (rare but possible)
+                            
+        if not card_found:
+             self.logger.info(f"[CardUpdate] No card found for: {target_path}")
                             
                             # Phase 32: Update parent category border (green frame)
                             if w.is_package:

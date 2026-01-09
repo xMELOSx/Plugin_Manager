@@ -431,31 +431,38 @@ class LMDeploymentOpsMixin:
             QMessageBox.critical(self.window(), _("Deployment Collision"), detail_txt)
             return False
         
-        if success:
-             self.db.update_folder_display_config(rel_path, last_known_status='linked')
-             
-             if show_result and hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
-                actions = self.deployer.last_actions
-                msg = _("Deployment successful with conflict handling:\n")
-                for act in actions:
-                    t = act.get('type')
-                    p = os.path.basename(act.get('path'))
-                    if t == 'backup': msg += _("- Backup created for {path}\n").format(path=p)
-                    elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
-                QMessageBox.information(self, _("Conflict Handled"), msg)
+        try:
+            if success:
+                 self.logger.info(f"[DeploySingle] Success. Updating DB for {rel_path}")
+                 self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                 
+                 if show_result and hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
+                    actions = self.deployer.last_actions
+                    msg = _("Deployment successful with conflict handling:\n")
+                    for act in actions:
+                        t = act.get('type')
+                        p = os.path.basename(act.get('path'))
+                        if t == 'backup': msg += _("- Backup created for {path}\n").format(path=p)
+                        elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
+                    QMessageBox.information(self, _("Conflict Handled"), msg)
 
-             # self.logger.debug(f"[DeployUI] Calling _update_card_by_path for {full_src}")
-             self._update_card_by_path(full_src)
-             if hasattr(self, '_update_total_link_count'):
-                 self._update_total_link_count()
-             
-             # Phase 28/Debug: Always refresh tag visuals after any deploy to ensure physical occupancy
-             # or library alt-version highlighting is updated globally.
-             tag = config.get('conflict_tag')
-             self._refresh_tag_visuals(target_tag=tag)
-             
-             if hasattr(self, 'library_panel') and self.library_panel:
-                 self.library_panel.refresh()
+                 self.logger.info(f"[DeployUI] Calling _update_card_by_path for {full_src}")
+                 self._update_card_by_path(full_src)
+                 
+                 if hasattr(self, '_update_total_link_count'):
+                     self._update_total_link_count()
+                 
+                 # Phase 28/Debug: Always refresh tag visuals after any deploy to ensure physical occupancy
+                 # or library alt-version highlighting is updated globally.
+                 tag = config.get('conflict_tag')
+                 self._refresh_tag_visuals(target_tag=tag)
+                 
+                 if hasattr(self, 'library_panel') and self.library_panel:
+                     self.library_panel.refresh()
+        except Exception as e:
+            self.logger.error(f"[DeploySingle] CRITICAL ERROR during post-deploy update: {e}", exc_info=True)
+            import traceback
+            self.logger.error(traceback.format_exc())
         
         return success
 
@@ -926,9 +933,13 @@ class LMDeploymentOpsMixin:
         """Phase 30: Handle direct deployment toggle from card overlay button.
         Redirects to Category Deploy/Unlink if it's a category.
         """
+        self.logger.info(f"[DeployRequest] Entered for: {path}, is_pkg={is_package}")
         try:
             rel = os.path.relpath(path, self.storage_root).replace('\\', '/')
-        except: return
+            self.logger.info(f"[DeployRequest] RelPath calculated: {rel}")
+        except Exception as e:
+            self.logger.error(f"[DeployRequest] RelPath failed for {path} vs {self.storage_root}: {e}")
+            return
         
         # 1. Category Logic
         if not is_package:
