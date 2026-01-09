@@ -845,8 +845,14 @@ class LMDeploymentOpsMixin:
                 if item and item.widget():
                     card = item.widget()
                     if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
-                        has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                        card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_unlinked_children=has_unlinked, has_partial=has_partial)
+                        has_linked, has_conflict, has_partial, has_unlinked, has_int_conf = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                        card.set_children_status(
+                            has_linked=has_linked, 
+                            has_conflict=has_conflict, 
+                            has_unlinked_children=has_unlinked, 
+                            has_partial=has_partial,
+                            has_category_conflict=has_int_conf
+                        )
 
     def _on_card_deployment_requested(self, path, is_package=True):
         """Phase 30: Handle direct deployment toggle from card overlay button.

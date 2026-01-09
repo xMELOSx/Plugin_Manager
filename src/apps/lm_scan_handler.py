@@ -474,7 +474,8 @@ class LMScanHandlerMixin:
         has_linked = False
         has_conflict = False
         has_partial = False
-        has_unlinked = False # Picked up by Phase 7 loop logic
+        has_unlinked = False 
+        has_internal_conflict = False
         
         # Get app data for storage_root
         app_data = self.app_combo.currentData()
@@ -497,6 +498,9 @@ class LMScanHandlerMixin:
 
         # Iterate all configs to find children of this folder
         folder_prefix = folder_rel + "/" if folder_rel else ""
+        
+        child_tags = set()
+        child_libs = set()
         
         for rel_path, cfg in folder_configs.items():
             # Check if this is a DIRECT child of folder_path
@@ -540,11 +544,31 @@ class LMScanHandlerMixin:
                 has_conflict = True
                 has_unlinked = True
             
+            # Phase 35: Internal Conflict Check
+            ctag = cfg.get('conflict_tag')
+            if ctag:
+                if ctag in child_tags:
+                    has_internal_conflict = True
+                child_tags.add(ctag)
+                
+                # Also check External Tag Conflict for this child tag
+                if not has_internal_conflict and hasattr(self, '_check_tag_conflict'):
+                     # Note: we pass card_rel as context to ignore itself, but here context is folder_rel
+                     ext_conflict = self._check_tag_conflict(folder_rel, {'conflict_tag': ctag}, app_data)
+                     if ext_conflict:
+                         has_internal_conflict = True
+
+            lib_name = cfg.get('library_name') or cfg.get('lib_name')
+            if lib_name:
+                if lib_name in child_libs:
+                    has_internal_conflict = True
+                child_libs.add(lib_name)
+            
             # Early exit if all found
             if has_linked and has_conflict and has_partial and has_unlinked:
                 break
             
-        return has_linked, has_conflict, has_partial, has_unlinked
+        return has_linked, has_conflict, has_partial, has_unlinked, has_internal_conflict
 
 
     def _refresh_category_cards(self):
@@ -570,8 +594,14 @@ class LMScanHandlerMixin:
                     if isinstance(card, ItemCard) and card.is_package is False:
                             cat_count += 1
                             # Pass cache
-                            has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
-                            card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_partial=has_partial, has_unlinked_children=has_unlinked)
+                            has_linked, has_conflict, has_partial, has_unlinked, has_int_conf = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                            card.set_children_status(
+                                has_linked=has_linked, 
+                                has_conflict=has_conflict, 
+                                has_partial=has_partial, 
+                                has_unlinked_children=has_unlinked,
+                                has_category_conflict=has_int_conf
+                            )
         
         t_cat_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")

@@ -3,7 +3,8 @@ from PyQt6.QtCore import Qt
 
 def update_overlays_geometry(card_w, card_h, display_mode, is_favorite, has_urls, 
                            show_link, show_deploy, link_status, star_label, url_label, 
-                           deploy_btn, lib_btn=None, is_library=False, opacity=0.8, is_package=True):
+                           deploy_btn, lib_btn=None, is_library=False, opacity=0.8, is_package=True,
+                           has_category_conflict=False):
     """Calculate and apply geometries for card overlays.
     
     Note: Styling is now handled by the overlay components themselves.
@@ -40,7 +41,7 @@ def update_overlays_geometry(card_w, card_h, display_mode, is_favorite, has_urls
             
             # Use component method if available
             if hasattr(deploy_btn, 'setStatus'):
-                deploy_btn.setStatus(link_status, opacity, is_category=not is_package)
+                deploy_btn.setStatus(link_status, opacity, is_category=not is_package, has_conflict=has_category_conflict)
             deploy_btn.show()
             deploy_btn.raise_()
         else:

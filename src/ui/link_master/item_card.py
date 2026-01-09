@@ -111,6 +111,7 @@ class ItemCard(QFrame):
         self.is_library_alt_version = False  # True if another version of same library is deployed
         self.is_library = is_library  # Phase 30: Library flag (from DB, 0 or 1)
         self.lib_name = lib_name   # Phase 30: Library name for grouping
+        self.has_category_conflict = False # Phase 35: Category deployment blocked by logic conflict
 
         # Phase 31: Visibility Toggles (Per mode)
         self.show_link_overlay = show_link
@@ -281,6 +282,7 @@ class ItemCard(QFrame):
         
         # Category Deploy Status (for deep blue border)
         self.category_deploy_status = kwargs.get('category_deploy_status', getattr(self, 'category_deploy_status', None))
+        self.has_category_conflict = kwargs.get('has_category_conflict', getattr(self, 'has_category_conflict', False))
 
         # 4. Update Config/Rules
         self.target_override = kwargs.get('target_override', self.target_override)
@@ -551,7 +553,9 @@ class ItemCard(QFrame):
             self.name_label.setText(final_name)
             self.name_label.setStyleSheet(f"color: {name_color}; font-weight: bold;")
 
-    def set_children_status(self, has_linked: bool = False, has_conflict: bool = False, has_unlinked_children: bool = False, has_partial: bool = False):
+    def set_children_status(self, has_linked: bool = False, has_conflict: bool = False, 
+                            has_unlinked_children: bool = False, has_partial: bool = False,
+                            has_category_conflict: bool = False):
         """Set child status flags for parent folder color logic.
         Also updates link_status for category cards to enable Unlink button.
         """
@@ -559,6 +563,7 @@ class ItemCard(QFrame):
         self.has_conflict_children = has_conflict
         self.has_unlinked_children = has_unlinked_children
         self.has_partial_children = has_partial
+        self.has_category_conflict = has_category_conflict
         
         # Phase 14 Fix: For categories, update link_status based on children
         # This enables the Unlink button to appear when children are linked
@@ -601,7 +606,8 @@ class ItemCard(QFrame):
             display_mode, is_fav, has_urls, status, is_lib, self.width(), self.height(),
             getattr(self, '_deploy_btn_opacity', 0.8),
             getattr(self, 'show_link_overlay', True),
-            getattr(self, 'show_deploy_btn', True)
+            getattr(self, 'show_deploy_btn', True),
+            self.has_category_conflict
         )
         if hasattr(self, '_last_icon_overlay_state') and self._last_icon_overlay_state == current_state:
             # Debug-level logging to avoid overhead
@@ -632,7 +638,8 @@ class ItemCard(QFrame):
             lib_btn=getattr(self, 'lib_overlay', None),
             is_library=is_lib,
             opacity=getattr(self, '_deploy_btn_opacity', 0.8),
-            is_package=getattr(self, 'is_package', True)
+            is_package=getattr(self, 'is_package', True),
+            has_category_conflict=self.has_category_conflict
         )
 
     def set_deploy_button_opacity(self, opacity: float):

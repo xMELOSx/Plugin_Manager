@@ -346,9 +346,11 @@ class ScannerWorker(QObject):
         t_child_start = time.perf_counter()
         if os.path.isdir(item_abs_path):
             # Scan children for physical status and hierarchical conflicts
-            h_l, h_c = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
+            h_l, h_c, h_u, h_p, h_ic = self._scan_children_status(item_abs_path, self.target_root, folder_configs)
             has_linked = has_linked or h_l
             has_conflict = h_c
+        else:
+            h_u = h_p = h_ic = False
         t_child_end = time.perf_counter()
         
         # 4. Misplaced Detection (Phase 18.11 Enhanced)
@@ -405,7 +407,9 @@ class ScannerWorker(QObject):
             'has_conflict': has_conflict,
             'link_status': link_status,
             'is_misplaced': is_misplaced,
-            'is_partial': is_partial,        # Feature 6: Yellow Border hint
+            'is_partial': is_partial or h_p,        # Feature 6: Yellow Border hint
+            'has_unlinked_children': h_u,
+            'has_category_conflict': h_ic,
             'is_package': is_actually_package,  # Added for root package display support
             'is_linked': (link_status == 'linked'),  # Convenience flag for counting
             'has_name_conflict': False, # Default
@@ -461,13 +465,17 @@ class ScannerWorker(QObject):
         """
         has_linked = False
         has_conflict = False
+        has_unlinked = False
+        has_int_conf = False
+        child_tags = set()
+        child_libs = set()
         
         # Determine the relative path of THIS folder
         try:
             folder_rel = os.path.relpath(folder_path, self.storage_root).replace('\\', '/')
             if folder_rel == ".": folder_rel = ""
         except:
-            return False, False
+            return False, False, False, False, False
         
         # Phase 28: Use pre-grouped child configs instead of scanning ALL configs
         children = getattr(self, '_parent_config_map', {}).get(folder_rel, [])
@@ -479,13 +487,32 @@ class ScannerWorker(QObject):
                 has_linked = True
             elif status == 'conflict':
                 has_conflict = True
+                has_unlinked = True
+            else:
+                has_unlinked = True
             
             # Trust persisted has_logical_conflict flag
-            if not has_conflict and child_cfg.get('has_logical_conflict', 0):
+            if child_cfg.get('has_logical_conflict', 0):
                 has_conflict = True
+                has_unlinked = True
             
-            # Early exit if both found
-            if has_linked and has_conflict:
-                break
+            # Phase 35: Internal Conflict Check (Warning Icon)
+            ctag = child_cfg.get('conflict_tag')
+            if ctag:
+                if ctag in child_tags:
+                    has_int_conf = True
+                child_tags.add(ctag)
+                
+                # Check for External Tag conflict if internal not found yet
+                if not has_int_conf and hasattr(self, 'parent'):
+                     # We can't easily call self.parent._check_tag_conflict from here (thread safety)
+                     # But we can assume it will be picked up by UI refresh as a secondary pass
+                     pass
+
+            lib_name = child_cfg.get('library_name') or child_cfg.get('lib_name')
+            if lib_name:
+                if lib_name in child_libs:
+                    has_int_conf = True
+                child_libs.add(lib_name)
         
-        return has_linked, has_conflict
+        return has_linked, has_conflict, has_unlinked, False, has_int_conf
