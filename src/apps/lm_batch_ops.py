@@ -1082,10 +1082,17 @@ class LMBatchOpsMixin:
         # Phase 28 Fix: Normalize path for matching to avoid case-sensitivity issues
         target_path = os.path.normpath(abs_path).lower() if os.name == 'nt' else abs_path
         
-        # DEBUG LOGGING for UI Update
-        self.logger.debug(f"[UIUpdate] Targeting: {target_path} (Original: {abs_path})")
+        # INFO LOGGING for UI Update debugging
+        self.logger.info(f"[UIUpdate] Targeting: {target_path}")
 
-        for layout in [self.cat_layout, self.pkg_layout]:
+        layouts_to_search = [
+            ('cat_layout', getattr(self, 'cat_layout', None)),
+            ('pkg_layout', getattr(self, 'pkg_layout', None))
+        ]
+        
+        for layout_name, layout in layouts_to_search:
+            if not layout:
+                continue
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
@@ -1093,9 +1100,24 @@ class LMBatchOpsMixin:
                     if isinstance(w, ItemCard):
                         w_path = os.path.normpath(w.path).lower() if os.name == 'nt' else w.path
                         if w_path == target_path:
-                            # Use display_name instead of text()
-                            self.logger.info(f"[UIUpdate] HIT: {getattr(w, 'display_name', 'Unknown')}")
-                            w.update_link_status()
+                            self.logger.info(f"[UIUpdate] HIT in {layout_name}: {getattr(w, 'display_name', 'Unknown')}")
+                            # Clear overlay cache to force icon refresh
+                            if hasattr(w, '_last_icon_overlay_state'):
+                                del w._last_icon_overlay_state
+                            if hasattr(w, '_last_style_state'):
+                                del w._last_style_state
+                            # Directly set link_status to 'linked' after deployment
+                            w.link_status = 'linked'
+                            w.update_link_status('linked')
+                            
+                            # 🚨 FORCE immediate deploy button update
+                            if hasattr(w, 'deploy_btn') and w.deploy_btn:
+                                w.deploy_btn.setStatus('linked', getattr(w, '_deploy_btn_opacity', 0.8), 
+                                                        is_category=not w.is_package)
+                                w.deploy_btn.update()
+                            
+                            # Force immediate widget repaint
+                            w.update()
                             
                             # Phase 32: Update parent category border (green frame)
                             if w.is_package:

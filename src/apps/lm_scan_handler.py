@@ -297,6 +297,7 @@ class LMScanHandlerMixin:
             conflict_policy=item_config.get('conflict_policy') or configs['app_conflict_default'],
             storage_root=storage_root,
             db=self.db,
+            context=context,
             has_linked=r.get('has_linked', False),
             has_unlinked=r.get('has_unlinked', False),
             has_favorite=r.get('has_favorite', False),
@@ -328,12 +329,28 @@ class LMScanHandlerMixin:
             is_library_alt_version=r.get('is_library_alt_version', False),
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
-            show_deploy=settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy'],
+            show_deploy=self._calculate_show_deploy(is_package, use_pkg_settings, settings),
             deploy_button_opacity=settings['opacity'],
             category_deploy_status=item_config.get('category_deploy_status')
         )
         card.context = context
         card.rel_path = item_rel
+        
+    def _calculate_show_deploy(self, is_package, use_pkg_settings, settings):
+        """Calculate deploy button visibility based on settings and context."""
+        base_visible = settings['pkg_show_deploy'] if use_pkg_settings else settings['cat_show_deploy']
+        if not base_visible: return False
+        
+        # Original: visible if it IS a package, OR if we are in Category View (top layout)
+        if is_package or not use_pkg_settings:
+            return True
+        
+        # New: if it's a folder in Package View (bottom layout), check Debug Override
+        from src.ui.link_master.item_card import ItemCard
+        if not is_package and use_pkg_settings:
+            return getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False)
+            
+        return False
 
     def _setup_card_layout(self, card, mode, prefix):
         """Apply scale and dimensions to a card based on its display mode."""

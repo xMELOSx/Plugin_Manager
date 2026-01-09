@@ -24,9 +24,26 @@ from .card_overlays import (
 
 logger = logging.getLogger(__name__)
 
+# Load debug settings from file at class definition time
+def _load_debug_settings_at_startup():
+    import os, json
+    try:
+        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        path = os.path.join(base, 'resource', 'debug_settings.json')
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('allow_folder_deploy_pkg_view', True)
+    except:
+        pass
+    return True  # Default to True
+
+_STARTUP_FOLDER_DEPLOY_VALUE = _load_debug_settings_at_startup()
+
 class ItemCard(QFrame):
     # Static Debug Flag
     SHOW_HITBOXES = False
+    ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = _STARTUP_FOLDER_DEPLOY_VALUE
     image_ready_signal = pyqtSignal(str) # Async image ready signal
 
     # Profiling counters
@@ -161,7 +178,21 @@ class ItemCard(QFrame):
 
         # Phase 30: Deploy Toggle Overlay - Using component
         self.deploy_btn = DeployOverlay(self)
-        self.deploy_btn.clicked.connect(lambda: self.request_deployment_toggle.emit(self.path, self.is_package))
+        self.deploy_btn.clicked.connect(self.toggle_deployment)
+
+    def toggle_deployment(self):
+        """Phase 30: Direct deployment trigger from card button."""
+        if not self.deployer: return
+        
+        # If this is a category (folder) but we are in Package View, 
+        # it might be allowed to deploy as a package via debug flag.
+        is_acting_as_package = self.is_package
+        if not self.is_package and self.context == "contents":
+             if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
+                  is_acting_as_package = True
+        
+        # Emit signal to parent with path and type
+        self.request_deployment_toggle.emit(self.path, is_acting_as_package)
 
         # Phase 28: Enable drag-drop for thumbnail images
         self.setAcceptDrops(True)
@@ -236,6 +267,9 @@ class ItemCard(QFrame):
         if 'deployer' in kwargs: self.deployer = kwargs['deployer']
         if 'db' in kwargs: self.db = kwargs['db']
         if 'thumbnail_manager' in kwargs: self.thumbnail_manager = kwargs['thumbnail_manager']
+        
+        if 'context' in kwargs:
+             self.context = kwargs['context']
 
         if 'folder_type' in kwargs:
             self.is_package = (kwargs['folder_type'] == 'package')
@@ -625,6 +659,12 @@ class ItemCard(QFrame):
         w = max(self.width(), int(base_w * scale))
         h = max(self.height(), int(base_h * scale))
 
+        # Folder as Package Context Logic for Icon
+        is_acting_as_package = getattr(self, 'is_package', True)
+        if not is_acting_as_package and getattr(self, 'context', '') == "contents":
+             if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
+                  is_acting_as_package = True
+
         update_overlays_geometry(
             w, h, display_mode,
             is_favorite=is_fav,
@@ -638,7 +678,7 @@ class ItemCard(QFrame):
             lib_btn=getattr(self, 'lib_overlay', None),
             is_library=is_lib,
             opacity=getattr(self, '_deploy_btn_opacity', 0.8),
-            is_package=getattr(self, 'is_package', True),
+            is_package=is_acting_as_package,
             has_category_conflict=self.has_category_conflict
         )
 
@@ -754,7 +794,8 @@ class ItemCard(QFrame):
             has_linked_children=getattr(self, 'has_linked_children', False),
             has_unlinked_children=getattr(self, 'has_unlinked_children', False),
             has_partial_children=getattr(self, 'has_partial_children', False),
-            category_deploy_status=getattr(self, 'category_deploy_status', None)
+            category_deploy_status=getattr(self, 'category_deploy_status', None),
+            context=getattr(self, 'context', None)
         )
 
         # Update name label color for hidden state
@@ -1140,7 +1181,7 @@ class ItemCard(QFrame):
             
         try:
             success = self.deployer.deploy_with_rules(self.path, target_link, self.deployment_rules,
-                                                    deploy_type=self.deploy_type,
+                                                    deploy_rule=self.deploy_type,
                                                     conflict_policy=self.conflict_policy)
 
             if success:

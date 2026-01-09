@@ -17,6 +17,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         """
         super().__init__()
         self.setObjectName("LinkMasterDebugWindow")
+        self.logger = logging.getLogger("LinkMasterDebugWindow")
         # Tool flag allows stacking above parent without staying on top of all apps
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
         
@@ -198,6 +199,15 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.show_outlines_cb = QCheckBox(_("全ウィジェットに枠線を表示 (Global Outlines)"))
         self.show_outlines_cb.toggled.connect(self._on_global_outlines_toggled)
         layout.addWidget(self.show_outlines_cb)
+
+        self.allow_folder_deploy_cb = QCheckBox(_("子項目ビューでのフォルダデプロイを許可 (Folder Deploy in Pkg View)"))
+        # Load persisted value from settings file so it works before debug window opens
+        # Default to TRUE if no setting exists
+        saved_value = self._load_debug_setting('allow_folder_deploy_pkg_view', True)
+        ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = saved_value
+        self.allow_folder_deploy_cb.setChecked(saved_value)
+        self.allow_folder_deploy_cb.toggled.connect(self._on_allow_folder_deploy_toggled)
+        layout.addWidget(self.allow_folder_deploy_cb)
         
         # Window Count Debug Button
         self.btn_window_count = QPushButton(_("🔍 Show Top-Level Widget Count"))
@@ -263,6 +273,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.lang_header_lbl.setText(_("<b>Language Settings / 言語設定</b>"))
         self.lang_label.setText(f"{_('Current:')} {self.lang_manager.current_language_name}")
 
+    def _on_allow_folder_deploy_toggled(self, checked):
+        from src.ui.link_master.item_card import ItemCard
+        ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
+        self.logger.debug(f"[Debug] Folder Deploy in Package View set to: {checked}")
+        
     def _on_hitbox_toggled(self, checked):
         from src.ui.link_master.item_card import ItemCard
         ItemCard.SHOW_HITBOXES = checked
@@ -290,6 +305,49 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
                  # LinkMasterWindow doesn't have a single apply_theme but it sets stylesheet on main_widget.
                  # QApplication stylesheet is global.
                  pass
+
+    def _on_allow_folder_deploy_toggled(self, checked):
+        """Toggle folder deployment in package view and persist state."""
+        from src.ui.link_master.item_card import ItemCard
+        ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
+        self._save_debug_setting('allow_folder_deploy_pkg_view', checked)
+        self.logger.info(f"Folder Deploy in Package View: {checked}")
+
+    def _get_debug_settings_path(self):
+        """Get path to debug settings JSON file."""
+        import os
+        # Use resource folder relative to project
+        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        return os.path.join(base, 'resource', 'debug_settings.json')
+
+    def _load_debug_setting(self, key, default=None):
+        """Load a debug setting from JSON file."""
+        import os, json
+        path = self._get_debug_settings_path()
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get(key, default)
+        except Exception as e:
+            self.logger.warning(f"Failed to load debug setting '{key}': {e}")
+        return default
+
+    def _save_debug_setting(self, key, value):
+        """Save a debug setting to JSON file."""
+        import os, json
+        path = self._get_debug_settings_path()
+        try:
+            data = {}
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            data[key] = value
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save debug setting '{key}': {e}")
 
     def _show_window_count(self):
         """Show count and details of all top-level widgets."""
@@ -324,15 +382,24 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
     def _on_log_level_changed(self, text):
         """Update global log level (Standard)."""
         level = getattr(logging, text, logging.INFO)
-        logging.getLogger().setLevel(level)
+        
+        # Set root logger level
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+        
+        # Also set handler levels (important for DEBUG to work)
+        for handler in root_logger.handlers:
+            handler.setLevel(level)
+        
         # Also set specific loggers if needed
-        logging.getLogger("LinkMasterWindow").setLevel(level)
+        for logger_name in ["LinkMasterWindow", "LinkMasterDeployer", "ItemCard"]:
+            logging.getLogger(logger_name).setLevel(level)
         
         msg = f"[Debug] Log Level changed to {text}"
         logging.log(level, msg)
         
         # Confirmatory log
-        self.logger.debug(f"{msg} (Standardized)")
+        self.logger.info(f"{msg} (all handlers updated)")
 
     def _on_alpha_boost_changed(self, value):
         """Update max_alpha_boost in parent window."""

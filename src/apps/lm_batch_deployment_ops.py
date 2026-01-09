@@ -207,6 +207,11 @@ class LMDeploymentOpsMixin:
         
         full_src = os.path.join(self.storage_root, rel_path)
         
+        # 🚨 Safety Check: Block empty relative paths (prevents accidental root targeting)
+        if not rel_path or rel_path == ".":
+            self.logger.error(f"Deployment blocked: relative path is empty ({rel_path}).")
+            return False
+        
         # Phase 28: Optimization - DO NOT call _unlink_single (sweepy) before every deploy.
         # self._unlink_single(rel_path, update_ui=False, _cascade=False)
         
@@ -244,6 +249,15 @@ class LMDeploymentOpsMixin:
         config = self.db.get_folder_config(rel_path) or {}
         folder_name = os.path.basename(rel_path.rstrip('\\/'))
         
+        # 🚨 Safety Check: Prevent deployment if folder_name is empty or whitespace-only
+        if not folder_name or not folder_name.strip():
+            self.logger.error(f"Safety Block: Deployment blocked due to empty folder name. rel_path={rel_path}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self.window() if hasattr(self, 'window') else self, _("Safety Block"), 
+                _("Deployment blocked: Folder name is empty or whitespace-only.\n\n"
+                  "rel_path: {rel_path}\n\n"
+                  "This can happen if the package is at the root level of storage.").format(rel_path=rel_path))
+            return False
         
         # Phase 5 & 40: Resolve Deployment Rule based on current target
         target_key = getattr(self, 'current_target_key', 'target_root')
@@ -309,6 +323,20 @@ class LMDeploymentOpsMixin:
             else:
                 # 'folder': Create a subfolder with the package name
                 target_link = os.path.join(target_root, folder_name)
+
+        # 🚨 Safety Check: Prevent replacing any target root in 'folder' mode
+        if deploy_rule == 'folder' and target_link:
+            t_roots = {os.path.normpath(app_data.get(k)).lower() for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)}
+            if os.path.normpath(target_link).lower() in t_roots:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.critical(self.window() if hasattr(self, 'window') else self, _("Safety Block"), 
+                    _("Deployment blocked: Cannot replace target root directory itself in 'folder' mode.\n\n"
+                      "Target: {target}\n\n"
+                      "To deploy contents into this folder, please use 'files' (Flatten) or 'tree' mode.").format(
+                        target=target_link
+                    ))
+                self.logger.error(f"Safety Block: Prevented 'folder' mode deployment targeting search root: {target_link}")
+                return False
 
         rules = config.get('deployment_rules')
 
@@ -444,7 +472,17 @@ class LMDeploymentOpsMixin:
         # Phase 7: Filter out None values to prevent TypeError in os.path.isdir
         search_roots = [r for r in search_roots if r is not None]
         
+        # 🚨 DEBUG: Log unlink operation details
+        self.logger.info(f"[Unlink] Starting unlink for rel_path={rel_path}")
+        self.logger.debug(f"[Unlink] search_roots={search_roots}")
+        
         config = self.db.get_folder_config(rel_path) or {}
+        
+        # 🚨 Safety Check: Block empty relative paths in unlink
+        if not rel_path or rel_path == ".":
+             self.logger.warning(f"Unlink blocked: relative path is empty ({rel_path}).")
+             return False
+             
         if config.get('target_override'):
              search_roots.append(config.get('target_override'))
              
@@ -526,13 +564,31 @@ class LMDeploymentOpsMixin:
                     target_link = os.path.join(search_root, folder_name)
             
             # Use unified undeploy with transfer_mode
-            # For Tree+Copy mode, we need file-by-file deletion to avoid deleting unrelated content
-            if deploy_rule == 'tree' and transfer_mode == 'copy':
+            # For Tree/Files+Copy/Symlink modes, we need file-by-file deletion to avoid deleting unrelated content (Search Roots)
+            if deploy_rule == 'tree':
                  # Safe Tree Undeploy: delete source-matched files only, then prune empty dirs
                  deleted_count = self._safe_tree_undeploy(full_src, target_link)
                  if deleted_count > 0:
                       self.logger.info(f"Tree undeploy: removed {deleted_count} items from {target_link}")
+            elif deploy_rule == 'files':
+                 # Safe Files Undeploy: delete source-matched files directly in search root
+                 deleted_count = self._safe_files_undeploy(full_src, target_link)
+                 if deleted_count > 0:
+                      self.logger.info(f"Files undeploy: removed {deleted_count} items from {target_link}")
             else:
+                 # 🚨 Safety Check: Avoid unlinking the search root itself unless it is genuinely a link to us
+                 if target_link:
+                     t_roots = {os.path.normpath(app_data.get(k)).lower() for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)}
+                     if os.path.normpath(target_link).lower() in t_roots:
+                         # extra safety: only allow if it's a symlink (we don't want to rmtree a root!)
+                         if not os.path.islink(target_link):
+                             self.logger.warning(f"Unlink Safety: Skipping search root that is not a symlink: {target_link}")
+                             continue
+                         
+                         if not rel_path:
+                              self.logger.error(f"Unlink Safety: Blocked attempt to unlink root via empty rel_path.")
+                              continue
+
                  if self.deployer.undeploy(target_link, transfer_mode=transfer_mode, source_path_hint=full_src):
                       self.logger.info(f"Unlinked/Undeployed: {target_link}")
 
@@ -553,8 +609,24 @@ class LMDeploymentOpsMixin:
             self._refresh_tag_visuals()
         
         # Phase 7: Pruning - Remove newly empty parent directories up to target roots
-        # Use normalized paths for robust comparison
-        norm_search_roots = {os.path.normpath(r).lower() for r in search_roots if r}
+        # 🚨 COLLECT ALL TARGET ROOTS FROM ALL APPS to protect them ALL
+        all_protected_roots = set()
+        try:
+            all_apps = self.db.get_all_apps() if hasattr(self.db, 'get_all_apps') else []
+            for app in all_apps:
+                for key in ['target_root', 'target_root_2', 'target_root_3']:
+                    val = app.get(key)
+                    if val:
+                        all_protected_roots.add(os.path.normpath(val).lower())
+        except Exception as e:
+            self.logger.warning(f"Failed to collect all target roots: {e}")
+        
+        # Also add current app's roots
+        for r in search_roots:
+            if r:
+                all_protected_roots.add(os.path.normpath(r).lower())
+        
+        self.logger.debug(f"[Prune] Protected roots: {all_protected_roots}")
 
         for search_root in search_roots:
             if not search_root or not os.path.exists(search_root): continue
@@ -563,13 +635,20 @@ class LMDeploymentOpsMixin:
             curr = os.path.dirname(candidate)
             
             while curr:
-                # Normalize and check if we've reached a search root or higher
+                # Normalize and check if we've reached a protected root
                 norm_curr = os.path.normpath(curr).lower()
-                if norm_curr in norm_search_roots:
+                if norm_curr in all_protected_roots:
+                    self.logger.debug(f"[Prune Safety] Stopping at protected root: {curr}")
                     break
                 
                 # Double-check length just in case normalization is tricky
                 if len(curr) <= len(search_root):
+                    break
+                
+                # 🚨 Safety: Never remove if this path is a PARENT of any protected root
+                is_parent_of_root = any(r.startswith(norm_curr + os.sep) or r.startswith(norm_curr + '/') for r in all_protected_roots)
+                if is_parent_of_root:
+                    self.logger.debug(f"[Prune Safety] Stopping at parent of protected root: {curr}")
                     break
 
                 if os.path.exists(curr) and os.path.isdir(curr):
@@ -611,6 +690,36 @@ class LMDeploymentOpsMixin:
                     break 
         
         return dependent_packages
+
+    def _safe_files_undeploy(self, source_path: str, target_dir: str) -> int:
+        """
+        Safely undeploy 'files' (Flatten) mode by deleting only files that match the source.
+        This prevents accidental deletion of the search root.
+        """
+        if not os.path.isdir(source_path): return 0
+        if not os.path.isdir(target_dir): return 0
+        
+        deleted_count = 0
+        try:
+            for root, dirs, files in os.walk(source_path):
+                # Flatten mode puts EVERYTHING in target_dir regardless of subfolders
+                for f in files:
+                    target_file = os.path.join(target_dir, f)
+                    if os.path.exists(target_file):
+                        # Verify it's either a symlink OR a physical copy
+                        # (Note: we don't strictly check if it points to US here, 
+                        # just like tree undeploy, to maintain consistency)
+                        try:
+                            if os.path.islink(target_file):
+                                os.unlink(target_file)
+                            else:
+                                os.remove(target_file)
+                            deleted_count += 1
+                        except: pass
+        except Exception as e:
+            self.logger.error(f"Safe files undeploy failed: {e}")
+            
+        return deleted_count
 
     def _safe_tree_undeploy(self, source_path: str, target_root: str) -> int:
         """

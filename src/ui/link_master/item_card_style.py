@@ -2,7 +2,7 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
                     has_conflict_children, is_library_alt_version, is_registered,
                     is_package, is_selected, is_focused, has_name_conflict=False, 
                     has_target_conflict=False, has_linked_children=False, has_unlinked_children=False, 
-                    has_partial_children=False, category_deploy_status=None):
+                    has_partial_children=False, category_deploy_status=None, context=None):
     """Calculate status and background colors for ItemCard."""
     status_color = "#444"
     bg_color = "#333"
@@ -28,8 +28,8 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
     elif is_partial and (link_status == 'linked' or link_status == 'partial'):
         status_color = COLOR_YELLOW
         bg_color = "#3d3d2a"
-    # Priority 5: Category Deploy Status (Moved up for priority)
-    elif not is_package and category_deploy_status == 'deployed':
+    # Priority 5: Category Deploy Status (ONLY in Category View, not Package View)
+    elif not is_package and category_deploy_status == 'deployed' and context != 'contents':
         status_color = COLOR_CATEGORY_DEPLOYED
         bg_color = "#1a2a3d"
     # Priority 6: Linked

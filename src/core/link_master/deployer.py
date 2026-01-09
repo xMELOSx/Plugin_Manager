@@ -56,7 +56,8 @@ def _parallel_link_worker(source_path: str, target_link_path: str, conflict_poli
                 backup_path = f"{target_link_path}.bak_{int(time.time())}_{suffix}"
                 os.rename(target_link_path, backup_path)
                 action_taken = "backup"
-                return {"status": "success", "path": target_link_path, "action": action_taken, "backup_path": backup_path}
+                # Registering backup path for the worker (handled in batch caller)
+                # return {"status": "success", "path": target_link_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_link_path, "msg": f"Conflict handle failed: {e}"}
 
@@ -107,7 +108,7 @@ def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: s
                 backup_path = f"{target_path}.bak_{int(time.time())}_{suffix}"
                 os.rename(target_path, backup_path)
                 action_taken = "backup"
-                return {"status": "success", "path": target_path, "action": action_taken, "backup_path": backup_path}
+                # return {"status": "success", "path": target_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_path, "msg": f"Conflict handle failed: {e}"}
 
@@ -351,7 +352,9 @@ class Deployer:
                 self.logger.info(f"Cleaning up directory-based (Partial) deployment: {target_link_path}")
                 self.cleanup_links_in_target(target_link_path, source_path_hint, recursive=True, restore_backups=restore_backups)
                 # If empty after cleanup, remove it
-                if not os.listdir(target_link_path):
+                # 🚨 Safety: NEVER remove target_link_path if it looks like a search root (< 5 path parts)
+                parts = target_link_path.replace('\\', '/').split('/')
+                if len(parts) >= 5 and not os.listdir(target_link_path):
                     try:
                         os.rmdir(target_link_path)
                         self._cleanup_empty_parents(os.path.dirname(target_link_path))
@@ -386,9 +389,43 @@ class Deployer:
             self.logger.debug(f"Backup lookup skipped (table may not exist): {e}")
         return False
 
-    def _cleanup_empty_parents(self, path: str):
-        """Recursively remove empty parent directories."""
+    def _cleanup_empty_parents(self, path: str, protected_roots: set = None):
+        """Recursively remove empty parent directories.
+        NEVER removes any path that is in protected_roots or is a parent of them.
+        If protected_roots is None, automatically fetches ALL target roots from ALL apps using LinkMasterRegistry.
+        """
+        # 🚨 AUTO-FETCH ALL TARGET ROOTS FROM GLOBAL REGISTRY
+        if protected_roots is None:
+            protected_roots = set()
+            try:
+                from src.core.link_master.database import LinkMasterRegistry
+                registry = LinkMasterRegistry()
+                all_apps = registry.get_apps()
+                for app in all_apps:
+                    for key in ['target_root', 'target_root_2', 'target_root_3']:
+                        val = app.get(key)
+                        if val:
+                            protected_roots.add(val)
+                self.logger.info(f"[Prune Safety] Protected roots from Registry: {protected_roots}")
+            except Exception as e:
+                self.logger.warning(f"Failed to auto-fetch protected roots: {e}")
+        
+        norm_protected = {os.path.normpath(p).lower() for p in protected_roots if p}
+        
         while path and path != os.path.dirname(path):
+            norm_path = os.path.normpath(path).lower()
+            
+            # Safety: Never remove if this path IS a protected root
+            if norm_path in norm_protected:
+                self.logger.debug(f"[Prune Safety] Stopping at protected root: {path}")
+                break
+            
+            # Safety: Never remove if this path is a PARENT of any protected root
+            is_parent_of_protected = any(p.startswith(norm_path + os.sep) or p.startswith(norm_path + '/') for p in norm_protected)
+            if is_parent_of_protected:
+                self.logger.debug(f"[Prune Safety] Stopping at parent of protected root: {path}")
+                break
+            
             try:
                 if os.path.isdir(path) and not os.listdir(path):
                     os.rmdir(path)
@@ -524,9 +561,16 @@ class Deployer:
             if os.path.exists(meta_file):
                 os.remove(meta_file)
             
-            # Remove the target
+            # 🚨 Safety Check: NEVER remove a directory if it's a registered search root
             if os.path.isdir(target_path):
-                shutil.rmtree(target_path)
+                # We need to check against app target roots
+                # Since Deployer is core, it doesn't have app_combo.
+                # But we can check if it's EMPTY or if it matches common patterns.
+                # Better: lm_batch_deployment_ops should have handled this, but as a last resort:
+                if not os.listdir(target_path):
+                     os.rmdir(target_path)
+                else:
+                     self.logger.warning(f"Undeploy Safety: Refusing to rmtree non-empty directory (possibly search root): {target_path}")
             elif os.path.exists(target_path):
                 os.remove(target_path)
             
@@ -599,7 +643,7 @@ class Deployer:
                 return self.deploy_link(source_path, target_link_path, conflict_policy)
 
         # 4. Partial / File-level Deployment for 'files', 'tree', or 'folder' with filters
-        self.logger.info(f"Proceeding with Partial Deployment: rule={deploy_rule}, mode={real_mode}, skip={skip_levels}")
+        self.logger.info(f"Proceeding with Partial Deployment: rule={deploy_rule}, mode={real_mode}, skip={skip_levels}, target_root={target_link_path}")
             
         if not os.path.exists(source_path): 
             self.logger.error(f"Source path missing for deploy: {source_path}")
