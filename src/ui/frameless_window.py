@@ -58,6 +58,10 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         self.container.setObjectName("FramelessContainer")
         self.container.installEventFilter(self)
         self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Maximize Alpha Boost (0-255)
+        self.max_alpha_boost = 60
+        
         self._update_stylesheet()
         self.setCentralWidget(self.container)
         self._content_opacity_effect = QGraphicsOpacityEffect(self.container)
@@ -156,7 +160,9 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         rect = self.rect()
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         alpha_val = self._bg_opacity
-        if self.isMaximized(): alpha_val = min(1.0, alpha_val + 0.15)
+        if self.isMaximized(): 
+            boost = self.max_alpha_boost / 255.0
+            alpha_val = min(1.0, alpha_val + boost)
         bg_alpha = int(alpha_val * 255)
         bg_color = QColor(35, 35, 35, bg_alpha)
         painter.setBrush(QBrush(bg_color))
@@ -309,7 +315,8 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                     "cat_container", "pkg_container", 
                     "TitleBar", "BreadcrumbContainer", 
                     "fav_switcher_container",
-                    "CategoryHeaderContainer", "PackageHeaderContainer"
+                    "CategoryHeaderContainer", "PackageHeaderContainer",
+                    "MainContentWrapper", "LayoutContentWrapper"
                 ]:
                     return True, 2 # HTCAPTION
                 

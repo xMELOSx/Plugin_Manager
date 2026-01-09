@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox, QComboBox)
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox, QComboBox, QSpinBox, QScrollArea, QLineEdit)
+from PyQt6.QtCore import Qt, QPoint
 from src.ui.frameless_window import FramelessWindow
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import OptionsMixin
@@ -7,9 +7,11 @@ from src.core import core_handler
 from src.core.lang_manager import _
 import os
 import logging
+import ctypes
+from ctypes import wintypes
 
 class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
-    def __init__(self, parent=None, app_data=None):
+    def __init__(self, parent=None, main_window=None, app_data=None):
         """
         app_data: dict containing 'storage_root', 'target_root'
         """
@@ -17,7 +19,10 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.setObjectName("LinkMasterDebugWindow")
         # Tool flag allows stacking above parent without staying on top of all apps
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
-        self.parent_window = parent # Store parent LinkMasterWindow
+        
+        # Determine parent logic: independent window but logically connected
+        self.parent_window = main_window if main_window else parent
+        
         self.setWindowTitle("LinkMaster Debug")
         self.resize(400, 600)
         
@@ -34,6 +39,69 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         self.init_ui()
         
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Window must be shown to manipulate HWND
+        hwnd = int(self.winId())
+        user32 = ctypes.windll.user32
+        
+        # Get Current Style
+        style = user32.GetWindowLongW(hwnd, -16)
+        
+        # WS_CAPTION(0xC00000) | WS_THICKFRAME(0x40000) | WS_MAXIMIZEBOX(0x10000) | WS_MINIMIZEBOX(0x20000)
+        # Combine flags to ensure OS treats it as a full window with shadow/resize/snap
+        new_style = style | 0x00C00000 | 0x00040000 | 0x00010000 | 0x00020000
+        user32.SetWindowLongW(hwnd, -16, new_style)
+        
+        # Notify Frame Change
+        # 0x0020 = SWP_FRAMECHANGED, 0x0002 = SWP_NOMOVE, 0x0001 = SWP_NOSIZE, 0x0004 = SWP_NOZORDER
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
+                
+    def nativeEvent(self, event_type, message):
+        try:
+            msg = wintypes.MSG.from_address(int(message))
+            
+            if msg.message == 0x0084: # WM_NCHITTEST
+                pos = QPoint(wintypes.LOWORD(msg.lParam), wintypes.HIWORD(msg.lParam))
+                local_pos = self.mapFromGlobal(pos)
+                lx, ly = local_pos.x(), local_pos.y()
+                w, h = self.width(), self.height()
+                
+                # Screen DPI scaling logic
+                ratio = self.screen().devicePixelRatio()
+                margin = int(8 * ratio)
+                
+                # --- 1. Resize Logic (Return OS Constants) ---
+                if lx < margin:
+                    if ly < margin: return True, 13 # HTTOPLEFT
+                    if ly > h - margin: return True, 16 # HTBOTTOMLEFT
+                    return True, 10 # HTLEFT
+                if lx > w - margin:
+                    if ly < margin: return True, 14 # HTTOPRIGHT
+                    if ly > h - margin: return True, 17 # HTBOTTOMRIGHT
+                    return True, 11 # HTRIGHT
+                if ly < margin: return True, 12 # HTTOP
+                if ly > h - margin: return True, 15 # HTBOTTOM
+
+                # --- 2. Exclude Interactive Widgets ---
+                child = self.childAt(lx, ly)
+                from PyQt6.QtWidgets import QPushButton, QComboBox, QSpinBox, QCheckBox, QScrollArea, QLineEdit, QAbstractSlider
+                if isinstance(child, (QPushButton, QComboBox, QSpinBox, QCheckBox, QScrollArea, QLineEdit, QAbstractSlider)):
+                    return True, 1 # HTCLIENT
+
+                # --- 3. Background/Labels = Drag Area ---
+                # print(f"[Debug] HIT: HTCAPTION (2) at {lx},{ly}") # Uncomment for spam
+                return True, 2 # HTCAPTION (Drag)
+
+        except Exception as e:
+            pass
+
+        return super().nativeEvent(event_type, message)
+
+    # ... toggle_options and init_ui skipped ...
+
+    # ... toggle_options and init_ui skipped ...
+
     def toggle_options(self):
         """Toggle options window visibility."""
         if self.options_window.isVisible():
@@ -45,8 +113,10 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
             self.options_window.show()
             self.opt_btn.setChecked(True)
 
+
     def init_ui(self):
         container = QWidget() # No parent, set_content_widget handles it
+        container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         layout = QVBoxLayout(container)
         
         self.security_lbl = QLabel(_("<h2>Debug: Core Security Check</h2>"))
@@ -110,8 +180,6 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         layout.addLayout(src_backup_grid)
         
-        layout.addLayout(src_backup_grid)
-        
         layout.addSpacing(20)
         
         # --- Log Level Control ---
@@ -129,6 +197,22 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         self.log_level_combo.currentTextChanged.connect(self._on_log_level_changed)
         layout.addWidget(self.log_level_combo)
+
+        # --- Maximize Alpha Boost Control ---
+        layout.addSpacing(10)
+        self.alpha_lbl = QLabel(_("<b>Maximize Shadow Alpha (0-255)</b>"))
+        layout.addWidget(self.alpha_lbl)
+        
+        self.alpha_spin = QSpinBox()
+        self.alpha_spin.setRange(0, 255)
+        # Default value from parent if available, else 55
+        default_alpha = 55
+        if self.parent_window and hasattr(self.parent_window, 'max_alpha_boost'):
+             default_alpha = self.parent_window.max_alpha_boost
+        self.alpha_spin.setValue(default_alpha)
+        self.alpha_spin.valueChanged.connect(self._on_alpha_boost_changed)
+        layout.addWidget(self.alpha_spin)
+
 
         layout.addSpacing(20)
         self.ui_debug_lbl = QLabel(_("<b>UI Debug</b>"))
@@ -266,15 +350,26 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
                 _("Language changed to: {0}\n\nSome changes may require a restart to take full effect.").format(self.lang_manager.current_language_name))
 
     def _on_log_level_changed(self, text):
-        """Update global log level."""
+        """Update global log level (Standard)."""
         level = getattr(logging, text, logging.INFO)
         logging.getLogger().setLevel(level)
         # Also set specific loggers if needed
         logging.getLogger("LinkMasterWindow").setLevel(level)
-        logging.getLogger("ItemCard").setLevel(level)
         
-        # Add a verification log
-        logging.getLogger("LinkMasterDebug").log(level, f"Log Level changed to {text}")
+        msg = f"[Debug] Log Level changed to {text}"
+        logging.log(level, msg)
+        
+        # Explicit print to confirm change if DEBUG (in case Main Loop swallows log)
+        if level <= logging.DEBUG:
+            print(f"{msg} (PRINT FORCE)")
+
+    def _on_alpha_boost_changed(self, value):
+        """Update max_alpha_boost in parent window."""
+        if self.parent_window and hasattr(self.parent_window, "save_alpha_boost"):
+            self.parent_window.save_alpha_boost(value)
+        elif self.parent_window:
+            self.parent_window.max_alpha_boost = value
+            self.parent_window.update() # Trigger repaint
 
     def _run_backup_bat(self, arg):
         """Runs backup_source.bat with the given argument."""

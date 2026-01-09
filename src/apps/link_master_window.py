@@ -23,6 +23,7 @@ from src.ui.link_master.dialogs import AppRegistrationDialog, ImportTypeDialog
 from src.core.image_loader import ImageLoader
 from src.core.link_master.database import get_lm_registry, get_lm_db
 from src.core.link_master.scanner import Scanner
+from PyQt6.QtCore import QSettings
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.item_card import ItemCard
 from src.core.link_master.deployer import Deployer
@@ -238,6 +239,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         t_init_end = time.perf_counter()
         self.logger.info(f"[Profile] _init_ui total took {t_init_end - self._init_start_t:.3f}s")
         
+        # Ensure Icon Alt-Click is connected (Fixes Debug Launch)
+        if hasattr(self, 'icon_label'):
+            self.icon_label.mousePressEvent = self._icon_mouse_press
+            # self.icon_label.setCursor(Qt.CursorShape.PointingHandCursor) # Unauthorized
+        
         # Navigation History (Phase 28)
         self.nav_history = []
         self.nav_index = -1
@@ -259,6 +265,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.btn_pkg_quick_manage.clicked.disconnect()
             except: pass
             self.btn_pkg_quick_manage.installEventFilter(self)
+
+        # Maximize Alpha Boost Persistence (Default 55)
+        self.settings = QSettings("Hyperion", "PluginManager")
+        self.max_alpha_boost = int(self.settings.value("ui/maximized_alpha", 55))
 
     def eventFilter(self, obj, event):
         """Handle custom events, specifically Right Click on Quick Manage buttons."""
@@ -2695,14 +2705,37 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             event.ignore() 
 
     def _open_debug_window(self):
+        print("[Debug] LinkMasterWindow._open_debug_window called")
+        # Enforce Singleton
+        if hasattr(self, 'debug_window') and self.debug_window.isVisible():
+            print("[Debug] Existing DebugWindow found. Activating.")
+            self.debug_window.activateWindow()
+            self.debug_window.raise_()
+            return
+
         from src.ui.link_master.debug_window import LinkMasterDebugWindow
+        
+        # HOTFIX: Force Reload Module to ensure latest patches (Drag/Logs) are applied without App Restart
+        import importlib
+        import src.ui.link_master.debug_window
+        importlib.reload(src.ui.link_master.debug_window)
+        from src.ui.link_master.debug_window import LinkMasterDebugWindow
+        
+        print(f"[Debug] Creating NEW LinkMasterDebugWindow instance. (Class ID: {id(LinkMasterDebugWindow)})")
         
         # Get Current App Data
         app_data = self.app_combo.currentData()
         
-        self.debug_window = LinkMasterDebugWindow(parent=self, app_data=app_data)
+        # Pass main_window=self to enable parent-child communication (Alpha Boost, etc.)
+        self.debug_window = LinkMasterDebugWindow(parent=None, main_window=self, app_data=app_data)
         self.debug_window.move(self.x() + 50, self.y() + 50)
         self.debug_window.show()
+
+    def save_alpha_boost(self, value):
+        """Save max_alpha_boost to config."""
+        self.max_alpha_boost = value
+        self.settings.setValue("ui/maximized_alpha", value)
+        self.update() # Trigger repaint
     
     # --- Trash Methods moved to: lm_trash.py ---
     # Tag methods moved to LMTagsMixin

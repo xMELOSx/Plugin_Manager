@@ -192,6 +192,7 @@ def _setup_header(window, main_layout, main_widget):
 
 def _setup_content_area(window, main_layout, main_widget):
     window.content_wrapper = QWidget(main_widget)
+    window.content_wrapper.setObjectName("LayoutContentWrapper")
     content_wrapper_layout = QHBoxLayout(window.content_wrapper)
     content_wrapper_layout.setContentsMargins(0, 0, 0, 0)
     content_wrapper_layout.setSpacing(0)
@@ -209,6 +210,7 @@ def _setup_content_area(window, main_layout, main_widget):
     
     # CARD VIEW AREA
     right_widget = QWidget(window.sidebar_splitter)
+    right_widget.setObjectName("MainContentWrapper")
     window.sidebar_splitter.addWidget(right_widget)
     window.sidebar_splitter.setStretchFactor(1, 1)
     content_wrapper_layout.addWidget(window.sidebar_splitter, 1)
@@ -357,9 +359,13 @@ def _setup_navigation_bar(window, right_layout):
     window.btn_forward.clicked.connect(window._navigate_forward)
     nav_bar_layout.addWidget(window.btn_forward)
     
-    window.breadcrumb_layout = QHBoxLayout()
+    # Breadcrumb Container for Dragging
+    window.breadcrumb_container = QWidget(window.content_wrapper)
+    window.breadcrumb_container.setObjectName("BreadcrumbContainer")
+    window.breadcrumb_layout = QHBoxLayout(window.breadcrumb_container)
+    window.breadcrumb_layout.setContentsMargins(0, 0, 0, 0)
     window.breadcrumb_layout.setSpacing(5)
-    nav_bar_layout.addLayout(window.breadcrumb_layout)
+    nav_bar_layout.addWidget(window.breadcrumb_container)
     
     nav_bar_layout.addStretch()
     
