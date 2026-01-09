@@ -775,7 +775,9 @@ class ItemCard(QFrame):
         # Note: Avoid calling super().paintEvent(event) which draws QSS border/bg
         
         painter = QPainter(self)
-        
+        if not painter.isActive():
+            return
+            
         # 1. Background and Status Border
         radius = 4 if getattr(self, 'display_mode', 'standard') == 'mini_image' else 8
         status_color = getattr(self, '_status_color', '#444')
@@ -787,19 +789,19 @@ class ItemCard(QFrame):
 
         # 2. Debug hitbox
         if ItemCard.SHOW_HITBOXES:
-            CardBorderPainter.draw_debug_hitbox(painter, QRectF(self.rect()))
+             CardBorderPainter.draw_debug_hitbox(painter, QRectF(self.rect()))
 
         # 3. Selection/Hover Border
-        if not self.is_selected and not self.is_hovered:
-            return
-
-        CardBorderPainter.draw_selection_border(
-            painter, QRectF(self.rect()),
-            is_selected=self.is_selected,
-            is_focused=self.is_focused,
-            is_hovered=self.is_hovered,
-            display_mode=getattr(self, '_display_mode', 'standard')
-        )
+        if self.is_selected or self.is_hovered:
+            CardBorderPainter.draw_selection_border(
+                painter, QRectF(self.rect()),
+                is_selected=self.is_selected,
+                is_focused=self.is_focused,
+                is_hovered=self.is_hovered,
+                display_mode=getattr(self, '_display_mode', 'standard')
+            )
+        
+        painter.end()
 
     def set_pixmap(self, pixmap):
         """Set pixmap via ThumbnailWidget component."""

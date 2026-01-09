@@ -34,6 +34,7 @@ class DeployOverlay(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setObjectName("overlay_deploy")
         self._current_status = 'none'
+        self._current_pixmap = None
         self.hide()
     
     def setStatus(self, link_status: str, opacity: float = 0.8, is_category: bool = False, has_conflict: bool = False):
@@ -66,6 +67,8 @@ class DeployOverlay(QPushButton):
             else:
                 self.setToolTip(_("Not Linked (Deploy)"))
 
+        self._current_pixmap = icon_pixmap
+        # still set icon for standard button features (accessibility etc)
         self.setIcon(QIcon(icon_pixmap))
         self.setIconSize(QSize(16, 16))
         self.setText("")
@@ -77,6 +80,9 @@ class DeployOverlay(QPushButton):
     def paintEvent(self, event):
         """Custom painting for high performance opacity updates."""
         painter = QPainter(self)
+        if not painter.isActive():
+            return
+            
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Determine background color
@@ -92,13 +98,14 @@ class DeployOverlay(QPushButton):
         rect = self.rect().adjusted(1, 1, -1, -1)
         painter.drawEllipse(rect)
         
-        # Draw Icon
-        if not self.icon().isNull():
-             # Center icon manually to ensure perfect alignment
-             # icon_rect 16x16 centered in 24x24
-             icon_x = (self.width() - 16) // 2
-             icon_y = (self.height() - 16) // 2
-             self.icon().paint(painter, icon_x, icon_y, 16, 16)
+        # Draw Icon (Directly from pixmap to avoid QIcon.paint re-entry/instability)
+        pixmap = getattr(self, '_current_pixmap', None)
+        if pixmap and not pixmap.isNull():
+             icon_x = (self.width() - pixmap.width()) // 2
+             icon_y = (self.height() - pixmap.height()) // 2
+             painter.drawPixmap(icon_x, icon_y, pixmap)
+        
+        painter.end()
 
     def enterEvent(self, event):
         self.update()
