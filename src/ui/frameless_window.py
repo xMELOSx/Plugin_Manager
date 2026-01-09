@@ -286,31 +286,36 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 cname = curr.metaObject().className()
                 oname = curr.objectName()
                 
-                # SURGICAL HIT-TEST
-                # 1. Check for KNOWN DRAGGABLE CONTAINERS first? NO. Interactive leaf might be inside them.
-                #    We must traverse up. If we hit Interactive, return CLIENT. If we hit Container, return CAPTION.
+                # SPECIFIC INTERACTIVE ELEMENTS (Highest Priority)
+                # Indicators/Buttons that must be clickable even if small
+                if oname in ["deploy_mode_indicator", "titlebar_pin_btn", "titlebar_help_btn", "titlebar_options_btn", "titlebar_icon", "titlebar_max", "titlebar_min", "titlebar_close"]:
+                    return False, 1 # HTCLIENT
                 
-                # INTERACTIVE WHITELIST
-                # Note: 'Scroll' removed to strictly allow MainContent (QScrollArea) dragging.
-                # 'ScrollBar' added explicitly for scrollbars.
+                # COMPREHENSIVE INTERACTIVE WHITELIST (Strict inputs only)
+                # Avoid "Box" or "Group" to prevent blocking containers.
                 if any(t in cname for t in [
                     "Button", "Btn", "Edit", "Combo", "Spin", "Slider", "Dial", 
-                    "Table", "Tree", "List", "View", "Header", "Tab", "Splitter", 
-                    "Browser", "Web", "Stacked", "ToolBox", 
-                    "Check", "Radio", "Group", "Menu", "Indicator", "Icon",
-                    "ScrollBar", "ItemCard" 
-                ]) or "Clickable" in cname or oname in ["titlebar_icon", "titlebar_close", "titlebar_maximize", "titlebar_minimize"]:
-                    # ItemCard: Returns CLIENT to allow selection/context. 
-                    # Dragging works via MainContent gaps.
+                    "Table", "Tree", "List", "View", "Header", "TabWidget", "TabBar", 
+                    "Splitter", "Browser", "Web", "Stacked", 
+                    "Check", "Radio", "Menu", "Indicator", "Icon", "Status",
+                    "ScrollBar", "ItemCard", "ClickableLabel"
+                ]):
                     return False, 1 # HTCLIENT
                 
                 # DRAGGABLE CONTAINER WHITELIST
-                if oname in ["MainContent", "ItemCardPool", "cat_container", "pkg_container"]:
+                # Explicitly list containers that should allow dragging from gaps
+                if oname in [
+                    "MainContent", "ItemCardPool", 
+                    "cat_container", "pkg_container", 
+                    "TitleBar", "BreadcrumbContainer", 
+                    "fav_switcher_container",
+                    "CategoryHeaderContainer", "PackageHeaderContainer"
+                ]:
                     return True, 2 # HTCAPTION
                 
                 curr = curr.parentWidget()
             
-            # If nothing matched, assume Caption (Window Background)
+            # If nothing matched (e.g. generic QWidget background), assume Caption (Window Background)
             return True, 2 
             
         return False, 0 

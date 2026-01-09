@@ -485,9 +485,13 @@ def _setup_main_card_view(window, right_layout):
     cat_group_layout = QVBoxLayout(cat_group)
     cat_group_layout.setContentsMargins(0, 0, 0, 0)
     
-    cat_header = QHBoxLayout()
+    # Categories Area - Wrap Header in Container for Dragging
+    window.cat_header_container = QWidget(cat_group)
+    window.cat_header_container.setObjectName("CategoryHeaderContainer")
+    cat_header = QHBoxLayout(window.cat_header_container)
     cat_header.setContentsMargins(5, 5, 5, 5)
     cat_header.setSpacing(8)
+    cat_group_layout.addWidget(window.cat_header_container)
     
     window.btn_import_cat = QPushButton("📁", cat_group)
     window.btn_import_cat.setObjectName("cat_import_btn")
@@ -547,7 +551,7 @@ def _setup_main_card_view(window, right_layout):
     window.btn_quick_manage.released.connect(window._open_quick_view_manager)
     cat_header.addWidget(window.btn_quick_manage)
     
-    cat_group_layout.addLayout(cat_header)
+    # cat_group_layout.addLayout(cat_header) # Replaced by addWidget(container)
     
     window.cat_container = QWidget(cat_group)
     window.cat_container.setObjectName("ItemCardPool") # Whitelisted via class or parent
@@ -571,9 +575,14 @@ def _setup_main_card_view(window, right_layout):
     pkg_group_layout = QVBoxLayout(pkg_group)
     pkg_group_layout.setContentsMargins(0, 0, 0, 0)
     
-    pkg_header = QHBoxLayout()
+    
+    # Packages Area - Wrap Header in Container for Dragging
+    window.pkg_header_container = QWidget(pkg_group)
+    window.pkg_header_container.setObjectName("PackageHeaderContainer")
+    pkg_header = QHBoxLayout(window.pkg_header_container)
     pkg_header.setContentsMargins(5, 5, 5, 5)
     pkg_header.setSpacing(8)
+    pkg_group_layout.addWidget(window.pkg_header_container)
     
     window.btn_import_pkg = QPushButton("📁", pkg_group)
     window.btn_import_pkg.setObjectName("pkg_import_btn")
@@ -628,7 +637,7 @@ def _setup_main_card_view(window, right_layout):
     window.btn_pkg_quick_manage.released.connect(lambda: window._open_quick_view_cached(scope="package"))
     pkg_header.addWidget(window.btn_pkg_quick_manage)
     
-    pkg_group_layout.addLayout(pkg_header)
+    # pkg_group_layout.addLayout(pkg_header) # Replaced by addWidget(container)
     
     window.pkg_container = QWidget(pkg_group)
     window.pkg_container.setObjectName("ItemCardPool") # Whitelisted via class or parent
