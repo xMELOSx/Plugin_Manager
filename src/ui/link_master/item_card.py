@@ -478,7 +478,7 @@ class ItemCard(QFrame):
         # Debug: Log detection result
         import logging
         cat_deploy = getattr(self, 'category_deploy_status', 'None')
-        logging.getLogger("ItemCard").debug(f"[UpdateData] {self.folder_name} status={self.link_status} cat_deploy={cat_deploy}")
+        logging.debug(f"[UpdateData] {os.path.basename(self.path)} (Status: {self.link_status}, Deploy: {self.deploy_rule})")
         
         self.has_physical_conflict = (self.link_status == 'conflict')
 

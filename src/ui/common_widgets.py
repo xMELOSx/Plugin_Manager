@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox
+from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QPushButton
 from PyQt6.QtCore import Qt
 
 class StyledLineEdit(QLineEdit):
@@ -122,3 +122,54 @@ class StyledSpinBox(QSpinBox):
                 height: 7px;
             }
         """)
+
+class StyledButton(QPushButton):
+    """
+    Standardized QPushButton with premium hover effects and pointing hand cursor.
+    Supports 'Gray', 'Blue', 'Green' style presets.
+    """
+    def __init__(self, text, parent=None, style_type="Gray"):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.style_type = style_type
+        self._apply_style()
+
+    def _apply_style(self):
+        # Color Map
+        colors = {
+            "Gray":  {"bg": "#3b3b3b", "hover": "#4a4a4a", "border": "#555", "hover_border": "#777"},
+            "Blue":  {"bg": "#2980b9", "hover": "#3498db", "border": "#3498db", "hover_border": "#fff"},
+            "Green": {"bg": "#27ae60", "hover": "#2ecc71", "border": "#2ecc71", "hover_border": "#fff"},
+            "Red":   {"bg": "#c0392b", "hover": "#e74c3c", "border": "#e74c3c", "hover_border": "#fff"}
+        }
+        
+        c = colors.get(self.style_type, colors["Gray"])
+        
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {c['bg']};
+                color: #ffffff;
+                border: 1px solid {c['border']};
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: {c['hover']};
+                border-color: {c['hover_border']};
+            }}
+            QPushButton:pressed {{
+                background-color: #222;
+                padding-top: 7px;
+                padding-left: 13px;
+            }}
+            QPushButton:disabled {{
+                background-color: #2c2c2c;
+                color: #555;
+                border-color: #333;
+            }}
+        """)
+
+    def set_style_type(self, style_type: str):
+        self.style_type = style_type
+        self._apply_style()

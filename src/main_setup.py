@@ -65,7 +65,7 @@ def setup_error_handling():
         ch = logging.StreamHandler()
         ch.setFormatter(formatter)
         
-    ch.setLevel(logging.INFO) 
+    ch.setLevel(log_level) 
     root.addHandler(ch)
 
     def handle_exception(exc_type, exc_value, exc_traceback):

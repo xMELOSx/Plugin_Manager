@@ -53,6 +53,23 @@ class Toast(QLabel):
         self.adjustSize()
         self.hide()
 
+    @staticmethod
+    def show_toast(parent, message, level="info", duration=2000, y_offset=None):
+        """Helper to show a toast on a parent without needing an instance."""
+        if not parent: return
+        # Try to find existing toast instance on parent to prevent stacking/leaks
+        toast = getattr(parent, "_toast_instance", None)
+        if not toast or toast.parent() != parent:
+            # Create if missing or parent changed (e.g., recycled widget)
+            toast = Toast(parent, y_offset=(y_offset if y_offset is not None else 60))
+            parent._toast_instance = toast
+            
+        if y_offset is not None:
+            toast.set_y_offset(y_offset)
+            
+        toast.show_message(message, preset=level, duration=duration)
+        return toast
+
     def _apply_style(self, color=None):
         """Apply or update the toast styling."""
         c = color or self._color

@@ -114,7 +114,7 @@ class ImageLoader(QObject):
             
             # Validate request is still valid (card hasn't been reused for different item)
             if request_validator and not request_validator():
-                logging.getLogger("ImageLoader").info(f"[Stale] Ignoring: {os.path.basename(loaded_path)}")
+                logging.getLogger("ImageLoader").debug(f"[Stale] Ignoring: {os.path.basename(loaded_path)}")
                 return  # Request is stale, don't set image
             
             # Add to cache

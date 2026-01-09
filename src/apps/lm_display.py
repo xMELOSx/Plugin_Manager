@@ -235,12 +235,10 @@ class LMDisplayMixin:
 
     def _toggle_show_hidden(self):
         """Toggle visibility of hidden folders."""
-        self.show_hidden = not self.show_hidden
-        # Update toggle buttons to reflect state
+        # Restore requested icon for hidden state: '=' if not showing, '👁' if showing
         if hasattr(self, 'btn_show_hidden'):
-             self.btn_show_hidden.setChecked(self.show_hidden)
-        if hasattr(self, 'btn_trash'):
-             self.btn_trash.setChecked(self.show_hidden)
+             self.btn_show_hidden.toggle()
+             self.btn_show_hidden.setText("👁" if self.show_hidden else "＝")
              
         self._set_btn_show_hidden_style()
         self._apply_card_filters()
@@ -248,13 +246,8 @@ class LMDisplayMixin:
 
     def _set_btn_show_hidden_style(self):
         if not hasattr(self, 'btn_show_hidden'): return
-        if self.show_hidden:
-            self.btn_show_hidden.setText("👁")
-            self.btn_show_hidden.setToolTip(_("Showing hidden Categories/Packages (click to hide)"))
-            # ActionButton applies its own checked style, but we maintain the legacy text/tooltip
-        else:
-            self.btn_show_hidden.setText("=")
-            self.btn_show_hidden.setToolTip(_("Show hidden Categories/Packages"))
+        self.btn_show_hidden.setToolTip(_("Showing hidden folders") if self.show_hidden else _("Show hidden folders"))
+        # TitleBarButton manages icon through its text property, which we set in factory
 
     def _toggle_favorite_filter(self):
         """Toggle filter to show only favorited items."""

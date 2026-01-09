@@ -14,6 +14,7 @@ from src.ui.link_master.tag_bar import TagWidget
 from src.ui.window_mixins import OptionsMixin
 from src.ui.frameless_window import FramelessDialog
 from src.ui.toast import Toast
+from src.ui.common_widgets import StyledButton
 
 def _normalize_tags(tags_str, lowercase=True):
     """Normalize tag string: sorted, space-trimmed, optionally lowercased."""
@@ -810,6 +811,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 item.setIcon(icon)
         
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setMinimumSectionSize(32) # Prevent total collapse
         self.table.horizontalHeader().setStretchLastSection(False) # Don't stretch last tag column
         
         # Column widths
@@ -880,21 +882,21 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         btn_layout.setSpacing(12)
         btn_layout.addStretch()
         
-        self.cancel_btn = QPushButton(_("Cancel"))
+        self.cancel_btn = StyledButton(_("Cancel"), style_type="Gray")
         self.cancel_btn.clicked.connect(self.reject)
         self.cancel_btn.setMinimumWidth(100)
-        self.cancel_btn.setStyleSheet("background-color: #666666; color: white; border-radius: 4px; padding: 6px;")
         
-        self.cancel_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.cancel_btn.installEventFilter(self)
+        # Phase 1.1.300: Interim Save Button
+        self.interim_save_btn = StyledButton(_("Save"), style_type="Blue")
+        self.interim_save_btn.clicked.connect(self._on_interim_save_clicked)
+        self.interim_save_btn.setMinimumWidth(100)
         
-        self.save_btn = QPushButton(_("Save All (Alt + Enter)"))
+        self.save_btn = StyledButton(_("Save and Close (Alt+Enter)"), style_type="Green")
         self.save_btn.clicked.connect(self._on_save_clicked)
-        self.save_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; width: 220px; border-radius: 4px; padding: 6px;")
-        self.save_btn.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        self.save_btn.installEventFilter(self)
+        self.save_btn.setMinimumWidth(220)
         
         btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.interim_save_btn)
         btn_layout.addWidget(self.save_btn)
         layout.addLayout(btn_layout)
         
@@ -1364,9 +1366,16 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             self.table.resizeColumnsToContents()
             
             # Enforce min/max widths for tag columns (index 6+)
+            # Phase 1.1.180: Narrow widths as requested (33px fits the 31px button perfectly)
             for i in range(6, self.table.columnCount()):
-                if self.table.columnWidth(i) < 41:
-                    self.table.setColumnWidth(i, 41)
+                if self.table.columnWidth(i) < 33:
+                    self.table.setColumnWidth(i, 33)
+            
+            # Phase 1.1.181: Protect Name/Folder columns from over-shrinking
+            if self.table.columnWidth(5) < 200:
+                self.table.setColumnWidth(5, 200)
+            if self.table.columnWidth(4) < 120:
+                self.table.setColumnWidth(4, 120)
             
             # Reduce separators
             for i, col_info in enumerate(self._all_tag_columns):
@@ -1421,6 +1430,11 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             btn.setText(tag_name or "")
         
         self._update_tag_btn_style(btn, is_active)
+        
+        # User requested narrowing: help layout stay compact
+        btn.setContentsMargins(0,0,0,0)
+        btn.setFlat(True)
+        
         btn.blockSignals(False)
 
 
@@ -1627,8 +1641,14 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._update_window_title()
 
     def _on_save_clicked(self):
+        if self._perform_save():
+            self.accept()
+
+    def _on_interim_save_clicked(self):
+        """Perform save without closing the dialog."""
         self._perform_save()
-        self.accept()
+        # Show toast on the dialog itself
+        self.show_toast(_("Changes saved!"), "success")
 
     def _perform_save(self):
         """Collect changes by mapping table widgets back to items_data via rel_path."""
@@ -1651,6 +1671,15 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             if not item_data: continue
             
             changes = {}
+            
+            # 0. Icon (New! Phase 1.1.200)
+            icon_container = self.table.cellWidget(row, 1)
+            if icon_container:
+                btn_icon = icon_container.findChild(QPushButton)
+                if btn_icon:
+                    new_icon = btn_icon.property("new_icon")
+                    if new_icon:
+                        changes['image_path'] = new_icon
             
             # 1. Favorite
             is_fav = item_data.get('is_favorite', False)
@@ -1714,13 +1743,16 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                         self._pending_tag_changes.clear()
                         
                         self._update_window_title() # Remove "Unsaved" marker
-                        self.accept()
+                        self.show_toast(_("Successfully saved {0} items").format(len(update_list)), "success")
+                        return True
                     else:
                         QMessageBox.critical(self, _("Error"), _("Failed to update items."))
+                        return False
                 except Exception as e:
                     QMessageBox.critical(self, "Error", _("Failed to save changes: {e}").format(e=str(e)))
+                    return False
             else:
                  QMessageBox.information(self, "Demo", f"Would update {len(update_list)} items:\n{update_list}")
-                 self.accept()
+                 return True
         else:
-            self.accept()
+            return True

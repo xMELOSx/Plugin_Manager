@@ -7,6 +7,7 @@ import os
 import ctypes
 from ctypes import wintypes
 from PyQt6.QtWidgets import QApplication
+from src.ui.toast import Toast
 
 class MINMAXINFO(ctypes.Structure):
     class POINT(ctypes.Structure):
@@ -59,6 +60,10 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         
         # 4. Show with short delay to ensure first paint is done
         QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
+
+    def show_toast(self, message: str, level: str = "info"):
+        """Show toast on active window."""
+        Toast.show_toast(self, message, level)
 
 
     def _init_frameless_ui(self):
@@ -491,6 +496,10 @@ class FramelessDialog(QDialog, Win32Mixin):
         self._content_opacity = 1.0
         self._init_frameless_ui()
         QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
+
+    def show_toast(self, message: str, level: str = "info"):
+        """Show toast on active window."""
+        Toast.show_toast(self, message, level)
             
     def _init_frameless_ui(self):
         self.container = QWidget(self)
@@ -508,8 +517,15 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.title_bar.setFixedHeight(32)
         tb_layout = QHBoxLayout(self.title_bar)
         tb_layout.setContentsMargins(10, 0, 5, 0)
+        
+        # Icon Label
+        self.icon_label = QLabel(self.title_bar)
+        self.icon_label.setFixedSize(24, 24)
+        self.icon_label.setVisible(False)
+        tb_layout.addWidget(self.icon_label)
+        
         self.title_label = QLabel("Dialog", self.title_bar)
-        self.title_label.setStyleSheet("color: #cccccc; font-weight: bold;")
+        self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; padding-left: 5px;")
         tb_layout.addWidget(self.title_label)
         tb_layout.addStretch()
         self.close_btn = TitleBarButton("✕")
@@ -524,6 +540,16 @@ class FramelessDialog(QDialog, Win32Mixin):
     def set_background_opacity(self, opacity: float):
         self._bg_opacity = max(0.0, min(1.0, opacity))
         self.update()
+
+    def set_default_icon(self):
+        """Set a default system icon if no specific icon is provided."""
+        from PyQt6.QtWidgets import QStyle
+        icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
+        if not icon.isNull():
+             if hasattr(self, 'icon_label'):
+                 self.icon_label.setPixmap(icon.pixmap(24, 24))
+                 self.icon_label.setVisible(True)
+             self.setWindowIcon(icon)
 
     def paintEvent(self, event):
         painter = QPainter(self)

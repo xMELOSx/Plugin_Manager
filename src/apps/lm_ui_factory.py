@@ -523,11 +523,10 @@ def _setup_main_card_view(window, right_layout):
     
     cat_header.addWidget(QLabel("|", cat_group, styleSheet="color: #555;"))
     
-    window.btn_show_hidden = QPushButton("＝", cat_group)
+    window.btn_show_hidden = TitleBarButton("＝", cat_group, is_toggle=True)
     window.btn_show_hidden.setObjectName("cat_show_hidden_btn")
     window.btn_show_hidden.setFixedSize(28, 26)
     window.btn_show_hidden.setToolTip(_("Show/Hide hidden folders"))
-    window.btn_show_hidden.setStyleSheet(btn_style)
     window.btn_show_hidden.clicked.connect(window._toggle_show_hidden)
     cat_header.addWidget(window.btn_show_hidden)
     
