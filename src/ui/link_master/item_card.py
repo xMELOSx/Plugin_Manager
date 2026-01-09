@@ -22,6 +22,8 @@ from .card_overlays import (
     CardBorderPainter, ThumbnailWidget, ElidedLabel
 )
 
+logger = logging.getLogger(__name__)
+
 class ItemCard(QFrame):
     # Static Debug Flag
     SHOW_HITBOXES = False
@@ -42,7 +44,7 @@ class ItemCard(QFrame):
     double_clicked = pyqtSignal(str) # Alias for Nav
     deploy_changed = pyqtSignal()  # Emits when link is deployed/removed (for parent refresh)
     property_changed = pyqtSignal(dict) # Phase 30: Emits when a property like favorite changes
-    request_deployment_toggle = pyqtSignal(str) # Phase 30: Direct deployment from card
+    request_deployment_toggle = pyqtSignal(str, bool) # Phase 30: Direct deployment from card (path, is_package)
     request_move_to_unclassified = pyqtSignal(str) # Emits path
     request_move_to_trash = pyqtSignal(str)        # Emits path
     request_restore = pyqtSignal(str)              # Phase 18.11: Emits path
@@ -158,7 +160,7 @@ class ItemCard(QFrame):
 
         # Phase 30: Deploy Toggle Overlay - Using component
         self.deploy_btn = DeployOverlay(self)
-        self.deploy_btn.clicked.connect(lambda: self.request_deployment_toggle.emit(self.path))
+        self.deploy_btn.clicked.connect(lambda: self.request_deployment_toggle.emit(self.path, self.is_package))
 
         # Phase 28: Enable drag-drop for thumbnail images
         self.setAcceptDrops(True)
@@ -236,6 +238,8 @@ class ItemCard(QFrame):
 
         if 'folder_type' in kwargs:
             self.is_package = (kwargs['folder_type'] == 'package')
+        elif 'is_package' in kwargs:
+            self.is_package = bool(kwargs['is_package'])
 
         self.is_registered = kwargs.get('is_registered', getattr(self, 'is_registered', True))
         self.is_misplaced = kwargs.get('is_misplaced', getattr(self, 'is_misplaced', False))
@@ -627,7 +631,8 @@ class ItemCard(QFrame):
             deploy_btn=getattr(self, 'deploy_btn', None),
             lib_btn=getattr(self, 'lib_overlay', None),
             is_library=is_lib,
-            opacity=getattr(self, '_deploy_btn_opacity', 0.8)
+            opacity=getattr(self, '_deploy_btn_opacity', 0.8),
+            is_package=getattr(self, 'is_package', True)
         )
 
     def set_deploy_button_opacity(self, opacity: float):
@@ -950,8 +955,8 @@ class ItemCard(QFrame):
 
         except Exception as e:
             import traceback
-            logging.getLogger("ItemCard").error(f"Failed to register dropped thumbnail: {e}")
-            traceback.print_exc()
+            logger.error(f"Failed to register dropped thumbnail: {e}")
+            logger.error(f"Error drawing card border: {e}", exc_info=True)
 
     def enterEvent(self, event):
         """Manual hover tracking for border drawing."""
@@ -1205,7 +1210,7 @@ class ItemCard(QFrame):
     def _toggle_visibility(self):
         """Toggle is_visible attribute in DB and update card display (no full refresh)."""
         self.is_hidden = not self.is_hidden
-        # print(f"[Profiling] ItemCard._toggle_visibility: path={self.path}, is_hidden={self.is_hidden}")
+        # logger.debug(f"[Profiling] ItemCard._toggle_visibility: path={self.path}, is_hidden={self.is_hidden}")
 
         if self.db:
             try:
@@ -1217,17 +1222,24 @@ class ItemCard(QFrame):
                     rel = rel.replace('\\', '/')
 
                 self.db.update_folder_display_config(rel, is_visible=(0 if self.is_hidden else 1))
-                # print(f"[Profiling] DB Updated: {rel} is_visible={0 if self.is_hidden else 1}")
+                # logger.debug(f"[Profiling] DB Updated: {rel} is_visible={0 if self.is_hidden else 1}")
             except Exception as e:
-                print(f"Error updating visibility: {e}")
+                logger.error(f"Error updating visibility: {e}")
 
         # Use partial update instead of full refresh
         self.update_hidden(self.is_hidden)
-        # print("[Profiling] Used update_hidden for partial update (no deploy_changed emit)")
+        # logger.debug("[Profiling] Used update_hidden for partial update (no deploy_changed emit)")
 
-    def toggle_deployment(self):
+    def toggle_deployment(self, path=None, is_package=None):
         """Phase 19.5: Public API to toggle deployment state."""
         if not self.deployer or not self.target_dir: return
+        
+        # Phase 35: Redirect to category logic via signal if it's a category
+        effective_is_package = is_package if is_package is not None else self.is_package
+        if not effective_is_package:
+            self.request_deployment_toggle.emit(self.path, False)
+            return
+
         self._check_link_status()
         if self.link_status == 'linked':
             self._remove_link()

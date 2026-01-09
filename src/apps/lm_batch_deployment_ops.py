@@ -848,12 +848,28 @@ class LMDeploymentOpsMixin:
                         has_linked, has_conflict, has_partial, has_unlinked = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
                         card.set_children_status(has_linked=has_linked, has_conflict=has_conflict, has_unlinked_children=has_unlinked, has_partial=has_partial)
 
-    def _on_card_deployment_requested(self, path):
-        """Phase 30: Handle direct deployment toggle from card overlay button."""
+    def _on_card_deployment_requested(self, path, is_package=True):
+        """Phase 30: Handle direct deployment toggle from card overlay button.
+        Redirects to Category Deploy/Unlink if it's a category.
+        """
         try:
             rel = os.path.relpath(path, self.storage_root).replace('\\', '/')
         except: return
         
+        # 1. Category Logic
+        if not is_package:
+            config = self.db.get_folder_config(rel) or {}
+            cat_status = config.get('category_deploy_status')
+            
+            if cat_status == 'deployed':
+                if hasattr(self, '_handle_unlink_category'):
+                    self._handle_unlink_category(rel)
+            else:
+                if hasattr(self, '_handle_deploy_category'):
+                    self._handle_deploy_category(rel)
+            return
+
+        # 2. Package Logic
         config = self.db.get_folder_config(rel) or {}
         current_status = config.get('last_known_status', 'none')
         

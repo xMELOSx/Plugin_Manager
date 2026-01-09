@@ -408,11 +408,11 @@ class LMBatchOpsMixin:
                 card = self._get_active_card_by_path(abs_norm)
                 
                 # Handling Profiling Log
-                self.logger.info(f"PROFILE: Property Edit Return. Path={abs_norm}")
-                self.logger.info(f"PROFILE: Dialog Data Keys: {list(data.keys())}")
+                self.logger.debug(f"PROFILE: Property Edit Return. Path={abs_norm}")
+                self.logger.debug(f"PROFILE: Dialog Data Keys: {list(data.keys())}")
                 if 'image_path' in data:
-                    self.logger.info(f"PROFILE: New image_path: {data['image_path']}")
-                self.logger.info(f"PROFILE: Card found? {card is not None}")
+                    self.logger.debug(f"PROFILE: New image_path: {data['image_path']}")
+                self.logger.debug(f"PROFILE: Card found? {card is not None}")
 
                 if card:
                     card.update_data(**data)

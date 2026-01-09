@@ -36,7 +36,7 @@ class DeployOverlay(QPushButton):
         self._current_status = 'none'
         self.hide()
     
-    def setStatus(self, link_status: str, opacity: float = 0.8):
+    def setStatus(self, link_status: str, opacity: float = 0.8, is_category: bool = False):
         """Update button appearance based on link status."""
         self._current_status = link_status
         
@@ -53,7 +53,7 @@ class DeployOverlay(QPushButton):
             self._border_color = QColor("#943126")
             self.setToolTip(_("Conflict (Occupy)"))
         else:
-            icon_pixmap = self._get_emoji_pixmap("🚀", 16)
+            icon_pixmap = self._get_emoji_pixmap("📦" if is_category else "🚀", 16)
             self._base_color = QColor(52, 152, 219, int(255 * opacity))
             self._hover_color = QColor(93, 173, 226, 242)
             self._border_color = QColor("#2471a3")

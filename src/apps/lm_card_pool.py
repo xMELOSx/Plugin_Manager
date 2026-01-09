@@ -176,14 +176,14 @@ class LMCardPoolMixin:
             if hasattr(self, '_show_property_view_for_card'):
                 card.double_clicked.connect(lambda p: self._show_property_view_for_card(p))
             else:
-                print("[ERROR] _show_property_view_for_card not available for package double-click!")
+                self.logger.error("[Pool] _show_property_view_for_card not available for package double-click!")
         else:
             card.single_clicked.connect(lambda p: self._handle_item_click(p, "category"))
             # Phase 28: Debug - verify method exists before connecting
             if hasattr(self, '_navigate_to_path'):
                 card.double_clicked.connect(self._navigate_to_path)
             else:
-                print("[ERROR] _navigate_to_path not available for double-click connection!")
+                self.logger.error("[Pool] _navigate_to_path not available for double-click connection!")
             
         return card
 
