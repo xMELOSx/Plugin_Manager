@@ -135,3 +135,95 @@ class FileHandler:
         else:
             self.logger.info(f"[UNKNOWN LEVEL {level}] {message}")
 
+    # =========================================================================
+    # Extended File Operations (Atomic / Safe Wrappers)
+    # =========================================================================
+
+    def path_exists(self, path: str) -> bool:
+        """Check if path exists safely."""
+        return os.path.exists(path)
+
+    def is_dir(self, path: str) -> bool:
+        """Check if path is a directory."""
+        return os.path.isdir(path)
+
+    def is_file(self, path: str) -> bool:
+        """Check if path is a file."""
+        return os.path.isfile(path)
+
+    def is_link(self, path: str) -> bool:
+        """Check if path is a symlink/junction."""
+        return os.path.islink(path)
+    
+    def join_path(self, *args) -> str:
+        """Join path components."""
+        return os.path.join(*args)
+
+    def get_parent(self, path: str) -> str:
+        """Get parent directory."""
+        return os.path.dirname(path)
+
+    def ensure_directory(self, path: str):
+        """Ensure a directory exists."""
+        try:
+            os.makedirs(path, exist_ok=True)
+        except Exception as e:
+            self.logger.error(f"Failed to create directory {path}: {e}")
+            raise
+
+    def remove_path(self, path: str):
+        """Safely remove a file, directory, or link."""
+        try:
+            if not os.path.lexists(path):
+                return
+            
+            if os.path.islink(path) or os.path.isfile(path):
+                os.unlink(path)
+                self.logger.debug(f"Removed file/link: {path}")
+            elif os.path.isdir(path):
+                import shutil
+                shutil.rmtree(path)
+                self.logger.debug(f"Removed directory tree: {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to remove {path}: {e}")
+            raise
+
+    def remove_empty_dir(self, path: str):
+        """Remove a directory only if it is empty."""
+        try:
+            os.rmdir(path)
+            self.logger.debug(f"Removed empty directory: {path}")
+        except OSError:
+            pass # Not empty, ignore
+
+    def move_path(self, src: str, dst: str):
+        """Rename/Move a file or directory."""
+        try:
+            os.rename(src, dst)
+            self.logger.debug(f"Moved {src} -> {dst}")
+        except Exception as e:
+            self.logger.error(f"Failed to move {src} -> {dst}: {e}")
+            raise
+
+    def copy_path(self, src: str, dst: str):
+        """Copy a file or directory tree."""
+        import shutil
+        try:
+            if os.path.isdir(src):
+                shutil.copytree(src, dst)
+            else:
+                shutil.copy2(src, dst)
+            self.logger.debug(f"Copied {src} -> {dst}")
+        except Exception as e:
+            self.logger.error(f"Failed to copy {src} -> {dst}: {e}")
+            raise
+
+    def create_symlink(self, src: str, dst: str, target_is_directory: bool = False):
+        """Create a symbolic link."""
+        try:
+            os.symlink(src, dst, target_is_directory=target_is_directory)
+            self.logger.debug(f"Created symlink {src} -> {dst}")
+        except Exception as e:
+            self.logger.error(f"Failed to create symlink {src} -> {dst}: {e}")
+            raise
+

@@ -20,33 +20,32 @@ def _parallel_link_worker(source_path: str, target_link_path: str, conflict_poli
     Top-level worker for parallel execution. Handles a single link creation.
     Returns a result dict for the main process to aggregate.
     """
-    import os
     import ctypes
+    from src.core import core_handler
     
     # Simple check for admin/dev mode (informative for errors)
     def is_admin():
         try: return ctypes.windll.shell32.IsUserAnAdmin()
         except: return False
 
-    if not os.path.exists(source_path):
+    if not core_handler.path_exists(source_path):
         return {"status": "error", "path": target_link_path, "msg": f"Source missing: {source_path}"}
     
     # Ensure target directory
-    os.makedirs(os.path.dirname(target_link_path), exist_ok=True)
+    try:
+        core_handler.ensure_directory(core_handler.get_parent(target_link_path))
+    except Exception as e:
+        return {"status": "error", "path": target_link_path, "msg": f"Failed to create directory: {e}"}
     
     # Conflict handling (Simplified for parallel worker: backup or overwrite)
     action_taken = "none"
-    if os.path.lexists(target_link_path):
+    if core_handler.path_exists(target_link_path) or core_handler.is_link(target_link_path):
         if conflict_policy == 'skip':
             return {"status": "skip", "path": target_link_path}
         
         try:
             if conflict_policy == 'overwrite':
-                if os.path.islink(target_link_path) or os.path.isfile(target_link_path):
-                    os.unlink(target_link_path)
-                elif os.path.isdir(target_link_path):
-                    import shutil
-                    shutil.rmtree(target_link_path)
+                core_handler.remove_path(target_link_path)
                 action_taken = "overwrite"
             elif conflict_policy == 'backup':
                 import time
@@ -54,51 +53,49 @@ def _parallel_link_worker(source_path: str, target_link_path: str, conflict_poli
                 import string
                 suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
                 backup_path = f"{target_link_path}.bak_{int(time.time())}_{suffix}"
-                os.rename(target_link_path, backup_path)
+                core_handler.move_path(target_link_path, backup_path)
                 action_taken = "backup"
-                # Registering backup path for the worker (handled in batch caller)
-                # return {"status": "success", "path": target_link_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_link_path, "msg": f"Conflict handle failed: {e}"}
 
     try:
-        is_dir = os.path.isdir(source_path)
-        os.symlink(source_path, target_link_path, target_is_directory=is_dir)
+        is_dir = core_handler.is_dir(source_path)
+        core_handler.create_symlink(source_path, target_link_path, target_is_directory=is_dir)
         return {"status": "success", "path": target_link_path, "action": action_taken}
     except OSError as e:
         msg = str(e)
         if not is_admin():
             msg += " (Admin/DevMode may be required)"
         return {"status": "error", "path": target_link_path, "msg": msg}
+    except Exception as e:
+        return {"status": "error", "path": target_link_path, "msg": str(e)}
 
 def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: str):
     """
     Top-level worker for parallel file copy execution.
     Returns a result dict for the main process to aggregate.
     """
-    import os
-    import shutil
+    from src.core import core_handler
     
-    if not os.path.exists(source_path):
+    if not core_handler.path_exists(source_path):
         return {"status": "error", "path": target_path, "msg": f"Source missing: {source_path}"}
     
     # Ensure target directory
-    target_dir = os.path.dirname(target_path)
+    target_dir = core_handler.get_parent(target_path)
     if target_dir:
-        os.makedirs(target_dir, exist_ok=True)
+        try:
+            core_handler.ensure_directory(target_dir)
+        except: pass
     
     # Conflict handling
     action_taken = "none"
-    if os.path.lexists(target_path):
+    if core_handler.path_exists(target_path) or core_handler.is_link(target_path):
         if conflict_policy == 'skip':
             return {"status": "skip", "path": target_path}
         
         try:
             if conflict_policy == 'overwrite':
-                if os.path.islink(target_path) or os.path.isfile(target_path):
-                    os.unlink(target_path)
-                elif os.path.isdir(target_path):
-                    shutil.rmtree(target_path)
+                core_handler.remove_path(target_path)
                 action_taken = "overwrite"
             elif conflict_policy == 'backup':
                 import time
@@ -106,17 +103,13 @@ def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: s
                 import string
                 suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
                 backup_path = f"{target_path}.bak_{int(time.time())}_{suffix}"
-                os.rename(target_path, backup_path)
+                core_handler.move_path(target_path, backup_path)
                 action_taken = "backup"
-                # return {"status": "success", "path": target_path, "action": action_taken, "backup_path": backup_path}
         except Exception as e:
             return {"status": "error", "path": target_path, "msg": f"Conflict handle failed: {e}"}
 
     try:
-        if os.path.isdir(source_path):
-            shutil.copytree(source_path, target_path)
-        else:
-            shutil.copy2(source_path, target_path)
+        core_handler.copy_path(source_path, target_path)
         return {"status": "success", "path": target_path, "action": action_taken, "mode": "copy"}
     except Exception as e:
         return {"status": "error", "path": target_path, "msg": str(e)}
@@ -412,7 +405,7 @@ class Deployer:
         
         norm_protected = {os.path.normpath(p).lower() for p in protected_roots if p}
         
-        while path and path != os.path.dirname(path):
+        while path and path != core_handler.get_parent(path):
             norm_path = os.path.normpath(path).lower()
             
             # Safety: Never remove if this path IS a protected root
@@ -427,10 +420,10 @@ class Deployer:
                 break
             
             try:
-                if os.path.isdir(path) and not os.listdir(path):
-                    os.rmdir(path)
+                if core_handler.is_dir(path) and not os.listdir(path):
+                    core_handler.remove_empty_dir(path)
                     self.logger.info(f"Cleaned empty parent: {path}")
-                    path = os.path.dirname(path)
+                    path = core_handler.get_parent(path)
                 else: break
             except: break
 

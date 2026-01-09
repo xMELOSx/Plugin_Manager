@@ -608,59 +608,18 @@ class LMDeploymentOpsMixin:
             
             self._refresh_tag_visuals()
         
-        # Phase 7: Pruning - Remove newly empty parent directories up to target roots
-        # 🚨 COLLECT ALL TARGET ROOTS FROM ALL APPS to protect them ALL
-        all_protected_roots = set()
-        try:
-            all_apps = self.db.get_all_apps() if hasattr(self.db, 'get_all_apps') else []
-            for app in all_apps:
-                for key in ['target_root', 'target_root_2', 'target_root_3']:
-                    val = app.get(key)
-                    if val:
-                        all_protected_roots.add(os.path.normpath(val).lower())
-        except Exception as e:
-            self.logger.warning(f"Failed to collect all target roots: {e}")
-        
-        # Also add current app's roots
-        for r in search_roots:
-            if r:
-                all_protected_roots.add(os.path.normpath(r).lower())
-        
-        self.logger.debug(f"[Prune] Protected roots: {all_protected_roots}")
-
-        for search_root in search_roots:
-            if not search_root or not os.path.exists(search_root): continue
-            
-            candidate = os.path.join(search_root, rel_path.replace('\\', '/'))
-            curr = os.path.dirname(candidate)
-            
-            while curr:
-                # Normalize and check if we've reached a protected root
-                norm_curr = os.path.normpath(curr).lower()
-                if norm_curr in all_protected_roots:
-                    self.logger.debug(f"[Prune Safety] Stopping at protected root: {curr}")
-                    break
-                
-                # Double-check length just in case normalization is tricky
-                if len(curr) <= len(search_root):
-                    break
-                
-                # 🚨 Safety: Never remove if this path is a PARENT of any protected root
-                is_parent_of_root = any(r.startswith(norm_curr + os.sep) or r.startswith(norm_curr + '/') for r in all_protected_roots)
-                if is_parent_of_root:
-                    self.logger.debug(f"[Prune Safety] Stopping at parent of protected root: {curr}")
-                    break
-
-                if os.path.exists(curr) and os.path.isdir(curr):
-                    try:
-                        if not os.listdir(curr):
-                            self.logger.info(f"[Pruning] Removing empty directory: {curr}")
-                            os.rmdir(curr)
-                            curr = os.path.dirname(curr)
-                        else:
-                            break
-                    except: break
-                else: break
+        # Phase 7: Pruning - Delegated to Safe Deployer Logic
+        if hasattr(self, 'deployer') and self.deployer:
+            for search_root in search_roots:
+                if not search_root: continue
+                try:
+                    # We assume the file at rel_path was just removed. 
+                    # We want to check its parent directory.
+                    candidate = os.path.join(search_root, rel_path.replace('\\', '/'))
+                    parent_dir = os.path.dirname(candidate)
+                    self.deployer._cleanup_empty_parents(parent_dir)
+                except Exception as e:
+                    self.logger.warning(f"Failed to prune parents for {search_root}: {e}")
 
         return True
 

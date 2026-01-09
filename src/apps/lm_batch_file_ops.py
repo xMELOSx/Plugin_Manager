@@ -488,9 +488,12 @@ class LMFileOpsMixin:
 
         target_path = norm(abs_path)
         card_found = False
-        # Debug logging (set to debug level for cleaner output)
-        # self.logger.debug(f"[CardUpdate] Looking for: {target_path}")
-        for layout in [self.cat_layout, self.pkg_layout]:
+        
+        # INFO Logging for debugging (as requested)
+        self.logger.info(f"[CardUpdate] Looking for: {target_path}")
+        
+        for layout_name, layout in [('cat', self.cat_layout), ('pkg', self.pkg_layout)]:
+            if not layout: continue
             for i in range(layout.count()):
                 item = layout.itemAt(i)
                 if item and item.widget():
@@ -498,19 +501,30 @@ class LMFileOpsMixin:
                     if isinstance(w, ItemCard):
                         w_path = norm(w.path or "")
                         if w_path == target_path:
-                            # self.logger.debug(f"[CardUpdate] Found card: {w.folder_name}")
+                            self.logger.info(f"[CardUpdate] HIT in {layout_name}_layout: {w.folder_name}")
+                            
+                            # Force update explicitly
                             if getattr(w, 'is_package', True):
-                                w.update_link_status()
+                                w.link_status = 'linked' # Force status attribute
+                                w.update_link_status('linked') # Force visual update
+                                
+                                # Force Deploy Button Overlay Update directly
+                                if hasattr(w, 'deploy_btn'):
+                                    op = getattr(w, '_deploy_btn_opacity', 0.8)
+                                    w.deploy_btn.setStatus('linked', op, is_category=False)
+                                    w.deploy_btn.update()
                             else:
                                 # For categories, we need a hierarchical refresh!
                                 if hasattr(self, '_refresh_category_cards'):
                                     self._refresh_category_cards()
+                                    
+                            w.update() # Force full Widget repaint
                             card_found = True
                             break
             if card_found: break
         
         if not card_found:
-            self.logger.debug(f"[CardUpdate] Card NOT found for: {target_path}")
+            self.logger.warning(f"[CardUpdate] Card NOT found for: {target_path}")
             
         # Note: Removed _update_parent_category_status() call here for performance.
         # Individual card update via QTimer.singleShot now handles overlay updates properly.
