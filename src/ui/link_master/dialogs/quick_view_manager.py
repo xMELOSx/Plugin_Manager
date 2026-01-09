@@ -659,9 +659,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             QHeaderView::section {
                 background-color: #333;
                 color: #ffffff;
-                border: 1px solid #444;
+                border: none;
                 font-weight: bold;
-                padding: 6px;
+                height: 18px; 
+                padding: 0px 4px;
             }
             
             /* Vertical Header */
@@ -823,22 +824,21 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self.table.setColumnWidth(5, 300) # Display Name (Increased)
         self.table.horizontalHeader().setMinimumSectionSize(32)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setMinimumSectionSize(9)
         # Force minimum widths via header
         self.table.horizontalHeader().resizeSection(4, 180)
         self.table.horizontalHeader().resizeSection(5, 300)
         
-        # Set Tag/Separator Column widths
+        # Tag/Separator Column widths
         for i, col_info in enumerate(self._all_tag_columns):
             col_idx = 6 + i
             if col_info['type'] == 'sep':
-                self.table.setColumnWidth(col_idx, 2)  # Narrower separator (half of current 4)
-                # Disable sorting for separator columns
-                sep_header = self.table.horizontalHeaderItem(col_idx)
-                if sep_header:
-                    sep_header.setFlags(sep_header.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Fixed)
+                self.table.setColumnWidth(col_idx, 9)
             else:
-                self.table.setColumnWidth(col_idx, 32) # Compact tag toggles
+                self.table.horizontalHeader().setSectionResizeMode(col_idx, QHeaderView.ResizeMode.Fixed)
+                self.table.setColumnWidth(col_idx, 32)
         
         # Add spacer column at the end to prevent accidental scrolling
         spacer_col = self.table.columnCount()
@@ -1387,7 +1387,11 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             # Reduce separators
             for i, col_info in enumerate(self._all_tag_columns):
                  if col_info['type'] == 'sep':
-                     self.table.setColumnWidth(6+i, 2)
+                     self.table.horizontalHeader().setSectionResizeMode(6+i, QHeaderView.ResizeMode.Fixed)
+                     self.table.setColumnWidth(6+i, 9)
+                 else:
+                     self.table.horizontalHeader().setSectionResizeMode(6+i, QHeaderView.ResizeMode.Fixed)
+                     self.table.setColumnWidth(6+i, 32)
 
             # Wait until EVERYTHING is fully loaded and layout is settled
             self.table.updateGeometry()
