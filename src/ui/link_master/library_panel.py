@@ -131,6 +131,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #2ecc71; }
         """)
         self.btn_deploy_unlink.clicked.connect(self._toggle_deploy)
+        self.btn_deploy_unlink.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row1.addWidget(self.btn_deploy_unlink)
         
         self.btn_url = QPushButton(_("🌐 URL"), self)
@@ -140,6 +141,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_url.clicked.connect(self._open_url)
+        self.btn_url.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row1.addWidget(self.btn_url)
         
         self.btn_settings = QPushButton(_("⚙ Settings"), self)
@@ -148,6 +150,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_settings.clicked.connect(self._open_lib_settings)
+        self.btn_settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row1.addWidget(self.btn_settings)
         
         layout.addLayout(row1)
@@ -163,6 +166,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_props.clicked.connect(self._open_priority_props)
+        self.btn_props.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row2.addWidget(self.btn_props)
         
         self.btn_deps = QPushButton(_("📦 Check Deps"), self)
@@ -171,11 +175,13 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_deps.clicked.connect(self._open_dep_packages)
+        self.btn_deps.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row2.addWidget(self.btn_deps)
         
         self.btn_unregister = QPushButton(_("🗑 Unregister"), self)
         self.btn_unregister.setToolTip(_("Unregister selected version from library"))
         self.btn_unregister.clicked.connect(self._unregister_selected)
+        self.btn_unregister.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row2.addWidget(self.btn_unregister)
         
         layout.addLayout(row2)
@@ -191,6 +197,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_hide.clicked.connect(self._toggle_visibility)
+        self.btn_hide.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row3.addWidget(self.btn_hide)
 
         self.btn_new_folder = QPushButton(_("📁 New Folder"), self)
@@ -200,6 +207,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_new_folder.clicked.connect(lambda: self._create_new_folder())
+        self.btn_new_folder.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row3.addWidget(self.btn_new_folder)
         
         self.btn_reg = QPushButton(_("🏷 Register Selected Package"), self)
@@ -209,6 +217,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #3498db; }
         """)
         self.btn_reg.clicked.connect(self.request_register_library.emit)
+        self.btn_reg.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row3.addWidget(self.btn_reg)
         
         self.btn_refresh = QPushButton("🔄", self)
@@ -218,6 +227,7 @@ class LibraryPanel(QWidget):
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self.btn_refresh.clicked.connect(self.refresh)
+        self.btn_refresh.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row3.addWidget(self.btn_refresh)
         self.btn_refresh.hide()  # Hidden: unclear purpose
         

@@ -608,16 +608,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.pending_icon_pixmap = None  # To be saved on Accept
         self.pending_icon_path = None    # To be saved on Accept
         
-        # Context-Aware Logic: Detection of "Deep Item" (Package Area)
-        self.is_package_area = False
-        if not self.batch_mode and self.storage_root:
-            try:
-                rel = os.path.relpath(self.folder_path, self.storage_root).replace('\\', '/')
-                # Level 1 (sep=0), Level 2 (sep=1) -> Category area. Level 3+ (sep>=2) -> Package area.
-                sep_count = rel.count('/')
-                if rel != "." and sep_count >= 2:
-                    self.is_package_area = True
-            except: pass
+        # Heuristic detection of folder type for Auto mode display
+        self.detected_folder_type = 'category'  # Default
+        if not self.batch_mode and self.folder_path and os.path.isdir(self.folder_path):
+            self.detected_folder_type = self._detect_folder_type_internal(self.folder_path)
 
 
         # Sizing / Constraints to fix "narrowing" bug
@@ -670,6 +664,33 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         """Overridden to ensure options are saved via accept/reject too."""
         self.save_options("folder_properties")
         super().done(r)
+    
+    def _detect_folder_type_internal(self, path):
+        """Heuristic detection of folder type (package or category)."""
+        if not path or not os.path.exists(path) or not os.path.isdir(path):
+            return 'category'
+        
+        # 1. Manifest Check
+        manifests = ["manifest.json", "plugin.json", "config.yml", "__init__.py", "package.json"]
+        for m in manifests:
+            if os.path.exists(os.path.join(path, m)):
+                return 'package'
+        
+        # 2. Naming Convention
+        pkg_exts = (".pkg", ".bundle", ".plugin", ".addon")
+        if path.lower().endswith(pkg_exts):
+            return 'package'
+        
+        # 3. Content Density - If it contains any files at top level, likely a package
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if entry.is_file():
+                        return 'package'
+        except:
+            pass
+        
+        return 'category'
     
     def _detect_auto_thumbnail(self):
         """Detect first available image in folder for auto-thumbnail."""
@@ -938,8 +959,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.type_combo = StyledComboBox()
         if self.batch_mode:
             self.type_combo.addItem(_("--- No Change ---"), "KEEP")
-            
-        self.type_combo.addItem(_("Auto (Detect)"), "auto")
+        
+        # Show detected type in Auto option for user clarity
+        detected_label = _("Category") if self.detected_folder_type == 'category' else _("Package")
+        self.type_combo.addItem(_("Auto (→ {detected})").format(detected=detected_label), "auto")
         self.type_combo.addItem(_("Category"), "category")
         self.type_combo.addItem(_("Package"), "package")
         
@@ -2076,12 +2099,18 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
              self.deploy_rules[self.prev_target_data] = current_rule
         
-        # Resolve target override properly: ONLY if "Custom" (4)
+        # Resolve target override properly: Store selected target path for all choices
         target_override = None
-        if current_target == 4:
+        if current_target == 4:  # Custom
             target_override = self.target_override_edit.text().strip() or None
         elif current_target == "KEEP":
             target_override = "KEEP"
+        elif current_target in [1, 2, 3]:
+            # Save the actual target root path for Primary/Secondary/Tertiary selections
+            idx = current_target - 1
+            if 0 <= idx < len(self.target_roots) and self.target_roots[idx]:
+                target_override = self.target_roots[idx]
+
 
         data = {
             'display_name': display_name,
