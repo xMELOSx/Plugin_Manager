@@ -141,6 +141,38 @@ class LMSelectionMixin:
             menu.addAction(_("Batch Edit ({count} items)").format(count=count)).setEnabled(False)
             menu.addSeparator()
             
+            # Determine selection composition
+            has_categories = False
+            has_packages = False
+            for path in self.selected_paths:
+                rel = os.path.relpath(path, self.storage_root).replace('\\', '/') if self.storage_root else ''
+                cfg = self.db.get_folder_config(rel) if self.db else {}
+                folder_type = cfg.get('folder_type', 'auto') if cfg else 'auto'
+                if folder_type == 'category':
+                    has_categories = True
+                elif folder_type == 'package':
+                    has_packages = True
+                else:
+                    # Auto-detect based on heuristic
+                    if hasattr(self, '_detect_folder_type'):
+                        detected = self._detect_folder_type(path)
+                        if detected == 'category':
+                            has_categories = True
+                        else:
+                            has_packages = True
+                    else:
+                        has_packages = True  # Default to package
+            
+            # Category Deploy/Unlink
+            act_cat_deploy = menu.addAction(_("📁 Batch Category Deploy"))
+            act_cat_deploy.triggered.connect(self._batch_category_deploy_selected)
+            
+            act_cat_unlink = menu.addAction(_("📁 Batch Category Unlink"))
+            act_cat_unlink.triggered.connect(self._batch_category_unlink_selected)
+            
+            menu.addSeparator()
+            
+            # Package Deploy/Unlink
             act_deploy = menu.addAction(_("🚀 Batch Deploy (Links)"))
             act_deploy.triggered.connect(self._batch_deploy_selected)
             
@@ -149,21 +181,40 @@ class LMSelectionMixin:
             
             menu.addSeparator()
             
-            # Visibility actions
-            act_show = menu.addAction(_("👁 Show All"))
-            act_show.triggered.connect(lambda: self._batch_visibility_selected(True))
+            # Disable based on view and selection
+            mixed_selection = has_categories and has_packages
+            is_category_view = (area_type == "category")
             
-            act_hide = menu.addAction(_("👻 Hide All"))
-            act_hide.triggered.connect(lambda: self._batch_visibility_selected(False))
+            if mixed_selection:
+                # Both types selected - disable all deploy/unlink
+                act_cat_deploy.setEnabled(False)
+                act_cat_unlink.setEnabled(False)
+                act_deploy.setEnabled(False)
+                act_separate.setEnabled(False)
+            elif is_category_view:
+                # Category view - disable package operations
+                act_deploy.setEnabled(False)
+                act_separate.setEnabled(False)
+            else:
+                # Package view - disable category operations
+                act_cat_deploy.setEnabled(False)
+                act_cat_unlink.setEnabled(False)
             
-            menu.addSeparator()
-
-            # Favorite actions
+            # Favorite actions FIRST (swapped per user request)
             act_fav = menu.addAction("🌟 " + _("Batch Add to Favorites"))
             act_fav.triggered.connect(lambda: self._batch_favorite_selected(True))
             
             act_unfav = menu.addAction("❇ " + _("Batch Remove from Favorites"))
             act_unfav.triggered.connect(lambda: self._batch_favorite_selected(False))
+            
+            menu.addSeparator()
+            
+            # Visibility actions AFTER favorites (swapped)
+            act_show = menu.addAction(_("👁 Show All"))
+            act_show.triggered.connect(lambda: self._batch_visibility_selected(True))
+            
+            act_hide = menu.addAction(_("👻 Hide All"))
+            act_hide.triggered.connect(lambda: self._batch_visibility_selected(False))
             
             menu.addSeparator()
 

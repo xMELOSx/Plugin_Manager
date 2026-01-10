@@ -64,6 +64,46 @@ class LMDeploymentOpsMixin:
             # Partial update instead of full rebuild
             self._update_cards_link_status(self.selected_paths)
 
+    def _batch_category_deploy_selected(self):
+        """Deploys all selected categories."""
+        if not self.selected_paths: return
+        self.logger.info(f"Batch Category Deploy: {len(self.selected_paths)} items")
+        
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        if not storage_root: return
+        
+        for path in self.selected_paths:
+            try:
+                rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                if rel == ".": continue
+                self._handle_deploy_category(rel)
+            except Exception as e:
+                self.logger.error(f"Failed to category deploy {path}: {e}")
+        
+        self._update_cards_link_status(self.selected_paths)
+
+    def _batch_category_unlink_selected(self):
+        """Unlinks all selected categories."""
+        if not self.selected_paths: return
+        self.logger.info(f"Batch Category Unlink: {len(self.selected_paths)} items")
+        
+        app_data = self.app_combo.currentData()
+        if not app_data: return
+        storage_root = app_data.get('storage_root')
+        if not storage_root: return
+        
+        for path in self.selected_paths:
+            try:
+                rel = os.path.relpath(path, storage_root).replace('\\', '/')
+                if rel == ".": continue
+                self._handle_unlink_category(rel)
+            except Exception as e:
+                self.logger.error(f"Failed to category unlink {path}: {e}")
+        
+        self._update_cards_link_status(self.selected_paths)
+
     def _deploy_single_from_rel_path(self, rel_path: str):
         """Wrapper for library panel deploy signal."""
         self._deploy_single(rel_path, update_ui=True)
