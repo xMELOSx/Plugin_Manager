@@ -54,7 +54,7 @@ class DeployOverlay(QPushButton):
             self._border_color = QColor("#943126")
             self.setToolTip(_("Conflict (Occupy)"))
         else:
-            icon_char = "📦" if is_category else "🚀"
+            icon_char = "📁" if is_category else "🚀"
             if is_category and has_conflict:
                 icon_char = "⚠"
             

@@ -187,9 +187,7 @@ class ItemCard(QFrame):
         # If this is a category (folder) but we are in Package View, 
         # it might be allowed to deploy as a package via debug flag.
         is_acting_as_package = is_package if is_package is not None else self.is_package
-        if self.context == "contents":
-             is_acting_as_package = True
-        elif not is_acting_as_package:
+        if not is_acting_as_package:
              if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
                   is_acting_as_package = True
         
@@ -444,7 +442,9 @@ class ItemCard(QFrame):
         
         # Phase 14/33: Categories derive status from children, NOT from physical symlink check
         # Physical check on a category folder would return 'none' and wipe its orange/green frame.
-        if not getattr(self, 'is_package', True):
+        # Phase 33.5: If in 'contents' context, we treat EVERYTHING like a package for detection.
+        force_pkg_check = getattr(self, 'context', None) == 'contents'
+        if not getattr(self, 'is_package', True) and not force_pkg_check:
              return
 
         # Final rule resolution for detection
@@ -518,8 +518,31 @@ class ItemCard(QFrame):
 
         status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
         self.link_status = status.get('status', 'none')
-        
-        self.link_status = status.get('status', 'none')
+
+        # Phase 35: Multi-root Fallback
+        # If not found in primary target, check target_root_2 and target_root_3
+        if self.link_status == 'none' and self.db:
+            try:
+                app_data = self.db.get_app_by_id(getattr(self, 'current_app_id', None))
+                if app_data:
+                    for root_key in ['target_root_2', 'target_root_3']:
+                        other_root = app_data.get(root_key)
+                        if other_root and other_root != self.target_dir:
+                            # Re-calculate target path for this root
+                            if deploy_rule == 'files':
+                                alt_target = os.path.join(other_root, self.folder_name)
+                            else:
+                                # For tree/folder, we'd need full rel-path logic again, 
+                                # but usually folder is the standard.
+                                alt_target = os.path.join(other_root, self.folder_name)
+                            
+                            alt_status = self.deployer.get_link_status(alt_target, expected_source=self.path, expected_transfer_mode=transfer_mode)
+                            if alt_status.get('status') == 'linked':
+                                self.link_status = 'linked'
+                                status = alt_status
+                                break
+            except: pass
+        # status is already updated if fallback succeeded
         
         # Debug: Log detection result
         import logging
@@ -609,15 +632,19 @@ class ItemCard(QFrame):
         if not getattr(self, 'is_package', True):  # Category card
             cat_deployed = getattr(self, 'category_deploy_status', None) == 'deployed'
             
-            if has_conflict:
+            # Phase 35 Fix: Do NOT overwrite physical link_status if it's already 'linked'
+            # (📁 mode). This prevents child-status check from wiping the frame color.
+            current_is_physical = getattr(self, '_link_is_physical', False) # We should track this
+            if self.link_status == 'linked':
+                 # Keep it 'linked' regardless of children
+                 pass
+            elif has_conflict:
                 self.link_status = 'conflict'
             elif has_partial:
                 self.link_status = 'partial'
             elif has_linked:
                 self.link_status = 'linked'
             elif cat_deployed:
-                # Phase 5 Fix: Deployed category remains 'linked' (active) even if children are unlinked.
-                # The visual style (Blue Border) is handled by get_card_colors via category_deploy_status priority.
                 self.link_status = 'linked'
             else:
                 self.link_status = 'none'
@@ -666,8 +693,8 @@ class ItemCard(QFrame):
         # Folder as Package Context Logic for Icon
         is_acting_as_package = getattr(self, 'is_package', True)
         if not is_acting_as_package and getattr(self, 'context', '') == "contents":
-             if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
-                  is_acting_as_package = True
+             # In Package View (contents), we always treat folders as packages visually.
+             is_acting_as_package = True
 
         update_overlays_geometry(
             w, h, display_mode,
@@ -781,6 +808,11 @@ class ItemCard(QFrame):
             return
         self._last_style_state = current_state
 
+        # Phase 35: Standardized acting as package logic
+        is_acting_pkg = self.is_package
+        if not is_acting_pkg and getattr(self, 'context', '') == "contents":
+             is_acting_pkg = True
+
         # Calculate colors using broken out logic
         self._status_color, self._bg_color = get_card_colors(
             link_status=self.link_status,
@@ -790,7 +822,7 @@ class ItemCard(QFrame):
             has_conflict_children=getattr(self, 'has_conflict_children', False),
             is_library_alt_version=getattr(self, 'is_library_alt_version', False),
             is_registered=self.is_registered,
-            is_package=self.is_package,
+            is_package=is_acting_pkg,
             is_selected=is_sel,
             is_focused=is_foc,
             has_name_conflict=getattr(self, 'has_name_conflict', False),

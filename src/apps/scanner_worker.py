@@ -317,11 +317,44 @@ class ScannerWorker(QObject):
             is_actually_package = (config_type == 'package')
         t_auto_end = time.perf_counter()
 
-        # 2. Link Status - ALWAYS check for all items (reverted from package-only)
-        # The item type detection is unreliable for many mod types, so we must check link status for everything.
+        # 2. Link Status - Hierarchical Rule Resolution
         t_link_start = time.perf_counter()
         target_override = item_config.get('target_override')
-        target_link = target_override or os.path.join(self.target_root, item['name'])
+        
+        # Phase 35: Standardized target path calculation (matches ItemCard logic)
+        app_deploy_default = (self.app_data or {}).get('deployment_type', 'folder')
+        deploy_rule = item_config.get('deploy_rule') or item_config.get('deploy_type') or app_deploy_default
+        if deploy_rule == 'flatten': deploy_rule = 'files'
+
+        if target_override:
+            target_link = target_override
+        elif deploy_rule == 'files':
+            # Flatten: link is directly in target_root
+            target_link = os.path.join(self.target_root, item['name'])
+        elif deploy_rule == 'tree':
+            # Hierarchical reconstruction
+            rules_json = item_config.get('deployment_rules')
+            skip_val = 0
+            if rules_json:
+                try:
+                    ro = json.loads(rules_json)
+                    skip_val = int(ro.get('skip_levels', 0))
+                except: pass
+            
+            parts = item_rel.split('/')
+            if len(parts) > skip_val:
+                mirrored = "/".join(parts[skip_val:])
+                target_link = os.path.join(self.target_root, mirrored)
+            else:
+                target_link = self.target_root
+        else:
+            # 'folder' (Standard): Mirror parent's location + self name
+            # If in contents view, target_root passed from handler is actually the BASE root.
+            # We need to reconstruct the relative path.
+            # However, for simplicity and backward compatibility, we usually expect 
+            # target_root + item_rel for non-root items.
+            target_link = os.path.join(self.target_root, item_rel)
+            
         status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
         link_status = status_info.get('status', 'none')
         t_link_end = time.perf_counter()
