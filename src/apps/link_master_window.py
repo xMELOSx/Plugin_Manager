@@ -1099,7 +1099,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             scope=scope
         )
         # Modeless
-        dialog.finished.connect(lambda: self._on_quick_view_finished(scope))
+        dialog.finished.connect(self._on_quick_view_finished)
         dialog.show()
         
         # Keep reference to prevent GC and enable reuse
@@ -1129,13 +1129,23 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # Phase 1.1.25: Initialize context ID for cache handling
         dialog._last_context_id = context_id
         
+        # Phase 1.1.295: Use try-disconnect to prevent signal accumulation on cached dialogs
+        try:
+            dialog.finished.disconnect(self._on_quick_view_finished)
+        except (TypeError, RuntimeError):
+            pass # Not connected yet
+            
         dialog.finished.connect(self._on_quick_view_finished)
         dialog.show()
 
     def _on_quick_view_finished(self, result_code):
-        """Handle QuickView dialog closure/save."""
+        """Handle cleanup and results after QuickView dialog closes."""
         dialog = self.sender()
         if not dialog: return
+        
+        import logging
+        logging.info(f"[QuickView] Finished with code: {result_code} (Accepted=1, Rejected=0)")
+        logging.debug(f"[QuickView] Dialog Results type: {type(dialog.results)}, count/len: {len(dialog.results) if dialog.results else 0}")
         
         # Determine scope from dialog if possible (Phase Multi-Delegate)
         scope = getattr(dialog, 'scope', 'category')

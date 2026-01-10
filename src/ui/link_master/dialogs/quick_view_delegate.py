@@ -526,11 +526,15 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             self._update_sort_data(rel_path, col, val)
 
     def _record_pending_change(self, rel_path, key, value):
-        """Buffer changes locally before saving."""
+        """Buffer changes for high-performance saving."""
         if rel_path not in self._pending_changes:
             self._pending_changes[rel_path] = {}
+        
+        old_val = self._pending_changes[rel_path].get(key)
         self._pending_changes[rel_path][key] = value
         self._has_changes = True
+        logging.debug(f"[QuickViewMode2] Buffer Change: {rel_path} -> {key}: {old_val} -> {value}")
+        self._update_window_title()
 
     def _on_interim_save_clicked(self):
         """Perform save without closing the dialog (Mode 2)."""
@@ -548,7 +552,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         if not hasattr(self, '_pending_changes') or not self._pending_changes:
             return True, 0
 
-        count = 0
+        saved_count = 0
         if self.db:
             try:
                 # IMPORTANT: Use copy to avoid modification during iteration
@@ -560,35 +564,33 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
                 logging.info(f"[QuickViewMode2] Attempting to save {len(pending)} modified items...")
                 
                 for rel_path, changes in pending.items():
-                    # Ensure path normalization
-                    norm_rel = rel_path.replace('\\', '/')
-                    logging.info(f"[QuickViewMode2] Saving {norm_rel}: {changes}")
-                    self.db.update_folder_display_config(norm_rel, **changes)
-                    
-                    # Update results for Main Window
-                    data = {'rel_path': norm_rel}
-                    data.update(changes)
-                    # Check if already in results to avoid duplicates
-                    existing = next((r for r in self.results if r['rel_path'] == norm_rel), None)
-                    if existing:
-                        existing.update(changes)
+                    logging.info(f"[QuickViewMode2] Saving {rel_path}: {changes}")
+                    if self.db.update_folder_display_config(rel_path, **changes):
+                        # Track for main window refresh
+                        item_result = {'rel_path': rel_path}
+                        item_result.update(changes)
+                        self.results.append(item_result)
+                        
+                        # Update local item data to keep sync during interim saves
+                        norm_rel = rel_path.replace('\\', '/')
+                        item = next((i for i in self.items_data if i['rel_path'].replace('\\', '/') == norm_rel), None)
+                        if item:
+                            item.update(changes)
+                            # CRITICAL: Update _orig_* markers so _has_real_changes() syncs correctly
+                            if 'is_favorite' in changes: item['_orig_fav'] = changes['is_favorite']
+                            if 'score' in changes: item['_orig_score'] = int(changes['score'])
+                            if 'display_name' in changes: item['_orig_name'] = changes['display_name']
+                            if 'tags' in changes: 
+                                from .quick_view_manager import _normalize_tags
+                                item['_orig_tags'] = _normalize_tags(changes['tags'], lowercase=True)
+                        
+                        self._pending_changes.pop(rel_path, None)
+                        saved_count += 1
+                        logging.debug(f"[QuickViewMode2] Success: {rel_path} saved and synced.")
                     else:
-                        self.results.append(data)
-                    
-                    # Update local item data to keep sync during interim saves
-                    item = next((i for i in self.items_data if i['rel_path'] == rel_path or i['rel_path'] == norm_rel), None)
-                    if item:
-                        item.update(changes)
-                        # CRITICAL: Update _orig_* markers so _has_real_changes() syncs correctly
-                        if 'is_favorite' in changes: item['_orig_fav'] = changes['is_favorite']
-                        if 'score' in changes: item['_orig_score'] = int(changes['score'])
-                        if 'display_name' in changes: item['_orig_name'] = changes['display_name']
-                        if 'tags' in changes: 
-                            from .quick_view_manager import _normalize_tags
-                            item['_orig_tags'] = _normalize_tags(changes['tags'], lowercase=True)
-                    
-                    count += 1
-                logging.info(f"[QuickViewMode2] Successfully saved {count} items.")
+                        logging.error(f"[QuickViewMode2] FAILED to save {rel_path} in DB.")
+                
+                logging.info(f"[QuickViewMode2] Successfully saved {saved_count} items.")
             except Exception as e:
                 logging.error(f"Failed bulk save in Mode 2: {e}", exc_info=True)
                 return False, 0
@@ -597,7 +599,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self._has_changes = False
         if hasattr(self, '_update_window_title'):
              self._update_window_title()
-        return True, count
+        return True, saved_count
 
     def _on_save_clicked(self):
         """Override to perform bulk save and close."""

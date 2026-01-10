@@ -1098,12 +1098,20 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
 
     def reject(self):
         """Handle Close button or Esc: Prompt if changes exist."""
+        # 1. Check if already accepted (prevent double call)
+        if self.result() == QDialog.DialogCode.Accepted:
+            return
+
+        # 2. Check changes and show prompt if needed
         if not self._check_unsaved_changes():
             return
 
-        # Phase 1.1.280: Feedback will be handled by LinkMasterWindow._on_quick_view_finished
-        # when the window loses focus or is destroyed.
+        # 3. If prompt resulted in Save (accept), STOP HERE.
+        if self.result() == QDialog.DialogCode.Accepted:
+            logging.debug(f"[QuickView] reject() stopped because prompt triggered Save/Accept.")
+            return
 
+        # 4. Actual Rejection (Discard or No changes)
         self.save_options("quick_view_manager")
         # Restore original data to ensure the cache stays clean
         self.items_data.clear()
@@ -1117,7 +1125,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if hasattr(self, '_has_changes'):
             self._has_changes = False
         
-        self.results = [] # Clear results to prevent sticky toasts in Main Window
+        # Phase 1.1.291: CRITICAL - Only clear results on TRUE rejection.
+        # If we reached here, it means user either had no changes or hit Discard.
+        self.results = [] 
+        logging.debug(f"[QuickView] reject() complete. results cleared for Main Window.")
         self._last_items_data = copy.deepcopy(self.items_data)
         super().reject()
 

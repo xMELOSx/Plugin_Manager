@@ -675,39 +675,50 @@ class LinkMasterDB:
                 updates.append(f"{k} = ?")
                 params.append(v)  # None will be saved as NULL, clearing the field
         
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Phase 28 Fix: Case-Insensitive Lookup on Windows to prevent duplicate entries
-            # If we have 'Path' and try to update 'path', we should update 'Path'.
-            target_id = None
-            if os.name == 'nt':
-                cursor.execute("SELECT id, rel_path FROM lm_folder_config WHERE LOWER(rel_path) = ?", (rel_path.lower(),))
-            else:
-                cursor.execute("SELECT id, rel_path FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
-            
-            row = cursor.fetchone()
-            if row:
-                target_id = row[0]
-                # If we found it by case-insensitive match, use the EXISTING casing for the update if we aren't changing it?
-                # Actually, we rely on ID.
-            
-            if target_id:
-                # Only update if there are updates
-                if updates:
-                    params.append(target_id)
-                    cursor.execute(f"UPDATE lm_folder_config SET {', '.join(updates)} WHERE id = ?", params)
-            else:
-                # Insert new record - always insert even with no kwargs (just rel_path)
-                insert_cols = ['rel_path']
-                insert_params = [rel_path]
-                for k, v in kwargs.items():
-                    if k in valid_cols and v is not None:
-                        insert_cols.append(k)
-                        insert_params.append(v)
-                placeholders = ['?'] * len(insert_cols)
-                cursor.execute(f"INSERT INTO lm_folder_config ({', '.join(insert_cols)}) VALUES ({', '.join(placeholders)})", insert_params)
-            conn.commit()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Phase 28 Fix: Case-Insensitive Lookup on Windows to prevent duplicate entries
+                # If we have 'Path' and try to update 'path', we should update 'Path'.
+                target_id = None
+                if os.name == 'nt':
+                    cursor.execute("SELECT id FROM lm_folder_config WHERE LOWER(rel_path) = ?", (rel_path.lower(),))
+                else:
+                    cursor.execute("SELECT id FROM lm_folder_config WHERE rel_path = ?", (rel_path,))
+                
+                row = cursor.fetchone()
+                
+                if row:
+                    update_cols = []
+                    update_params = []
+                    for k, v in kwargs.items():
+                        if k in valid_cols:
+                            update_cols.append(f"{k} = ?")
+                            update_params.append(v)
+                    
+                    if update_cols: # Only update if there are actual updates
+                        update_params.append(row[0])
+                        sql = f"UPDATE lm_folder_config SET {', '.join(update_cols)} WHERE id = ?"
+                        logging.debug(f"[DB] UPDATE: {rel_path} with {kwargs}")
+                        cursor.execute(sql, update_params)
+                else:
+                    # Insert new record - always insert even with no kwargs (just rel_path)
+                    insert_cols = ['rel_path']
+                    insert_params = [rel_path]
+                    for k, v in kwargs.items():
+                        if k in valid_cols and v is not None:
+                            insert_cols.append(k)
+                            insert_params.append(v)
+                    placeholders = ['?'] * len(insert_cols)
+                    sql = f"INSERT INTO lm_folder_config ({', '.join(insert_cols)}) VALUES ({', '.join(placeholders)})"
+                    logging.debug(f"[DB] INSERT: {rel_path} with {kwargs}")
+                    cursor.execute(sql, insert_params)
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"[DB] Error updating config for {rel_path}: {e}")
+            return False
 
 
     def bulk_update_items(self, update_list: list) -> bool:
