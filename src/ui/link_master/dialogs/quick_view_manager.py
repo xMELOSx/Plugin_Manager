@@ -1101,6 +1101,16 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if not self._check_unsaved_changes():
             return
 
+        # Phase 1.1.280: Explicit feedback on closure for user audit
+        from src.ui.toast import Toast
+        parent = self.parent() or self
+        if self._has_real_changes() or getattr(self, '_has_changes', False):
+            # User specifically chose to Discard in the message box
+            Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
+        else:
+            # No changes were made at all
+            Toast.show_toast(parent, _("変更はありません"), preset="warning")
+
         self.save_options("quick_view_manager")
         # Restore original data to ensure the cache stays clean
         self.items_data.clear()
@@ -1780,10 +1790,3 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                  return True, len(update_list)
         else:
             return True, 0
-
-    def reject(self):
-        self.results = [] # Clear results to prevent sticky toasts in Main Window
-        from src.ui.toast import Toast
-        parent = self.parent() or self
-        Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
-        super().reject()

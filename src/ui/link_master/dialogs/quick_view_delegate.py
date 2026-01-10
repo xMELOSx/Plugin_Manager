@@ -246,6 +246,38 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self.results = [] # Always list for parity
         
         self._load_table_data()
+
+    def reload_data(self, items_data, frequent_tags, context_id=None, scope="category"):
+        """Override to maintain delegate-based high performance loading on reuse."""
+        self.scope = scope
+        self._base_title = _("Category QuickView Manager") if scope == "category" else _("Package QuickView Manager")
+        
+        # Prepare metadata (Common logic with Manager)
+        self.frequent_tags = frequent_tags or []
+        self.active_tags = self.frequent_tags
+        self._prepare_tag_cache()
+        
+        # Reset items
+        self.items_data = copy.deepcopy(items_data or [])
+        self._init_original_markers(self.items_data)
+        self._pending_changes.clear()
+        self._has_changes = False
+        self.results = [] # Reset results for main window
+        
+        # Clear and Reload UI
+        self.table.blockSignals(True)
+        self.table.clearContents()
+        self.table.setRowCount(len(self.items_data))
+        
+        # Delegate-based load path
+        self._load_table_data()
+        
+        self.table.blockSignals(False)
+        self._update_window_title()
+        
+        # Visibility sync
+        self.setWindowOpacity(1.0)
+        self.show()
         
     def _load_table_data(self):
         """Override to use Delegates instead of CellWidgets."""
@@ -522,6 +554,8 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             try:
                 # IMPORTANT: Use copy to avoid modification during iteration
                 pending = dict(self._pending_changes)
+                # Start fresh on save session
+                self.results = []
                 logging.info(f"[QuickViewMode2] Attempting to save {len(pending)} modified items...")
                 
                 for rel_path, changes in pending.items():
@@ -570,10 +604,4 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         if saved:
             # Handled by Main Window
             self.accept()
-
-    def reject(self):
-        from src.ui.toast import Toast
-        parent = self.parent() or self
-        Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
-        super().reject()
 

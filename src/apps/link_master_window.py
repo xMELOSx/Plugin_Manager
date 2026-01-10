@@ -1170,7 +1170,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             if hasattr(self, '_on_refresh_triggered'):
                 self._on_refresh_triggered()
         
-        if result_code == QDialog.DialogCode.Accepted and dialog.results:
+        if result_code == QDialog.DialogCode.Accepted:
             # Phase 1.1.15: Optimized pinpoint update instead of full re-scan
             # This immediately reflects changes on active cards
             
