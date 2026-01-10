@@ -11,6 +11,9 @@ import re
 import tempfile
 import zipfile
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+from src.core.lang_manager import _
+from src.ui.styles import apply_common_dialog_style
+from src.ui.toast import Toast
 
 class LMPortabilityMixin:
     """フォルダ設定とリソースのインポート/エクスポートを担当するMixin。"""
@@ -30,18 +33,24 @@ class LMPortabilityMixin:
         if not hasattr(self, 'db') or not self.db: return
         
         # 1. 階層の深さを指定
-        depth, ok = QInputDialog.getInt(self, "Export Depth", 
-                                       "エクスポートする階層の深さを指定してください:\n(1=選択フォルダのみ, 2=子フェーズまで, ...)", 
-                                       value=2, min=1)
+        input_dlg = QInputDialog(self)
+        input_dlg.setWindowTitle(_("Export Depth"))
+        input_dlg.setLabelText(_("エクスポートする階層の深さを指定してください:\n(1=選択フォルダのみ, 2=子フェーズまで, ...)"))
+        input_dlg.setIntRange(1, 100)
+        input_dlg.setIntValue(2)
+        apply_common_dialog_style(input_dlg)
+        
+        ok = input_dlg.exec()
+        depth = input_dlg.intValue()
         if not ok: return
 
         # 2. 保存先ファイルの選択 (.dioco)
         app_name = getattr(self, 'app_name', 'unknown')
         default_filename = f"{app_name}_export.dioco"
-        dest_file, _ = QFileDialog.getSaveFileName(
-            self, "エクスポート先の選択", 
+        dest_file, _f = QFileDialog.getSaveFileName(
+            self, _("エクスポート先の選択"), 
             default_filename,
-            "Dionys Control Export (*.dioco)"
+            _("Dionys Control Export (*.dioco)")
         )
         if not dest_file: return
         
@@ -51,7 +60,8 @@ class LMPortabilityMixin:
         # パスバリデーション
         is_valid, err_msg = self._is_valid_path(dest_file)
         if not is_valid:
-            QMessageBox.warning(self, "Export Path Error", err_msg)
+            err_box = QMessageBox.warning(self, _("Export Path Error"), _(err_msg))
+            apply_common_dialog_style(err_box)
             return
 
         # 3. 設定の収集
@@ -73,7 +83,8 @@ class LMPortabilityMixin:
                     target_configs[k] = config_copy
         
         if not target_configs:
-            QMessageBox.information(self, "Export", "範囲内または指定の深さにエクスポート対象の設定が見つかりません。")
+            info_box = QMessageBox.information(self, _("Export"), _("範囲内または指定の深さにエクスポート対象の設定が見つかりません。"))
+            apply_common_dialog_style(info_box)
             return
 
         # 4. 一時ディレクトリに構造を作成
@@ -140,17 +151,18 @@ class LMPortabilityMixin:
                             arcname = os.path.relpath(file_path, temp_dir)
                             zipf.write(file_path, arcname)
                 
-                QMessageBox.information(self, "Export", f"エクスポート完了: {success_count} 件の設定を保存しました。\n{dest_file}")
+                Toast.show_toast(self, _("エクスポート完了: {0} 件の設定を保存しました。").format(success_count), preset="success")
             except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"ZIPの作成に失敗しました: {e}")
+                err_box = QMessageBox.critical(self, _("Export Error"), _("ZIPの作成に失敗しました: {0}").format(e))
+                apply_common_dialog_style(err_box)
 
     def _import_portability_package(self):
         """エクスポートされた .dioco ファイルから設定とリソースをインポートする。"""
         # 1. ソースファイルの選択
-        source_file, _ = QFileDialog.getOpenFileName(
-            self, "インポートファイルの選択", 
+        source_file, _f = QFileDialog.getOpenFileName(
+            self, _("インポートファイルの選択"), 
             "",
-            "Dionys Control Export (*.dioco);;All Files (*)"
+            _("Dionys Control Export (*.dioco);;All Files (*)")
         )
         if not source_file: return
         
@@ -164,27 +176,32 @@ class LMPortabilityMixin:
                 if os.path.isdir(source_file):
                     temp_dir = source_file # Use directly
                 else:
-                    QMessageBox.warning(self, "Import Error", "無効なファイル形式です。.diocoファイルを選択してください。")
+                    err_box = QMessageBox.warning(self, _("Import Error"), _("無効なファイル形式です。.diocoファイルを選択してください。"))
+                    apply_common_dialog_style(err_box)
                     return
             except Exception as e:
-                QMessageBox.critical(self, "Import Error", f"ZIPの展開に失敗しました: {e}")
+                err_box = QMessageBox.critical(self, _("Import Error"), _("ZIPの展開に失敗しました: {0}").format(e))
+                apply_common_dialog_style(err_box)
                 return
             
             json_path = os.path.join(temp_dir, "config.json")
             if not os.path.exists(json_path):
-                QMessageBox.warning(self, "Import Error", "config.json が見つかりません。")
+                err_box = QMessageBox.warning(self, _("Import Error"), _("config.json が見つかりません。"))
+                apply_common_dialog_style(err_box)
                 return
                 
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             except Exception as e:
-                QMessageBox.critical(self, "Import Error", f"JSONの読み込みに失敗しました: {e}")
+                err_box = QMessageBox.critical(self, _("Import Error"), _("JSONの読み込みに失敗しました: {0}").format(e))
+                apply_common_dialog_style(err_box)
                 return
                 
             configs = data.get("configs", {})
             if not configs:
-                QMessageBox.warning(self, "Import", "インポート可能な設定が見つかりません。")
+                err_box = QMessageBox.warning(self, _("Import"), _("インポート可能な設定が見つかりません。"))
+                apply_common_dialog_style(err_box)
                 return
                 
             # 3. リソースの復元先ディレクトリの準備
@@ -246,6 +263,7 @@ class LMPortabilityMixin:
                 except Exception as e:
                     self.logger.error(f"Failed to import config for {new_rel}: {e}")
                 
-            QMessageBox.information(self, "Import", f"{import_count} 件の設定をインポートしました。")
+                
+            Toast.show_toast(self, _("{0} 件の設定をインポートしました。").format(import_count), preset="success")
             self._refresh_current_view()
 

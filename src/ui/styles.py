@@ -2,9 +2,12 @@
 Shared UI Styles - Reusable button styles, colors, and effects.
 
 Usage:
-    from src.ui.styles import ButtonStyles
+    from src.ui.styles import ButtonStyles, apply_common_dialog_style
     btn.setStyleSheet(ButtonStyles.PRIMARY)
+    apply_common_dialog_style(self)
 """
+
+from PyQt6.QtWidgets import QDialog, QMessageBox, QPushButton, QLabel
 
 class ButtonStyles:
     """Reusable button stylesheet templates."""
@@ -198,9 +201,84 @@ class TooltipStyles:
         }
     """
     
-    @staticmethod
-    def apply_to_widget(widget):
-        """Apply the dark tooltip style to a widget."""
-        current = widget.styleSheet() or ""
-        if "QToolTip" not in current:
-            widget.setStyleSheet(current + TooltipStyles.DARK)
+
+class DialogStyles:
+    """Reusable dialog stylesheet templates."""
+    
+    # Common dark dialog style
+    COMMON = """
+        /* Force white/light-gray text on dialogs and common child widgets */
+        QDialog, QMessageBox {
+            background-color: #2b2b2b;
+            color: #e0e0e0;
+        }
+        
+        /* Specific overrides for common form elements to ensure visibility */
+        QLabel, QRadioButton, QCheckBox, QGroupBox {
+            color: #e0e0e0;
+            background-color: transparent;
+        }
+        
+        QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QAbstractItemView {
+            color: #eeeeee;
+            background-color: #1e1e1e;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px;
+        }
+
+        /* Lists and Tables */
+        QTableWidget, QListWidget, QTreeWidget {
+            background-color: #252525;
+            color: #e0e0e0;
+            gridline-color: #3d3d3d;
+        }
+        QHeaderView::section {
+            background-color: #333;
+            color: #ddd;
+            padding: 4px;
+            border: 1px solid #555;
+        }
+
+        QPushButton {
+            background-color: #444;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 6px 12px;
+            border-radius: 4px;
+            min-width: 80px;
+        }
+        QPushButton:hover {
+            background-color: #555;
+            border-color: #777;
+        }
+        QPushButton:pressed {
+            background-color: #2a2a2a;
+        }
+        QPushButton:disabled {
+            color: #666;
+            background-color: #2a2a2a;
+        }
+    """
+
+def apply_common_dialog_style(dialog):
+    """
+    Apply a consistent dark theme to a QDialog or QMessageBox.
+    """
+    # Strong override for all labels within the dialog to ensure visibility
+    common_label_style = """
+        QLabel {
+            color: #ffffff;
+            background-color: transparent;
+        }
+    """
+    
+    if isinstance(dialog, QMessageBox):
+        # QMessageBox specific internal styling
+        dialog.setStyleSheet(DialogStyles.COMMON + common_label_style + """
+            QMessageBox QLabel {
+                font-size: 13px;
+            }
+        """)
+    else:
+        dialog.setStyleSheet(DialogStyles.COMMON + common_label_style)

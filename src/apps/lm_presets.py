@@ -4,6 +4,7 @@ Extracted from LinkMasterWindow for modularity.
 """
 import os
 from PyQt6.QtWidgets import QMessageBox, QInputDialog
+from src.core.lang_manager import _
 
 
 class LMPresetsMixin:
@@ -215,34 +216,28 @@ class LMPresetsMixin:
         storage_root = app_data.get('storage_root')
         if not target_root or not storage_root: return
         
+        from src.ui.styles import apply_common_dialog_style
+        from src.ui.toast import Toast
+        
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Unload Links")
-        msg_box.setText("Are you sure you want to remove ALL active symlinks for this app?")
+        msg_box.setWindowTitle(_("Unload Links"))
+        msg_box.setText(_("Are you sure you want to remove ALL active symlinks for this app?"))
         msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg_box.setDefaultButton(QMessageBox.StandardButton.No)
-        
-        # Style to match dark theme and ensure visibility
-        msg_box.setStyleSheet("""
-            QMessageBox { background-color: #2b2b2b; }
-            QLabel { color: #ffffff; }
-            QPushButton { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; border-radius: 4px; padding: 4px 12px;
-            }
-            QPushButton:hover { background-color: #4a4a4a; }
-        """)
+        apply_common_dialog_style(msg_box)
         
         reply = msg_box.exec()
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.deployer.cleanup_links_in_target(target_root, storage_root)
-                QMessageBox.information(self, "Success", "All links unloaded.")
+                Toast.show_toast(self, _("All links unloaded."), preset="success")
                 self._on_app_changed(self.app_combo.currentIndex()) # Refresh view
                 
                 # Phase 28/Debug: Explicitly clear all highlight borders after bulk unlink
                 if hasattr(self, '_refresh_tag_visuals'):
                     self._refresh_tag_visuals()
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Unload failed: {e}")
+                err_box = QMessageBox.critical(self, _("Error"), f"{_('Unload failed')}: {e}")
+                apply_common_dialog_style(err_box)
 

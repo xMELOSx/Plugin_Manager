@@ -5,7 +5,7 @@ Handles symlinking, dependency resolution, and tag conflict checks.
 import os
 import logging
 import time
-from src.ui.link_master.item_card_style import COMMON_DIALOG_STYLE
+from src.ui.styles import apply_common_dialog_style
 from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtCore import QThread, QTimer
 
@@ -229,7 +229,7 @@ class LMDeploymentOpsMixin:
                     msg.setText(_("Parent category '{cat}' is currently deployed.\nDeploying this package requires unlinking the category.\n\nProceed?").format(cat=os.path.basename(parent_rel)))
                     msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
                     msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
-                    msg.setStyleSheet(COMMON_DIALOG_STYLE)
+                    apply_common_dialog_style(msg)
                     
                     if msg.exec() != QMessageBox.StandardButton.Yes:
                         return False
@@ -253,10 +253,14 @@ class LMDeploymentOpsMixin:
         if not folder_name or not folder_name.strip():
             self.logger.error(f"Safety Block: Deployment blocked due to empty folder name. rel_path={rel_path}")
             from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(self.window() if hasattr(self, 'window') else self, _("Safety Block"), 
-                _("Deployment blocked: Folder name is empty or whitespace-only.\n\n"
+            msg = QMessageBox(self.window() if hasattr(self, 'window') else self)
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setWindowTitle(_("Safety Block"))
+            msg.setText(_("Deployment blocked: Folder name is empty or whitespace-only.\n\n"
                   "rel_path: {rel_path}\n\n"
                   "This can happen if the package is at the root level of storage.").format(rel_path=rel_path))
+            apply_common_dialog_style(msg)
+            msg.exec()
             return False
         
         # Phase 5 & 40: Resolve Deployment Rule based on current target
@@ -362,8 +366,13 @@ class LMDeploymentOpsMixin:
                                     name=lib_name, old_ver=old_ver, new_ver=new_ver
                                 )
                         
-                        reply = QMessageBox.question(self, _("Library Switch"), msg,
-                                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        msg_box = QMessageBox(self)
+                        msg_box.setIcon(QMessageBox.Icon.Question)
+                        msg_box.setWindowTitle(_("Library Switch"))
+                        msg_box.setText(msg)
+                        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        apply_common_dialog_style(msg_box)
+                        reply = msg_box.exec()
                         if reply == QMessageBox.StandardButton.Yes:
                             self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
@@ -391,8 +400,13 @@ class LMDeploymentOpsMixin:
                        scope=conflict_data['scope'], new_name=folder_name
                    )
             
-            reply = QMessageBox.warning(self, _("Conflict Swap"), msg, 
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setWindowTitle(_("Conflict Swap"))
+            msg_box.setText(msg)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            apply_common_dialog_style(msg_box)
+            reply = msg_box.exec()
             
             if reply == QMessageBox.StandardButton.Yes:
                 self.logger.info(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
@@ -428,7 +442,12 @@ class LMDeploymentOpsMixin:
                 detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
                 count += 1
                 
-            QMessageBox.critical(self.window(), _("Deployment Collision"), detail_txt)
+            msg_box = QMessageBox(self.window())
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.setWindowTitle(_("Deployment Collision"))
+            msg_box.setText(detail_txt)
+            apply_common_dialog_style(msg_box)
+            msg_box.exec()
             return False
         
         try:
@@ -444,7 +463,12 @@ class LMDeploymentOpsMixin:
                         p = os.path.basename(act.get('path'))
                         if t == 'backup': msg += _("- Backup created for {path}\n").format(path=p)
                         elif t == 'overwrite': msg += _("- Overwritten existing {path}\n").format(path=p)
-                    QMessageBox.information(self, _("Conflict Handled"), msg)
+                    msg_box = QMessageBox(self)
+                    msg_box.setIcon(QMessageBox.Icon.Information)
+                    msg_box.setWindowTitle(_("Conflict Handled"))
+                    msg_box.setText(msg)
+                    apply_common_dialog_style(msg_box)
+                    msg_box.exec()
 
                  self.logger.info(f"[DeployUI] Calling _update_card_by_path for {full_src}")
                  self._update_card_by_path(full_src)
@@ -501,12 +525,13 @@ class LMDeploymentOpsMixin:
                 dependent_packages = self._find_packages_depending_on_library(lib_name)
                 if dependent_packages:
                     # Phase 1.1.25: Preventative confirmation (centralized)
-                    reply = QMessageBox.question(
-                        self, 
-                        _("Cascaded Unlink Confirmation"), 
-                        _("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)),
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
+                    msg_box = QMessageBox(self)
+                    msg_box.setIcon(QMessageBox.Icon.Question)
+                    msg_box.setWindowTitle(_("Cascaded Unlink Confirmation"))
+                    msg_box.setText(_("This library is used by {count} linked packages. Do you want to unlink them as well?").format(count=len(dependent_packages)))
+                    msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                    apply_common_dialog_style(msg_box)
+                    reply = msg_box.exec()
                     if reply == QMessageBox.StandardButton.Yes:
                         for dep_rel in dependent_packages:
                             self._unlink_single(dep_rel, update_ui=True, _cascade=False)
@@ -772,7 +797,12 @@ class LMDeploymentOpsMixin:
         
         for rel in rel_paths:
             if not self._deploy_single(rel, update_ui=False, show_result=False):
-                QMessageBox.warning(self, _("Deploy Error"), _("Failed to deploy {rel}").format(rel=rel))
+                msg_box = QMessageBox(self)
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.setWindowTitle(_("Deploy Error"))
+                msg_box.setText(_("Failed to deploy {rel}").format(rel=rel))
+                apply_common_dialog_style(msg_box)
+                msg_box.exec()
                 break
         
         if hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
@@ -784,7 +814,12 @@ class LMDeploymentOpsMixin:
                 summary = _("Batch deployment finished with actions:\n")
                 if backups: summary += _("- Backups created: {count} items\n").format(count=len(backups))
                 if overwrites: summary += _("- Files overwritten: {count} items\n").format(count=len(overwrites))
-                QMessageBox.information(self, _("Batch Deployment Summary"), summary)
+                msg_box = QMessageBox(self)
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                msg_box.setWindowTitle(_("Batch Deployment Summary"))
+                msg_box.setText(summary)
+                apply_common_dialog_style(msg_box)
+                msg_box.exec()
 
         if not skip_refresh:
             abs_paths = [os.path.join(self.storage_root, rel) for rel in rel_paths]
@@ -1038,7 +1073,7 @@ class LMDeploymentOpsMixin:
             ))
             msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
             msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
-            msg.setStyleSheet(COMMON_DIALOG_STYLE)
+            apply_common_dialog_style(msg)
             
             if msg.exec() != QMessageBox.StandardButton.Yes:
                 self.logger.info("[CategoryDeploy] Cancelled by user.")
@@ -1064,7 +1099,7 @@ class LMDeploymentOpsMixin:
             warn.setWindowTitle(_("Deployment Failed"))
             warn.setText(_("Failed to deploy category."))
             warn.setIcon(QMessageBox.Icon.Warning)
-            warn.setStyleSheet(COMMON_DIALOG_STYLE)
+            apply_common_dialog_style(warn)
             warn.exec()
         
         # --- Immediate UI refresh with Overrides ---

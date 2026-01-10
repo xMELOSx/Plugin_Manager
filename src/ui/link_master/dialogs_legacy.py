@@ -26,6 +26,9 @@ from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, 
 from src.ui.link_master.dialogs.url_list_dialog import URLItemWidget, URLListDialog
 from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
+from src.ui.styles import apply_common_dialog_style
+from src.ui.toast import Toast
+
 class TagIconLineEdit(StyledLineEdit):
     """QLineEdit that accepts image drag and drop."""
     file_dropped = pyqtSignal(str)
@@ -86,6 +89,7 @@ class ImageDropLabel(QLabel):
 class AppRegistrationDialog(QDialog):
     def __init__(self, parent=None, app_data=None):
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.app_data = app_data
         self.pending_cover_pixmap = None  # For clipboard paste
         self.executables = []  # List of {name, path, args}
@@ -93,14 +97,7 @@ class AppRegistrationDialog(QDialog):
         mode = _("Edit") if app_data else _("Register New")
         self.setWindowTitle(_("{mode} Application").format(mode=mode))
         self.setMinimumSize(500, 550)
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLabel { color: #cccccc; }
-            QPushButton {
-                background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #555; }
-        """)
+        # Base styling is handled by apply_common_dialog_style
         
         self._init_ui()
         if self.app_data:
@@ -158,7 +155,7 @@ class AppRegistrationDialog(QDialog):
 
         # Default Folder Property Settings Group (Misc)
         defaults_group = QGroupBox(_("Other Default Settings"))
-        defaults_group.setStyleSheet("QGroupBox { border: 1px solid #444; margin-top: 10px; padding-top: 10px; color: #aaa; }")
+        # Inherit styling from DialogStyles.COMMON via parent
         defaults_form = QFormLayout()
         
         # Default Tree Skip (Relocated to top of group)
@@ -518,6 +515,7 @@ class AppRegistrationDialog(QDialog):
             QMessageBox.warning(self, _("Validation Error"), _("Primary target install path is required."))
             return
         self.accept()
+        Toast.show_toast(self.window().parent() or self.window(), _("Application saved successfully"), level="success")
 
     def get_data(self):
         import json
@@ -575,6 +573,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                  app_skip_levels_default: int = 0):
 
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.folder_path = folder_path
         self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing
@@ -634,25 +633,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         title = _("Batch Edit Properties") if batch_mode else _("Properties: {name}").format(name=self.original_name)
         self.setWindowTitle(title)
 
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLabel { color: #cccccc; }
-            QCheckBox { color: #cccccc; }
-            QPushButton {
-                background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #555; }
-            QGroupBox { 
-                color: #ddd; 
-                border: 1px solid #555; 
-                border-radius: 4px; 
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; }
-            QToolTip { background-color: #2d2d2d; color: #fff; border: 1px solid #555; padding: 4px; }
-        """)
-        
         # Auto-fill image_path from auto-detected thumbnail if empty (Phase 18.13)
         if not self.batch_mode and self.folder_path and not self.current_config.get('image_path'):
             auto_thumb = self._detect_auto_thumbnail()
@@ -1395,7 +1375,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.manage_redirection_btn.clicked.connect(self._open_file_management_shortcut)
             adv_form.addRow("", self.manage_redirection_btn)  # Empty label for full width
             
-        # Phase 28/26: Conflict Tag Detection (Available in batch mode)
+        # Phase 28: Conflict Tag Detection (Available in batch mode)
         conflict_tag_layout = QHBoxLayout()
         
         # Tag input field
@@ -2175,6 +2155,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 class TagManagerDialog(QDialog):
     def __init__(self, parent=None, db=None, registry=None):
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.db = db
         # Fallback: Try to get registry from parent if not provided
         if registry is None and parent and hasattr(parent, 'registry'):
@@ -2230,7 +2211,9 @@ class TagManagerDialog(QDialog):
         
         
     def _init_ui(self):
-        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QHeaderView, QFormLayout, QLineEdit, QComboBox, QCheckBox, QPushButton
+        from PyQt6.QtWidgets import (QTableWidget, QTableWidgetItem, QAbstractItemView, QLabel, 
+                                     QVBoxLayout, QHBoxLayout, QWidget, QHeaderView, QFormLayout, 
+                                     QLineEdit, QComboBox, QCheckBox, QPushButton, QListView)
         from PyQt6.QtGui import QIcon, QColor, QPixmap
         from PyQt6.QtCore import Qt, QRect
         
@@ -2302,10 +2285,10 @@ class TagManagerDialog(QDialog):
         self.emoji_edit.setMaxLength(4) 
         self.emoji_edit.textChanged.connect(self._on_data_changed)
         
-        self.display_mode_combo = QComboBox()
-        from PyQt6.QtWidgets import QListView
+        self.display_mode_combo = QComboBox() # Defined here
         self.display_mode_combo.setView(QListView())
-        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #2b2b2b; color: #fff; selection-background-color: #3498db; }")
+        # Inherit color from DialogStyles.COMMON
+        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { selection-background-color: #3498db; }")
         self.display_mode_combo.addItem(_("Text"), "text")
         self.display_mode_combo.addItem(_("Symbol"), "symbol")
         self.display_mode_combo.addItem(_("Symbol + Text"), "text_symbol")
@@ -2376,26 +2359,7 @@ class TagManagerDialog(QDialog):
         right_layout.addWidget(btn_group)
         layout.addWidget(self.right_panel, 1)
         
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLineEdit { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; }
-            QLineEdit:disabled { background-color: #222; color: #777; }
-            QTableWidget { background-color: #333; color: #ffffff; border: 1px solid #555; gridline-color: #444; }
-            QTableWidget::item:selected { background-color: #2980b9; color: #ffffff; }
-            QHeaderView::section { background-color: #252525; color: #fff; padding: 4px; border: 1px solid #444; }
-            QPushButton { background-color: #444; color: #ffffff; padding: 6px; border-radius: 4px; border: none; }
-            QPushButton:hover { background-color: #555; }
-            QLabel { color: #ffffff; }
-            QCheckBox { color: #ffffff; padding: 4px; }
-            QCheckBox::indicator { border: 1px solid #555; background: #3b3b3b; width: 18px; height: 18px; border-radius: 3px; }
-            QCheckBox::indicator:unchecked:hover { border-color: #3498db; }
-            QCheckBox::indicator:checked { 
-                background-color: #3498db; border-color: #3498db;
-                image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik05IDE2LjE3TDQuODMgMTJsLTEuNDIgMS40MUw5IDE5IDIxIDdsLTEuNDEtMS40MXoiLz48L3N2Zz4=");
-            }
-            QComboBox { background-color: #3b3b3b; color: #ffffff; border: 1px solid #555; padding: 4px; }
-            QComboBox QAbstractItemView, QListView { background-color: #2b2b2b; color: #ffffff; selection-background-color: #3498db; outline: none; border: 1px solid #555; }
-        """)
+        # Common style applied in __init__
 
     def _load_tags(self):
         if not self.db: return
@@ -2641,19 +2605,16 @@ class TagManagerDialog(QDialog):
     def _save_and_close(self):
         self._save_current_item_data()
         import json
-        if self.db:
-            new_tags = []
-            for i in range(self.tag_table.rowCount()):
-                item = self.tag_table.item(i, 0)
-                tag_data = item.data(Qt.ItemDataRole.UserRole)
-                if tag_data: new_tags.append(tag_data)
-            try:
-                self.db.set_setting('frequent_tags_config', json.dumps(new_tags))
-                names = [t['name'] for t in new_tags if t.get('name') != '|']
-                self.db.set_setting('frequent_tags', ",".join(names))
-            except: pass
-        self._dirty = False
+        self.registry.save_tags(json.dumps(self.tags)) # Serialize as JSON string for DB
+        # Close dialog first
         self.accept()
+        # Use main window for toast so it persists
+        app_window = self.window().parent() or self.window()
+        if hasattr(app_window, '_toast_instance'):
+            app_window._toast_instance.show_message(_("Tags saved successfully"), preset="success")
+        else:
+            Toast.show_toast(app_window, _("Tags saved successfully"), preset="success")
+        self._dirty = False
 
     def closeEvent(self, event):
         # Phase 32: Always save geometry before closing
@@ -2674,29 +2635,96 @@ class TagManagerDialog(QDialog):
         else: super().keyPressEvent(event)
 
 
+class FrequentTagEditDialog(QDialog):
+    """
+    Restored class to fix 'Quick Tag Edit' stack trace.
+    Allows editing multiple frequent tags in a simple list.
+    """
+    def __init__(self, parent=None, db=None):
+        super().__init__(parent)
+        apply_common_dialog_style(self)
+        self.setWindowTitle(_("Quick Tag Edit"))
+        self.setMinimumSize(400, 500)
+        self.db = db
+        self._init_ui()
+        self._load_data()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        self.label = QLabel(_("Edit frequent tags (one per line):"))
+        layout.addWidget(self.label)
+        
+        self.text_edit = QTextEdit()
+        self.text_edit.setPlaceholderText(_("Tag1,Symbol1\nTag2,Symbol2..."))
+        self.text_edit.setStyleSheet("background-color: #1e1e1e; color: #ffffff; font-family: Consolas, monospace;")
+        layout.addWidget(self.text_edit)
+        
+        btn_layout = QHBoxLayout()
+        self.save_btn = QPushButton(_("Save"))
+        self.save_btn.clicked.connect(self.accept)
+        self.save_btn.setStyleSheet("background-color: #27ae60; color: white; padding: 8px;")
+        
+        self.cancel_btn = QPushButton(_("Cancel"))
+        self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setStyleSheet("background-color: #c0392b; color: white; padding: 8px;")
+        
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def _load_data(self):
+        if not self.db: return
+        raw = self.db.get_setting('frequent_tags', '')
+        self.text_edit.setPlainText(raw)
+
+    def get_data(self):
+        return self.text_edit.toPlainText().strip()
+
+
+class TestStyleDialog(QDialog):
+    """Simple verification dialog to check base styles."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        apply_common_dialog_style(self)
+        self.setWindowTitle("UI Style Verification")
+        self.setFixedSize(300, 150)
+        
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("UI Style Verification - Dialog Base Style"))
+        
+        btn = QPushButton("OK")
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+
+
 class TagCreationDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(_("Add Frequent Tag"))
-        self.resize(300, 200)
-        self.result_data = None
-        
+        apply_common_dialog_style(self)
+        # Base styling is handled by apply_common_dialog_style
+        self.setWindowTitle(_("Create New Tag"))
+        self.setFixedSize(400, 300)
+        self._init_ui()
+
+    def _init_ui(self):
         layout = QVBoxLayout(self)
         form = QFormLayout()
         
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText(_("Tag Name"))
-        form.addRow(_("Tag:"), self.name_edit)
+        self.name_edit.setPlaceholderText(_("e.g. Work"))
+        form.addRow(_("Tag Name:"), self.name_edit)
         
         self.emoji_edit = QLineEdit()
-        self.emoji_edit.setPlaceholderText(_("e.g. 🎨"))
-        self.emoji_edit.setMaxLength(4) 
+        self.emoji_edit.setPlaceholderText(_("e.g. 💼"))
+        self.emoji_edit.setMaxLength(4)
         
         # Display Mode Combo (Match TagManagerDialog)
         self.display_mode_combo = QComboBox()
         from PyQt6.QtWidgets import QListView
         self.display_mode_combo.setView(QListView()) # FORCE QSS on windows
-        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { background-color: #2b2b2b; color: #fff; selection-background-color: #3498db; }")
+        # Inherit color from DialogStyles.COMMON
+        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { selection-background-color: #3498db; }")
         self.display_mode_combo.addItem(_("Text"), "text")
         self.display_mode_combo.addItem(_("Symbol"), "symbol")
         self.display_mode_combo.addItem(_("Symbol + Text"), "text_symbol")
@@ -2937,6 +2965,7 @@ class CropLabel(QLabel):
 class IconCropDialog(QDialog):
     def __init__(self, parent=None, image_source=None, allow_free=False):
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.setWindowTitle(_("Select Region"))
         self.setModal(True)
         self.setMinimumSize(800, 600)
@@ -3038,46 +3067,22 @@ class IconCropDialog(QDialog):
         return cropped.scaled(256, 256, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
 class ImportTypeDialog(QDialog):
-    """Custom dark-themed dialog for selecting import type (Folder, Zip, or Open Explorer)."""
+    """Standardized dark-themed dialog for selecting import type."""
     def __init__(self, parent=None, target_type="item"):
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.target_type = target_type
         self.result_type = None
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._init_ui()
 
     def _init_ui(self):
-        # Semi-transparent background container
-        self.container = QWidget(self)
-        self.container.setObjectName("DialogContainer")
-        self.container.setStyleSheet("""
-            #DialogContainer {
-                background-color: rgba(30, 30, 30, 240);
-                border: 1px solid #444;
-                border-radius: 12px;
-            }
-            QLabel { color: #eee; font-size: 14px; }
-            QPushButton {
-                background-color: #444; color: #fff; border: 1px solid #555;
-                padding: 10px; border-radius: 6px; font-size: 13px;
-            }
-            QPushButton:hover { background-color: #555; border-color: #666; }
-            QPushButton#ActionBtn { background-color: #2980b9; font-weight: bold; border-color: #3498db; }
-            QPushButton#ActionBtn:hover { background-color: #3498db; }
-            QPushButton#CancelBtn { background-color: #2c3e50; font-size: 11px; padding: 6px; }
-            QPushButton#CancelBtn:hover { background-color: #34495e; }
-        """)
+        from src.ui.styles import ButtonStyles
         
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(self.container)
-        
-        layout = QVBoxLayout(self.container)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Translating capitalized capitalized target_type name
+        # Translating target_type name
         if self.target_type == "item":
             title_text = _("Import Item")
             type_name = _("Item")
@@ -3090,10 +3095,10 @@ class ImportTypeDialog(QDialog):
             
         title = QLabel(f"<b>{title_text}</b>")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 16px; color: #3498db; margin-bottom: 2px;")
+        title.setStyleSheet("font-size: 16px; margin-bottom: 2px;") 
         layout.addWidget(title)
 
-        # Added Security Note (Phase 32)
+        # Security Note
         note = QLabel(_("Note: Target installation paths are NOT stored in dioco files for security."))
         note.setAlignment(Qt.AlignmentFlag.AlignCenter)
         note.setStyleSheet("color: #888; font-size: 10px; font-style: italic; margin-bottom: 8px;")
@@ -3102,10 +3107,10 @@ class ImportTypeDialog(QDialog):
         
         desc = QLabel(_("Select how to import this {type}:").format(type=type_name))
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc.setWordWrap(True) # Fix clipping
+        desc.setWordWrap(True)
         layout.addWidget(desc)
         
-        # Buttons
+        # Buttons using standard styles
         btn_folder = QPushButton(_("📁 Folder"))
         btn_folder.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_folder.clicked.connect(lambda: self._set_result("folder"))
@@ -3117,7 +3122,6 @@ class ImportTypeDialog(QDialog):
         layout.addWidget(btn_zip)
         
         btn_explorer = QPushButton(_("🔍 Open Explorer"))
-        btn_explorer.setObjectName("ActionBtn")
         btn_explorer.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_explorer.clicked.connect(lambda: self._set_result("explorer"))
         layout.addWidget(btn_explorer)
@@ -3125,12 +3129,11 @@ class ImportTypeDialog(QDialog):
         layout.addSpacing(5)
         
         btn_cancel = QPushButton(_("Cancel"))
-        btn_cancel.setObjectName("CancelBtn")
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cancel.clicked.connect(self.reject)
         layout.addWidget(btn_cancel)
         
-        self.setFixedSize(300, 320)
+        self.setFixedSize(320, 360)
 
     def _set_result(self, rtype):
         self.result_type = rtype
@@ -3143,19 +3146,10 @@ class PresetPropertiesDialog(QDialog):
     """Dialog to edit preset metadata like name and description."""
     def __init__(self, parent=None, name="", description=""):
         super().__init__(parent)
+        apply_common_dialog_style(self)
         self.setWindowTitle(_("Preset Properties"))
         self.setFixedWidth(400)
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ffffff; }
-            QLabel { color: #cccccc; }
-            QLineEdit, QTextEdit { 
-                background-color: #3b3b3b; color: #ffffff; 
-                border: 1px solid #555; padding: 4px; border-radius: 4px;
-            }
-            QPushButton {
-                background-color: #444; color: #fff; border: none; padding: 6px; border-radius: 4px;
-            }
-        """)
+        # Common style applied via apply_common_dialog_style
         
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -3174,7 +3168,6 @@ class PresetPropertiesDialog(QDialog):
         btns = QHBoxLayout()
         ok_btn = QPushButton(_("Save"))
         ok_btn.clicked.connect(self.accept)
-        ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
         
         cancel_btn = QPushButton(_("Cancel"))
         cancel_btn.clicked.connect(self.reject)

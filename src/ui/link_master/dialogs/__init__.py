@@ -19,6 +19,8 @@ from src.ui.link_master.dialogs_legacy import (
     IconCropDialog,
     ImportTypeDialog,
     PresetPropertiesDialog,
+    FrequentTagEditDialog,
+    TestStyleDialog,
 )
 from src.ui.link_master.dialogs.file_management import FileManagementDialog
 from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
@@ -46,5 +48,7 @@ __all__ = [
     'URLItemWidget',
     'URLListDialog',
     'PreviewItemWidget',
+    'FrequentTagEditDialog',
+    'TestStyleDialog',
 ]
 

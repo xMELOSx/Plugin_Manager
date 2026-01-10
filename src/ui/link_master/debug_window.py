@@ -107,6 +107,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.btn_target.clicked.connect(self._test_target_parent)
         layout.addWidget(self.btn_target)
         
+        layout.addSpacing(10)
+        self.btn_ui_test = QPushButton(_("🎨 UI Style Test Dialog"))
+        self.btn_ui_test.clicked.connect(self._test_ui_styles)
+        layout.addWidget(self.btn_ui_test)
+        
         layout.addStretch()
         
         layout.addSpacing(20)
@@ -546,23 +551,14 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
 
     def _try_make_dir(self, path):
         try:
-            # We MUST use core_handler to test security!
-            # If we used os.makedirs here, it might succeed if user has permissions.
-            # But the goal is to verify core_handler blocks it.
-            
-            # Note: core_handler.create_directory wrapper?
-            # Assuming src.core.file_handler exposed via core_handler or direct import.
-            # Usually users do `from src.core import file_handler` but here we see `from src.core import core_handler` 
-            # In previous files `core_handler` was imported. Let's assume it has methods or proxies.
-            # Actually, looking at imports in other files: `from src.core import core_handler`.
-            # If `core_handler` is just an initialization module, we might need `src.core.file_handler`.
-            
-            # Let's try importing file_handler directly to be sure we hit the logic.
             from src.core import file_handler
-            
             file_handler.create_directory(path)
-            
             QMessageBox.critical(self, "SECURITY FAIL", f"Directory Created!\nPath: {path}\nCore Protection: FAILED/INACTIVE")
-            
         except Exception as e:
             QMessageBox.information(self, "SECURITY PASS", f"Operation Blocked (Expected).\nError: {e}")
+
+    def _test_ui_styles(self):
+        """Open specialized dialog to verify UI styling compliance."""
+        from src.ui.link_master.dialogs_legacy import TestStyleDialog
+        dlg = TestStyleDialog(self)
+        dlg.exec()

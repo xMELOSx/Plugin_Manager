@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
 from PyQt6.QtCore import Qt, QDir, QSize, QEvent
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QIcon, QColor, QImage
 from src.core.lang_manager import _
+from src.ui.toast import Toast
+from src.ui.styles import apply_common_dialog_style
 
 from src.ui.frameless_window import FramelessWindow
 from src.ui.title_bar_button import TitleBarButton
@@ -180,7 +182,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Initialize Toast for notifications
         # Position below header/tag bar (approx 100px)
-        self._toast = Toast(self, y_offset=100)
+        self._toast_instance = Toast(self, y_offset=100)
         
         
         # Sub Windows - Moved to lazy loading in toggle_options to prevent alpha stacking on startup
@@ -850,8 +852,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if self.card_settings_window: self.card_settings_window.hide()
         
         # Show Toast on Main Window (User Request)
-        if hasattr(self, '_toast') and self._toast:
-            self._toast.show_message(_("Card size saved!"), color="#5dade2", duration=2000)
+        if hasattr(self, '_toast_instance') and self._toast_instance:
+            self._toast_instance.show_message(_("Card size saved!"), color="#5dade2", duration=2000)
 
     def _on_card_settings_closed(self):
         """Handle independent window closed via X button."""
@@ -1020,11 +1022,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
         items_data = self._get_quick_view_data(scope=scope)
         if not items_data:
-            if not hasattr(self, "_toast"):
-                self._toast = Toast(self, "", y_offset=140)
+            if not hasattr(self, "_toast_instance"):
+                self._toast_instance = Toast(self, "", y_offset=140)
             
             msg = _("No visible categories to manage.") if scope == "category" else _("No visible packages to manage.")
-            self._toast.show_message(msg, preset="warning")
+            self._toast_instance.show_message(msg, preset="warning")
             return
 
         # Get frequent tags
@@ -1067,9 +1069,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         items_data = self._get_quick_view_data(scope=scope)
         if not items_data:
-            if not hasattr(self, "_toast"):
-                self._toast = Toast(self, "", y_offset=140)
-            self._toast.show_message(_("No visible items to manage."), preset="warning")
+            if not hasattr(self, "_toast_instance"):
+                self._toast_instance = Toast(self, "", y_offset=140)
+            self._toast_instance.show_message(_("No visible items to manage."), preset="warning")
             return
 
         # Get frequent tags
@@ -1204,11 +1206,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Optional: Show small notification or status log
             self.logger.info(f"QuickView updated {len(dialog.results)} items.")
             
-            if not hasattr(self, '_toast'):
-                self._toast = Toast(self, "", y_offset=140)  # Below QuickTag bar
+            if not hasattr(self, '_toast_instance'):
+                self._toast_instance = Toast(self, "", y_offset=140)  # Below QuickTag bar
             
             msg = _("{count}件 変更しました！").format(count=len(dialog.results))
-            self._toast.show_message(msg, preset='success')
+            self._toast_instance.show_message(msg, preset='success')
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)
@@ -1844,8 +1846,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     def _register_selected_as_library(self):
         """Registers all currently selected items as libraries (requires metadata)."""
         if not self.selected_paths:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Library", "Please select one or more items to register.")
+            msg = QMessageBox.warning(self, _("Library"), _("Please select one or more items to register."))
+            apply_common_dialog_style(msg)
             return
         
         # Create registration dialog with existing library dropdown
@@ -2392,8 +2394,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.db.update_preset(preset_id, **data)
                 if self.presets_panel:
                     self.presets_panel.refresh()
+                # Connect to existing toast instance
+                if hasattr(self, '_toast_instance') and self._toast_instance:
+                    self._toast_instance.show_message(_("Preset properties saved"), preset="success")
+                else:
+                    Toast.show_toast(self, _("Preset properties saved"), preset="success")
             except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
+                err_box = QMessageBox.critical(self, _("Error"), str(e))
+                apply_common_dialog_style(err_box)
 
     def _open_register_dialog(self):
         from src.ui.link_master.dialogs import AppRegistrationDialog
@@ -3005,7 +3013,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'current_path') and self.current_path:
              self._load_package_contents(self.current_path)
              
-        QMessageBox.information(self, "Manual Rebuild", "再構築が完了しました。")
+        Toast.show_toast(self, _("再構築が完了しました。"), preset="success")
 
 
     def _update_exe_links(self, app_data: dict):

@@ -4,6 +4,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, 
                              QMessageBox, QFrame, QHBoxLayout, QSpinBox, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal
+from src.ui.styles import apply_common_dialog_style
 
 class ToolsPanel(QWidget):
     """
@@ -313,12 +314,7 @@ class ToolsPanel(QWidget):
         )
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg.setDefaultButton(QMessageBox.StandardButton.No)
-        msg.setStyleSheet("""
-            QMessageBox { background-color: #2b2b2b; }
-            QMessageBox QLabel { color: #ffffff; }
-            QPushButton { background-color: #444; color: #fff; padding: 6px 12px; border-radius: 4px; }
-            QPushButton:hover { background-color: #555; }
-        """)
+        apply_common_dialog_style(msg)
         
         if msg.exec() == QMessageBox.StandardButton.Yes:
             self.request_reset_all.emit()

@@ -97,6 +97,10 @@ class LinkMasterRegistry:
             conn.execute("INSERT OR REPLACE INTO lm_settings (key, value) VALUES (?, ?)", (key, value))
             conn.commit()
 
+    def save_tags(self, tags_json: str):
+        """Persist frequent tags configuration to settings."""
+        self.set_setting('frequent_tags_config', tags_json)
+
     def get_global(self, key: str, default=None):
         """Get a global setting value. Returns default if not found."""
         result = self.get_setting(key)

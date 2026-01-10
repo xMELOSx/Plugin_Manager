@@ -54,20 +54,36 @@ class Toast(QLabel):
         self.hide()
 
     @staticmethod
-    def show_toast(parent, message, level="info", duration=2000, y_offset=None):
-        """Helper to show a toast on a parent without needing an instance."""
+    def show_toast(parent, message, preset="info", duration=2000, y_offset=None):
+        """Helper to show a toast on a parent without needing an instance.
+        Automatically finds the main window to prevent clipping in small dialogs.
+        """
         if not parent: return
-        # Try to find existing toast instance on parent to prevent stacking/leaks
-        toast = getattr(parent, "_toast_instance", None)
-        if not toast or toast.parent() != parent:
-            # Create if missing or parent changed (e.g., recycled widget)
-            toast = Toast(parent, y_offset=(y_offset if y_offset is not None else 60))
-            parent._toast_instance = toast
+        
+        # Redirect to Main Window if possible
+        from PyQt6.QtWidgets import QMainWindow
+        target = parent
+        curr = parent
+        while curr:
+            if isinstance(curr, QMainWindow):
+                target = curr
+                break
+            curr = curr.parentWidget()
+            
+        # Try to find existing toast instance on target
+        toast = getattr(target, "_toast_instance", None)
+        if not toast or toast.parent() != target:
+            # Create if missing or target changed
+            toast = Toast(target, y_offset=(y_offset if y_offset is not None else 60))
+            # Set to target as the standard instance
+            try:
+                setattr(target, "_toast_instance", toast)
+            except: pass
             
         if y_offset is not None:
             toast.set_y_offset(y_offset)
             
-        toast.show_message(message, preset=level, duration=duration)
+        toast.show_message(message, preset=preset, duration=duration)
         return toast
 
     def _apply_style(self, color=None):
@@ -106,8 +122,9 @@ class Toast(QLabel):
             self.setText(text)
         
         # Apply color
-        if preset and preset in self.COLORS:
-            self._color = self.COLORS[preset]
+        actual_preset = preset or kwargs.get('level', 'info')
+        if actual_preset and actual_preset in self.COLORS:
+            self._color = self.COLORS[actual_preset]
         elif color:
             self._color = color
         
