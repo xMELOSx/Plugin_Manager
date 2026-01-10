@@ -25,7 +25,7 @@ class LibrarySettingsDialog(QDialog):
             QLineEdit, QTextEdit { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; padding: 4px; }
             QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
             QTreeWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
+            QHeaderView::section { background-color: #333; color: #eee; border: none; padding: 4px; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; min-height: 24px; }
             QPushButton:hover { background-color: #5d5d5d; }
         """)

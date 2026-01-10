@@ -61,7 +61,7 @@ class LibraryUsageDialog(QDialog):
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ddd; }
             QTreeWidget { background-color: #222; border: 1px solid #444; color: #eee; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
+            QHeaderView::section { background-color: #333; color: #eee; border: none; padding: 4px; }
             QComboBox { background-color: #333; color: #eee; border: 1px solid #555; }
         """)
 

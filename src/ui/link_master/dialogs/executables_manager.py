@@ -24,7 +24,7 @@ class ExecutablesManagerDialog(QDialog):
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #e0e0e0; }
             QTableWidget { background-color: #2d2d2d; color: #e0e0e0; gridline-color: #3d3d3d; }
-            QHeaderView::section { background-color: #3d3d3d; color: #ffffff; padding: 4px; border: 1px solid #4d4d4d; }
+            QHeaderView::section { background-color: #3d3d3d; color: #ffffff; padding: 4px; border: none; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; }
             QPushButton:hover { background-color: #5d5d5d; }
         """)

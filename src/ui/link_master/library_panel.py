@@ -94,7 +94,7 @@ class LibraryPanel(QWidget):
             QTreeWidget { background-color: #2b2b2b; border: 1px solid #444; color: #ddd; outline: none; }
             QTreeWidget::item { padding: 4px 0px; min-height: 28px; }
             QTreeWidget::item:selected { background-color: #3498db; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 2px 5px; min-height: 32px; font-weight: bold; }
+            QHeaderView::section { background-color: #333; color: #eee; border: none; padding: 2px 5px; min-height: 32px; font-weight: bold; }
             QComboBox { background: #333; color: #eee; border: 1px solid #555; height: 24px; font-size: 11px; margin: 2px 0px 0px 0px; }
         """)
         # Set custom delegate for consistent colors

@@ -438,7 +438,7 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.setStyleSheet("background: transparent;")
         text_color_rgba = "rgba(221, 221, 221, 1.0)"
         self.container.setStyleSheet("""
-            QWidget#FramelessContainer {{ background-color: transparent; border: 1px solid #444; border-radius: {radius}px; }}
+            QWidget#FramelessContainer {{ background-color: transparent; border: none; border-radius: {radius}px; }}
             QLabel {{ color: {text_color}; background: transparent; }}
             QLineEdit, QComboBox, QAbstractItemView, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0; background-color: #252525; border: 1px solid #555; border-radius: 4px; padding: 4px;

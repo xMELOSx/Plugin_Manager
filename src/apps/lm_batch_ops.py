@@ -249,7 +249,7 @@ class LMBatchOpsMixin:
         self.selected_paths.clear()
         self._refresh_current_view()
 
-    def _open_properties_for_path(self, abs_path: str):
+    def _quarantine_open_properties_for_path(self, abs_path: str):
         """Opens property edit dialog for a single path (Alt+Double-Click shortcut)."""
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -1134,15 +1134,8 @@ class LMBatchOpsMixin:
                             # Don't break immediately, as same path might exist in both views (rare but possible)
                             
         if not card_found:
-             self.logger.info(f"[CardUpdate] No card found for: {target_path}")
-                            
-                            # Phase 32: Update parent category border (green frame)
-                            if w.is_package:
-                                self._update_parent_category_status()
-                            return
-        self.logger.warning(f"[UIUpdate] MISS: No card found for {target_path}")
-        # Note: Removed _update_parent_category_status() for performance
-        # self._update_parent_category_status()
+            self.logger.warning(f"[CardUpdate] Card NOT found for: {target_path}")
+            # Note: Removed _update_parent_category_status() for performance.
 
     # ===== Batch Wrappers (use single-item methods) =====
     

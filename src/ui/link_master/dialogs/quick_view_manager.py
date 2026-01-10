@@ -660,10 +660,13 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 background-color: #333;
                 color: #ffffff;
                 border: none;
+                border-right: none; /* Explicitly remove vertical lines */
+                border-bottom: 1px solid #444; 
                 font-weight: bold;
                 height: 18px; 
                 padding: 0px 4px;
             }
+            QHeaderView { border: none; background-color: #333; }
             
             /* Vertical Header - Remove all borders */
             QHeaderView::section:vertical {
@@ -741,6 +744,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         # 1. Hide Vertical Header and fix scrollbar flicker
         self.table = QTableWidget()
         self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)  # Remove grid lines for a cleaner look
         # Phase 1.1.15: Force scrollbar to be always visible to prevent rendering flicker
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         
@@ -1109,6 +1113,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if hasattr(self, '_has_changes'):
             self._has_changes = False
         
+        self.results = [] # Clear results to prevent sticky toasts in Main Window
         self._last_items_data = copy.deepcopy(self.items_data)
         super().reject()
 
@@ -1652,14 +1657,24 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._update_window_title()
 
     def _on_save_clicked(self):
-        if self._perform_save():
+        saved, count = self._perform_save()
+        if saved:
+            # Show toast on parent window since this dialog is closing
+            target = self.parent() or self
+            if count > 0:
+                Toast.show_toast(target, _("Successfully saved {0} items").format(count), preset="success")
+            else:
+                Toast.show_toast(target, _("変更はありません"), preset="warning")
             self.accept()
 
     def _on_interim_save_clicked(self):
         """Perform save without closing the dialog."""
-        self._perform_save()
-        # Show toast on the dialog itself
-        self.show_toast(_("Changes saved!"), "success")
+        saved, count = self._perform_save()
+        if saved:
+            if count > 0:
+                self.show_toast(_("Changes saved! ({0} items)").format(count), "success")
+            else:
+                self.show_toast(_("変更はありません"), "warning")
 
     def _perform_save(self):
         """Collect changes by mapping table widgets back to items_data via rel_path."""
@@ -1754,16 +1769,21 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                         self._pending_tag_changes.clear()
                         
                         self._update_window_title() # Remove "Unsaved" marker
-                        self.show_toast(_("Successfully saved {0} items").format(len(update_list)), "success")
-                        return True
+                        return True, len(update_list)
                     else:
                         QMessageBox.critical(self, _("Error"), _("Failed to update items."))
-                        return False
+                        return False, 0
                 except Exception as e:
                     QMessageBox.critical(self, "Error", _("Failed to save changes: {e}").format(e=str(e)))
-                    return False
+                    return False, 0
             else:
                  QMessageBox.information(self, "Demo", f"Would update {len(update_list)} items:\n{update_list}")
-                 return True
+                 return True, len(update_list)
         else:
-            return True
+            return True, 0
+
+    def reject(self):
+        from src.ui.toast import Toast
+        if self.parent():
+             Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+        super().reject()

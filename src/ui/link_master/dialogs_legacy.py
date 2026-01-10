@@ -655,6 +655,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Phase 32: Restore Size
         self.load_options("folder_properties")
 
+    def reject(self):
+        from src.ui.toast import Toast
+        if self.parent():
+             Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+        super().reject()
+
     def closeEvent(self, event):
         """Save window geometry on close."""
         self.save_options("folder_properties")

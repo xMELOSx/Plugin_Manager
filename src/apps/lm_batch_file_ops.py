@@ -163,6 +163,9 @@ class LMFileOpsMixin:
             new_rule = data.get('deploy_rule')
             new_mode = data.get('transfer_mode', 'symlink')
             
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
+            
             settings_changed = (old_rule != new_rule) or (old_mode != new_mode)
             
             if was_linked and settings_changed:
@@ -358,6 +361,12 @@ class LMFileOpsMixin:
                             self._deploy_single(rel)
                 except Exception as e:
                     self.logger.error(f"Batch update failed for {path}: {e}")
+            
+            # Refresh visuals
+            self._refresh_tag_visuals()
+            
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
         
         if any(k in data for k in TAG_AFFECTING_KEYS):
              self._refresh_tag_visuals()

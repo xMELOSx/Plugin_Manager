@@ -300,7 +300,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             }
 
             QHeaderView::section { 
-                background-color: #333; color: #ffffff; border: 1px solid #222; 
+                background-color: #333; color: #ffffff; border: none; 
                 padding: 6px; font-weight: bold;
             }
             QHeaderView { background-color: #333; color: #ffffff; }
@@ -401,7 +401,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QHeaderView::section {
                 background-color: #333;
                 color: #ffffff;
-                border: 1px solid #222;
+                border: none;
                 padding: 6px;
                 font-weight: bold;
             }

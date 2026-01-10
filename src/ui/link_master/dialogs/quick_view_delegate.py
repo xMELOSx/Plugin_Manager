@@ -63,7 +63,7 @@ class ScoreDelegate(QStyledItemDelegate):
         editor.setFrame(False)
         editor.setMinimum(0)
         editor.setMaximum(9999)
-        editor.setStyleSheet("background-color: #444; color: white; border: 1px solid #555;")
+        editor.setStyleSheet("background-color: #444; color: white; border: none;") # Removed 1px solid border
         
         # Phase 1.1.70: Connect valueChanged for persistent editors
         # Since setModelData is not called reliably for persistent editors,
@@ -500,36 +500,57 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self._pending_changes[rel_path][key] = value
         self._has_changes = True
 
-    def _on_save_clicked(self):
-        """Override to perform bulk save from buffer."""
+    def _perform_save(self):
+        """Mode 2 specific save logic."""
         if not self._pending_changes:
-            logging.info("No changes to save in Mode 2.")
-            self.accept()
-            return
+            return True, 0
 
+        count = 0
         if self.db:
             try:
                 for rel_path, changes in self._pending_changes.items():
-                    # Standard Mode 2 save path
                     self.db.update_folder_display_config(rel_path, **changes)
+                    
+                    # Update results for Main Window
+                    data = {'rel_path': rel_path}
+                    data.update(changes)
+                    # Check if already in results to avoid duplicates
+                    existing = next((r for r in self.results if r['rel_path'] == rel_path), None)
+                    if existing:
+                        existing.update(changes)
+                    else:
+                        self.results.append(data)
+                    
+                    # Update local item data to keep sync during interim saves
+                    item = next((i for i in self.items_data if i['rel_path'] == rel_path), None)
+                    if item:
+                        item.update(changes)
+                    
+                    count += 1
             except Exception as e:
                 logging.error(f"Failed bulk save in Mode 2: {e}")
+                return False, 0
                 
-        # Update results for Main Window
-        for rel_path, changes in self._pending_changes.items():
-            data = {'rel_path': rel_path}
-            data.update(changes)
-            self.results.append(data)
-            
         self._pending_changes.clear()
         self._has_changes = False
-        
-        from src.ui.toast import Toast
-        Toast.show_toast(self, _("Successfully saved {0} items").format(len(self.results)), "success")
-        
-        self.accept()
+        self._update_window_title()
+        return True, count
+
+    def _on_save_clicked(self):
+        """Override to perform bulk save and close."""
+        saved, count = self._perform_save()
+        if saved:
+            # Show toast on parent window since this dialog is closing
+            target = self.parent() or self
+            if count > 0:
+                Toast.show_toast(target, _("Successfully saved {0} items").format(count), preset="success")
+            else:
+                Toast.show_toast(target, _("変更はありません"), preset="warning")
+            self.accept()
 
     def reject(self):
-        """Use Base reject mapping."""
+        from src.ui.toast import Toast
+        if self.parent():
+             Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
         super().reject()
 
