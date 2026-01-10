@@ -740,15 +740,23 @@ class PreviewWindow(QWidget):
             
             # Call parent's deploy/unlink methods
             parent = self.parent()
-            if parent:
-                if is_linked and hasattr(parent, '_deploy_single'):
-                    parent._deploy_single(rel_path, update_ui=True)
-                elif not is_linked and hasattr(parent, '_unlink_single'):
-                    parent._unlink_single(rel_path, update_ui=True)
+            window = parent
+            while window and not hasattr(window, '_deploy_single'):
+                window = window.parent()
+
+            if window:
+                if is_linked:
+                    window._deploy_single(rel_path, update_ui=True)
+                    from src.ui.toast import Toast
+                    Toast.show_toast(window, _("Item Linked"), preset="success")
+                else:
+                    window._unlink_single(rel_path, update_ui=True)
+                    from src.ui.toast import Toast
+                    Toast.show_toast(window, _("Item Unlinked"), preset="warning")
             
             self.property_changed.emit({'is_linked': is_linked})
         except Exception as e:
-            print(f"[Error] _on_deploy_changed: {e}")
+            logging.error(f"Failed to toggle deployment in PreviewWindow: {e}", exc_info=True)
     
     def _on_visible_changed(self, state):
         """表示状態の即時更新（親のメソッドを使用）。"""
@@ -760,14 +768,21 @@ class PreviewWindow(QWidget):
             
             # Call parent's visibility toggle method if available
             parent = self.parent()
-            if parent and hasattr(parent, '_set_visibility_single'):
-                parent._set_visibility_single(rel_path, visible=is_visible, update_ui=True)
+            window = parent
+            while window and not hasattr(window, '_set_visibility_single'):
+                window = window.parent()
+
+            from src.ui.toast import Toast
+            if window:
+                window._set_visibility_single(rel_path, visible=is_visible, update_ui=True)
+                Toast.show_toast(window, _("Visibility Updated"), preset="success")
             elif self.db:
                 self.db.update_folder_display_config(rel_path, is_visible=is_visible)
+                Toast.show_toast(self.parent() or self, _("Visibility Updated"), preset="success")
             
             self.property_changed.emit({'is_visible': is_visible})
         except Exception as e:
-            print(f"[Error] _on_visible_changed: {e}")
+            logging.error(f"Failed to toggle visibility in PreviewWindow: {e}", exc_info=True)
     
     def _on_display_name_changed(self):
         pass  # Will save on button click
@@ -822,7 +837,8 @@ class PreviewWindow(QWidget):
     def _save_properties(self):
         """プロパティを保存。"""
         if not self.db or not self.folder_path or not self.storage_root:
-            QMessageBox.warning(self, "Error", "Cannot save: no database connection")
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("Cannot save: no database connection"), preset="error")
             return
         
         try:
@@ -849,13 +865,18 @@ class PreviewWindow(QWidget):
                 'manual_preview_path': "; ".join(self.paths) if self.paths else None
             }
             
+            logging.info(f"[PreviewWindow] Saving properties for {rel_path}: {update_kwargs}")
             # Save using correct method
             self.db.update_folder_display_config(rel_path, **update_kwargs)
             
             # Handle deploy/unlink based on checkbox state
             is_linked_requested = self.deploy_check.isChecked()
             parent = self.parent()
-            if parent:
+            window = parent
+            while window and not hasattr(window, '_deploy_single'):
+                window = window.parent()
+
+            if window:
                 # Check current status
                 current_status = 'unlinked'
                 if self.deployer and self.target_dir:
@@ -866,20 +887,22 @@ class PreviewWindow(QWidget):
                 currently_linked = current_status in ['linked', 'conflict']
                 
                 if is_linked_requested and not currently_linked:
-                    if hasattr(parent, '_deploy_single'):
-                        parent._deploy_single(rel_path, update_ui=True)
+                    window._deploy_single(rel_path, update_ui=True)
                 elif not is_linked_requested and currently_linked:
-                    if hasattr(parent, '_unlink_single'):
-                        parent._unlink_single(rel_path, update_ui=True)
+                    window._unlink_single(rel_path, update_ui=True)
             
             # Emit signal
             self.property_changed.emit(update_kwargs)
             
+            from src.ui.toast import Toast
+            toast_parent = parent if parent else self
+            Toast.show_toast(toast_parent, _("Properties Saved"), preset="success")
+            
+            self._changes_saved = True # Flag to avoid "Cancelled" toast
             # Close without dialog (as requested)
             self.close()
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logging.error(f"Failed to save properties in PreviewWindow: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"Failed to save: {e}")
     
     def _open_actual_folder(self):
@@ -888,49 +911,37 @@ class PreviewWindow(QWidget):
             os.startfile(os.path.normpath(self.folder_path))
     
     def _open_detail_edit(self):
-        """Close this window and open the full FolderPropertiesDialog."""
-        from src.ui.link_master.dialogs import FolderPropertiesDialog
-        
+        """Close this window and open the non-modal FolderPropertiesDialog through the main window."""
         if not self.folder_path or not self.storage_root:
             return
         
         try:
             rel_path = os.path.relpath(self.folder_path, self.storage_root).replace('\\', '/')
-            current_config = self.db.get_folder_config(rel_path) if self.db else {}
+            if rel_path == '.': rel_path = ''
             
-            # Find app name from parent chain
-            app_name = getattr(self, 'app_name', None)
+            # Find main window to trigger its non-modal property editor
             window = self.parent()
-            while window and not app_name:
-                if hasattr(window, 'app_name'):
-                    app_name = window.app_name
-                    break
-                window = window.parent() if hasattr(window, 'parent') else None
+            while window and not hasattr(window, '_open_properties_for_path'):
+                window = window.parent()
             
-            # Close this window first
-            self.close()
-            
-            # Open the full dialog - use topmost parent as owner
-            top_parent = self.parent()
-            while top_parent and top_parent.parent():
-                top_parent = top_parent.parent()
-            
-            dialog = FolderPropertiesDialog(
-                parent=top_parent,
-                folder_path=self.folder_path,
-                current_config=current_config,
-                app_name=app_name,
-                storage_root=self.storage_root,
-                thumbnail_manager=getattr(self, 'thumbnail_manager', None)
-            )
-            if dialog.exec():
-                # Refresh parent if possible
-                if self.parent() and hasattr(self.parent(), 'refresh') and callable(self.parent().refresh):
-                    self.parent().refresh()
+            if window:
+                # Close this window first
+                self.close()
+                # Open non-modal dialog via Main Window
+                window._open_properties_for_path(self.folder_path)
+            else:
+                # Fallback to modal if main window not found (Should not happen)
+                from src.ui.link_master.dialogs import FolderPropertiesDialog
+                current_config = self.db.get_folder_config(rel_path) if self.db else {}
+                dialog = FolderPropertiesDialog(
+                    parent=self.parent(),
+                    folder_path=self.folder_path,
+                    current_config=current_config,
+                    storage_root=self.storage_root
+                )
+                dialog.show() # Non-modal show
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            QMessageBox.warning(self, "Error", f"Failed to open editor: {e}")
+            logging.error(f"Failed to open detail editor from PreviewWindow: {e}", exc_info=True)
 
     def _open_preview_editor(self):
         """フルプレビュー編集ダイアログを開く。"""
@@ -1244,6 +1255,12 @@ class PreviewWindow(QWidget):
         self._save_window_size()
         self.media_player.stop()
         self.auto_timer.stop()
+        
+        # Show "Cancelled" toast if closed without saving (and if not purely closing after Save)
+        if not getattr(self, '_changes_saved', False):
+            from src.ui.toast import Toast
+            Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+            
         super().closeEvent(event)
 
 

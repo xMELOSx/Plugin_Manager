@@ -500,6 +500,17 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self._pending_changes[rel_path][key] = value
         self._has_changes = True
 
+    def _on_interim_save_clicked(self):
+        """Perform save without closing the dialog (Mode 2)."""
+        saved, count = self._perform_save()
+        if saved:
+            if count > 0:
+                from src.ui.toast import Toast
+                Toast.show_toast(self.parent(), _("Changes saved! ({0} items)").format(count), preset="success")
+            else:
+                from src.ui.toast import Toast
+                Toast.show_toast(self.parent(), _("変更はありません"), preset="warning")
+
     def _perform_save(self):
         """Mode 2 specific save logic."""
         if not hasattr(self, '_pending_changes') or not self._pending_changes:
@@ -510,9 +521,12 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             try:
                 # IMPORTANT: Use copy to avoid modification during iteration
                 pending = dict(self._pending_changes)
+                logging.info(f"[QuickViewMode2] Attempting to save {len(pending)} modified items...")
+                
                 for rel_path, changes in pending.items():
                     # Ensure path normalization
                     norm_rel = rel_path.replace('\\', '/')
+                    logging.info(f"[QuickViewMode2] Saving {norm_rel}: {changes}")
                     self.db.update_folder_display_config(norm_rel, **changes)
                     
                     # Update results for Main Window
@@ -529,10 +543,18 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
                     item = next((i for i in self.items_data if i['rel_path'] == rel_path or i['rel_path'] == norm_rel), None)
                     if item:
                         item.update(changes)
+                        # CRITICAL: Update _orig_* markers so _has_real_changes() syncs correctly
+                        if 'is_favorite' in changes: item['_orig_fav'] = changes['is_favorite']
+                        if 'score' in changes: item['_orig_score'] = int(changes['score'])
+                        if 'display_name' in changes: item['_orig_name'] = changes['display_name']
+                        if 'tags' in changes: 
+                            from .quick_view_manager import _normalize_tags
+                            item['_orig_tags'] = _normalize_tags(changes['tags'], lowercase=True)
                     
                     count += 1
+                logging.info(f"[QuickViewMode2] Successfully saved {count} items.")
             except Exception as e:
-                logging.error(f"Failed bulk save in Mode 2: {e}")
+                logging.error(f"Failed bulk save in Mode 2: {e}", exc_info=True)
                 return False, 0
                 
         self._pending_changes.clear()

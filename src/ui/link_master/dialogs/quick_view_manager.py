@@ -1677,6 +1677,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         """Collect changes by mapping table widgets back to items_data via rel_path."""
         self._has_changes = False
         update_list = []
+        self.results = [] # Reset results for this save session
         
         # Create a mapping for quick access to items_data
         item_map = {i['rel_path']: i for i in self.items_data}
@@ -1729,6 +1730,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 changes['tags'] = item_data.get('tags', '')
 
             if changes:
+                logging.info(f"[QuickViewSave] Item {rel_path} has changes: {changes}")
                 changes['rel_path'] = rel_path
                 update_list.append(changes)
         
