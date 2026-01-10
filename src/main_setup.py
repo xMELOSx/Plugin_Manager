@@ -36,8 +36,25 @@ def setup_error_handling():
     root.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s | %(levelname)s | [%(name)s] %(message)s')
 
-    # Phase 40: Dynamic Log Level
+    # Phase 40: Dynamic Log Level (Load from persistent settings if available)
     log_level = logging.INFO
+    
+    # Try to load from debug_settings.json
+    try:
+        import json
+        # Project root is parent of 'src'
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        settings_path = os.path.join(project_root, 'resource', 'debug_settings.json')
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                lv_text = data.get('log_level', 'INFO')
+                log_level = getattr(logging, lv_text, logging.INFO)
+    except Exception as e:
+        # Avoid print/logging here as it might not be ready, or just use basic print
+        print(f"[MainSetup] Warning: Failed to load debug_settings.json: {e}")
+
+    # Environment variable override
     if os.environ.get('LM_DEBUG') == '1':
         log_level = logging.DEBUG
         

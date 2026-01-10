@@ -398,8 +398,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         msg = f"[Debug] Log Level changed to {text}"
         logging.log(level, msg)
         
+        # Phase 35: Persist log level
+        self._save_debug_setting('log_level', text)
+        
         # Confirmatory log
-        self.logger.info(f"{msg} (all handlers updated)")
+        self.logger.info(f"{msg} (all handlers updated and persisted)")
 
     def _on_alpha_boost_changed(self, value):
         """Update max_alpha_boost in parent window."""
