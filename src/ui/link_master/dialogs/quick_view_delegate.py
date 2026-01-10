@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QApplication, QTableWidgetItem, QSpinBox, QStyle
-from src.ui.common_widgets import StyledSpinBox
+from src.ui.common_widgets import StyledSpinBox, ProtectedLineEdit
 from PyQt6.QtCore import Qt, QRect, QPoint, QPointF, QRectF, QEvent, QSize
 from PyQt6.QtGui import QPainter, QColor, QIcon, QPen, QBrush, QPixmap, QCursor
 import os
@@ -120,6 +120,23 @@ class ScoreDelegate(QStyledItemDelegate):
         if hasattr(dialog, '_on_score_changed_delegate'):
             rel_path = index.model().index(index.row(), 1).data(Qt.ItemDataRole.UserRole + 1)
             dialog._on_score_changed_delegate(rel_path, value)
+
+class TextEditDelegate(QStyledItemDelegate):
+    """Delegate for editing text with a ProtectedLineEdit (dark context menu)."""
+    def createEditor(self, parent, option, index):
+        editor = ProtectedLineEdit(parent)
+        editor.setFrame(False)
+        editor.setStyleSheet("background-color: #444; color: white; border: none; padding: 2px;")
+        return editor
+
+    def setEditorData(self, editor, index):
+        value = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        editor.setText(value)
+
+    def setModelData(self, editor, model, index):
+        value = editor.text()
+        model.setData(index, value, Qt.ItemDataRole.DisplayRole)
+        model.setData(index, value, Qt.ItemDataRole.EditRole)
 
 class TagColumnDelegate(QStyledItemDelegate):
     """
@@ -301,6 +318,9 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         self.table.setItemDelegateForColumn(2, FavoriteDelegate(self.table, self._draw_star_icon))
         # 3: Score
         self.table.setItemDelegateForColumn(3, ScoreDelegate(self.table))
+        # 5: Display Name (use ProtectedLineEdit for dark context menu)
+        self.table.setItemDelegateForColumn(5, TextEditDelegate(self.table))
+
         
         # Tag Columns (index 6+)
         for i, col_data in enumerate(self._all_tag_columns):
