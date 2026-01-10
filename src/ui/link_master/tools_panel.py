@@ -1,8 +1,8 @@
 """ 🚨 厳守ルール: ファイル操作禁止 🚨
 ファイルI/Oは、必ず src.core.file_handler を経由すること。
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, 
-                             QMessageBox, QFrame, QHBoxLayout, QSpinBox, QCheckBox)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QFrame, QSpinBox, QMessageBox, QSpacerItem, QSizePolicy)
+from src.ui.common_widgets import StyledSpinBox
 from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.styles import apply_common_dialog_style
 
@@ -93,7 +93,7 @@ class ToolsPanel(QWidget):
         self.size_lbl.setStyleSheet("color: #ddd;")
         size_layout.addWidget(self.size_lbl)
         
-        self.spin_pool_size = QSpinBox()
+        self.spin_pool_size = StyledSpinBox()
         self.spin_pool_size.setRange(50, 1000)
         self.spin_pool_size.setSingleStep(50)
         self.spin_pool_size.setStyleSheet("background-color: #333; color: white; border: 1px solid #555;")

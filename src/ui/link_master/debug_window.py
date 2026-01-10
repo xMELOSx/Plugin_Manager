@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox, QComboBox, QSpinBox, QScrollArea, QLineEdit)
 from PyQt6.QtCore import Qt, QPoint
 from src.ui.frameless_window import FramelessWindow
+from src.ui.common_widgets import StyledSpinBox
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import OptionsMixin
 from src.core import core_handler
@@ -181,7 +182,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.alpha_lbl = QLabel(_("<b>Maximize Shadow Alpha (0-255)</b>"))
         layout.addWidget(self.alpha_lbl)
         
-        self.alpha_spin = QSpinBox()
+        self.alpha_spin = StyledSpinBox()
         self.alpha_spin.setRange(0, 255)
         # Default value from parent if available, else 55
         default_alpha = 55

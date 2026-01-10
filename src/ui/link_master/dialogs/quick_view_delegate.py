@@ -1,4 +1,5 @@
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QApplication, QTableWidgetItem, QSpinBox, QStyle
+from src.ui.common_widgets import StyledSpinBox
 from PyQt6.QtCore import Qt, QRect, QPoint, QPointF, QRectF, QEvent, QSize
 from PyQt6.QtGui import QPainter, QColor, QIcon, QPen, QBrush, QPixmap, QCursor
 import os
@@ -59,11 +60,12 @@ class FavoriteDelegate(QStyledItemDelegate):
 class ScoreDelegate(QStyledItemDelegate):
     """Delegate for editing scores with a SpinBox."""
     def createEditor(self, parent, option, index):
-        editor = QSpinBox(parent)
+        editor = StyledSpinBox(parent)
         editor.setFrame(False)
         editor.setMinimum(0)
         editor.setMaximum(9999)
-        editor.setStyleSheet("background-color: #444; color: white; border: none;") # Removed 1px solid border
+        # Inherit the high-quality arrow drawing from StyledSpinBox
+        editor.setStyleSheet(editor.styleSheet() + "background-color: #444; color: white; border: none;") 
         
         # Phase 1.1.70: Connect valueChanged for persistent editors
         # Since setModelData is not called reliably for persistent editors,

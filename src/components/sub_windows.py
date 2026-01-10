@@ -3,7 +3,7 @@
 """
 
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QCheckBox, QSlider, QSpinBox, QApplication
-from PyQt6.QtCore import Qt, pyqtSignal
+from src.ui.common_widgets import StyledSpinBox
 from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.frameless_window import FramelessWindow
 import logging
@@ -88,7 +88,7 @@ class OptionsWindow(FramelessWindow):
         self.bg_opacity_slider.setRange(20, 100)
         self.bg_opacity_slider.setValue(90)
         
-        self.bg_opacity_spin = QSpinBox(content)
+        self.bg_opacity_spin = StyledSpinBox(content)
         self.bg_opacity_spin.setRange(20, 100)
         self.bg_opacity_spin.setValue(90)
         self.bg_opacity_spin.setSuffix("%")
@@ -108,7 +108,7 @@ class OptionsWindow(FramelessWindow):
         self.text_opacity_slider.setRange(20, 100)
         self.text_opacity_slider.setValue(100)
         
-        self.text_opacity_spin = QSpinBox(content)
+        self.text_opacity_spin = StyledSpinBox(content)
         self.text_opacity_spin.setRange(20, 100)
         self.text_opacity_spin.setValue(100)
         self.text_opacity_spin.setSuffix("%")
@@ -134,7 +134,7 @@ class OptionsWindow(FramelessWindow):
         width_row.addWidget(self.width_lbl)
         self.width_slider = CustomSlider(Qt.Orientation.Horizontal)
         self.width_slider.setRange(400, 2560)
-        self.width_spin = QSpinBox()
+        self.width_spin = StyledSpinBox()
         self.width_spin.setRange(400, 2560)
         self.width_spin.setFixedWidth(75)
         width_row.addWidget(self.width_slider)
@@ -149,7 +149,7 @@ class OptionsWindow(FramelessWindow):
         height_row.addWidget(self.height_lbl)
         self.height_slider = CustomSlider(Qt.Orientation.Horizontal)
         self.height_slider.setRange(400, 1440)
-        self.height_spin = QSpinBox()
+        self.height_spin = StyledSpinBox()
         self.height_spin.setRange(400, 1440)
         self.height_spin.setFixedWidth(75)
         height_row.addWidget(self.height_slider)

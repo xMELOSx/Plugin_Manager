@@ -1,5 +1,37 @@
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QPushButton
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui import QPainter, QPolygon, QBrush, QColor
+
+def _draw_spinbox_arrows(painter, rect):
+    """Common logic for drawing up/down arrows in spinboxes."""
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    
+    # Position/Size Constants (Tailored for SpinBox buttons)
+    # Width: 20px (from stylesheet)
+    btn_center_x = rect.width() - 10
+    btn_height = rect.height() // 2
+    
+    # Color: White arrow
+    painter.setPen(Qt.GlobalColor.transparent)
+    painter.setBrush(QBrush(QColor("#ffffff")))
+    
+    # Draw Up Arrow
+    up_y_center = btn_height // 2
+    up_points = [
+        QPoint(btn_center_x - 4, up_y_center + 2),
+        QPoint(btn_center_x + 4, up_y_center + 2),
+        QPoint(btn_center_x, up_y_center - 3)
+    ]
+    painter.drawPolygon(QPolygon(up_points))
+    
+    # Draw Down Arrow
+    down_y_center = rect.height() - (btn_height // 2)
+    down_points = [
+        QPoint(btn_center_x - 4, down_y_center - 2),
+        QPoint(btn_center_x + 4, down_y_center - 2),
+        QPoint(btn_center_x, down_y_center + 3)
+    ]
+    painter.drawPolygon(QPolygon(down_points))
 
 class StyledLineEdit(QLineEdit):
     """Standardized QLineEdit with project dark theme."""
@@ -117,11 +149,51 @@ class StyledSpinBox(QSpinBox):
             QSpinBox::up-button:hover, QSpinBox::down-button:hover {
                 background-color: #444;
             }
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
-                width: 7px;
-                height: 7px;
-            }
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: none; background: transparent; }
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: none; background: transparent; }
         """)
+
+    def paintEvent(self, event):
+        """Draw custom arrows for precision and anti-aliasing."""
+        super().paintEvent(event)
+        painter = QPainter(self)
+        _draw_spinbox_arrows(painter, self.rect())
+        painter.end()
+
+class StyledDoubleSpinBox(QDoubleSpinBox):
+    """Standardized QDoubleSpinBox with project dark theme."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QDoubleSpinBox {
+                background-color: #3b3b3b;
+                color: #ffffff;
+                border: 1px solid #555;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QDoubleSpinBox:hover {
+                border-color: #3498db;
+            }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                background-color: #333;
+                border-left: 1px solid #555;
+                width: 20px;
+            }
+            QDoubleSpinBox::up-button { border-top-right-radius: 4px; }
+            QDoubleSpinBox::down-button { border-bottom-right-radius: 4px; }
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                background-color: #444;
+            }
+            QDoubleSpinBox::up-arrow, QDoubleSpinBox::down-arrow { image: none; background: transparent; }
+        """)
+
+    def paintEvent(self, event):
+        """Draw custom arrows for precision and anti-aliasing."""
+        super().paintEvent(event)
+        painter = QPainter(self)
+        _draw_spinbox_arrows(painter, self.rect())
+        painter.end()
 
 class StyledButton(QPushButton):
     """

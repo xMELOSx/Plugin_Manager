@@ -14,7 +14,7 @@ from src.ui.link_master.tag_bar import TagWidget
 from src.ui.window_mixins import OptionsMixin
 from src.ui.frameless_window import FramelessDialog
 from src.ui.toast import Toast
-from src.ui.common_widgets import StyledButton
+from src.ui.common_widgets import StyledButton, StyledSpinBox
 
 def _normalize_tags(tags_str, lowercase=True):
     """Normalize tag string: sorted, space-trimmed, optionally lowercased."""
@@ -1278,11 +1278,12 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                     score_layout = QHBoxLayout(score_widget)
                     score_layout.setContentsMargins(0,0,0,0)
                     score_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    score_spin = QSpinBox()
+                    score_spin = StyledSpinBox()
                     score_spin.setRange(0, 9999)
                     score_spin.setFixedWidth(60)
                     score_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    score_spin.setStyleSheet("QSpinBox { background-color: #333; color: white; border: 1px solid #555; border-radius: 4px; }")
+                    # Use standard styling from widget itself, maybe minor override
+                    score_spin.setStyleSheet(score_spin.styleSheet() + "background-color: #333; border: none;") 
                     score_spin.valueChanged.connect(lambda val, r=rel_path: self._on_score_changed_v2(r, val))
                     score_layout.addWidget(score_spin)
                     score_sort_item = SortableTableWidgetItem(0, "")

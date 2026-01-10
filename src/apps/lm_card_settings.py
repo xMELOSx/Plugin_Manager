@@ -13,6 +13,7 @@ Link Master: Card Settings Mixin
 """
 import copy
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QSpinBox, QSlider, QCheckBox
+from src.ui.common_widgets import StyledSpinBox
 from PyQt6.QtCore import Qt, QTimer
 from src.core.lang_manager import _
 
@@ -43,15 +44,13 @@ class LMCardSettingsMixin:
         minus_btn.setStyleSheet("QPushButton { background: #333; color: #fff; border: 1px solid #555; font-weight: bold; border-radius: 4px; } QPushButton:hover { background: #444; }")
         row.addWidget(minus_btn)
         
-        spin = QSpinBox()
+        spin = StyledSpinBox()
         spin.setRange(min_v, max_v)
         spin.setValue(init_val)
         spin.setFixedWidth(60) # Unified width
-        spin.setStyleSheet("""
-            QSpinBox { color: #ddd; background: #222; border: 1px solid #555; padding: 2px; border-radius: 4px; }
-            QSpinBox:focus { border: 1px solid #27ae60; }
-            QSpinBox::up-button, QSpinBox::down-button { width: 0; height: 0; }
-        """)
+        # Keep buttons hidden as we use external +/- buttons here
+        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        spin.setStyleSheet(spin.styleSheet() + "background: #222; border: 1px solid #555;")
         spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         row.addWidget(spin)
         
@@ -100,16 +99,14 @@ class LMCardSettingsMixin:
         minus_btn.setStyleSheet("QPushButton { background: #333; color: #fff; border: 1px solid #555; font-weight: bold; border-radius: 4px; } QPushButton:hover { background: #444; }")
         row.addWidget(minus_btn)
         
-        spin = QSpinBox()
+        spin = StyledSpinBox()
         spin.setRange(min_v, max_v)
         spin.setValue(init_val)
         spin.setSuffix("%")
         spin.setFixedWidth(60)
-        spin.setStyleSheet("""
-            QSpinBox { color: #ddd; background: #222; border: 1px solid #555; padding: 2px; border-radius: 4px; }
-            QSpinBox:focus { border: 1px solid #27ae60; }
-            QSpinBox::up-button, QSpinBox::down-button { width: 0; height: 0; }
-        """)
+        # Keep buttons hidden as we use external +/- buttons here
+        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        spin.setStyleSheet(spin.styleSheet() + "background: #222; border: 1px solid #555;")
         spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         row.addWidget(spin)
         

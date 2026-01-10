@@ -4,6 +4,7 @@ Link Master: Independent Card Settings Window
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QFrame, QTabWidget, QSpinBox, 
                              QSlider, QMessageBox, QScrollArea)
+from src.ui.common_widgets import StyledSpinBox
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.core.lang_manager import _
 
@@ -122,7 +123,7 @@ class CardSettingsWindow(QWidget):
         op_slider.setValue(current_op)
         row.addWidget(op_slider)
         
-        op_spin = QSpinBox()
+        op_spin = StyledSpinBox()
         op_spin.setRange(10, 100)
         op_spin.setValue(current_op)
         op_spin.setSuffix("%")
@@ -224,7 +225,7 @@ class CardSettingsWindow(QWidget):
         slider.setValue(val)
         row.addWidget(slider)
         
-        spin = QSpinBox()
+        spin = StyledSpinBox()
         spin.setRange(min_v, max_v)
         spin.setValue(val)
         spin.setFixedWidth(50)
@@ -262,7 +263,7 @@ class CardSettingsWindow(QWidget):
         slider.setValue(val)
         row.addWidget(slider)
         
-        spin = QSpinBox()
+        spin = StyledSpinBox()
         spin.setRange(50, 200)
         spin.setValue(val)
         spin.setSuffix("%")
