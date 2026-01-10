@@ -128,7 +128,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 {border}
             }}
             QLabel {{ color: {text_color}; background: transparent; }}
-            QLineEdit, QComboBox, QAbstractItemView, QSpinBox, QDoubleSpinBox {{
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0;
                 background-color: #252525;
                 border: 1px solid #555;
@@ -440,7 +440,7 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.container.setStyleSheet("""
             QWidget#FramelessContainer {{ background-color: transparent; border: none; border-radius: {radius}px; }}
             QLabel {{ color: {text_color}; background: transparent; }}
-            QLineEdit, QComboBox, QAbstractItemView, QSpinBox, QDoubleSpinBox {{
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0; background-color: #252525; border: 1px solid #555; border-radius: 4px; padding: 4px;
             }}
             QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button {{

@@ -740,14 +740,17 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         # Create a container widget for content
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(5, 0, 5, 5) # Reduced top margin
+        layout.setContentsMargins(0, 0, 0, 0) # Flush against the window edges
         
         # 1. Hide Vertical Header and fix scrollbar flicker
+        from PyQt6.QtWidgets import QFrame
         self.table = QTableWidget()
+        self.table.setFrameShape(QFrame.Shape.NoFrame) # Physically remove table frame
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)  # Remove grid lines for a cleaner look
         # Phase 1.1.15: Force scrollbar to be always visible to prevent rendering flicker
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff) # Prevent horizontal scrollbar from adding padding
         
         # 2. Dynamic Headers
         # Fixed: No, Icon, Fav, Score, Folder, Name
@@ -1099,16 +1102,19 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     def reject(self):
         """Handle Close button or Esc: Prompt if changes exist."""
         # 1. Check if already accepted (prevent double call)
+        logging.info(f"[QuickView] reject() called. result={self.result()}")
         if self.result() == QDialog.DialogCode.Accepted:
+            logging.debug(f"[QuickView] reject() early exit: already Accepted.")
             return
 
         # 2. Check changes and show prompt if needed
         if not self._check_unsaved_changes():
+            logging.debug(f"[QuickView] reject() cancelled by user (stay in dialog).")
             return
 
         # 3. If prompt resulted in Save (accept), STOP HERE.
         if self.result() == QDialog.DialogCode.Accepted:
-            logging.debug(f"[QuickView] reject() stopped because prompt triggered Save/Accept.")
+            logging.info(f"[QuickView] reject() stopped because prompt triggered Save/Accept.")
             return
 
         # 4. Actual Rejection (Discard or No changes)
@@ -1128,9 +1134,16 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         # Phase 1.1.291: CRITICAL - Only clear results on TRUE rejection.
         # If we reached here, it means user either had no changes or hit Discard.
         self.results = [] 
-        logging.debug(f"[QuickView] reject() complete. results cleared for Main Window.")
+        logging.info(f"[QuickView] reject() complete. results cleared. Calling super().reject()")
         self._last_items_data = copy.deepcopy(self.items_data)
         super().reject()
+        
+        # Restore original data AFTER super().reject() so parent can still check changes if needed
+        # (Though super().reject() triggers the signal, the parent handler executes synchronously on the same thread in most cases)
+        # To be safe, let's restore it here.
+        self.items_data.clear()
+        self.items_data.extend(copy.deepcopy(self._raw_items_data))
+        logging.debug(f"[QuickView] Data restored to original state.")
 
     def accept(self):
         """Override accept to save window state before closing."""
