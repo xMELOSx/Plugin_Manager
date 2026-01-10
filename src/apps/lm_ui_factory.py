@@ -16,7 +16,7 @@ from src.ui.link_master.explorer_window import ExplorerPanel
 from src.ui.link_master.tag_bar import TagBar
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.action_button import ActionButton
-from src.ui.common_widgets import StyledComboBox
+from src.ui.common_widgets import StyledComboBox, ProtectedLineEdit
 
 def setup_ui(window):
     """Factory entry point to build the LinkMasterWindow UI."""
@@ -153,7 +153,7 @@ def _setup_header(window, main_layout, main_widget):
         }
     """)
     
-    window.search_bar = QLineEdit(main_widget)
+    window.search_bar = ProtectedLineEdit(main_widget)
     window.search_bar.setObjectName("main_search_bar")
     window.search_bar.setPlaceholderText(_("Search by name or tags..."))
     window.search_bar.setFixedWidth(300)
@@ -168,14 +168,14 @@ def _setup_header(window, main_layout, main_widget):
     window.search_mode.setFixedWidth(150)
     header_layout.addWidget(window.search_mode)
     
-    window.search_btn = ActionButton("🔍", main_widget)
+    window.search_btn = ActionButton("🔍", main_widget, is_toggle=False)
     window.search_btn.setObjectName("header_search_btn")
     window.search_btn.setFixedSize(32, 28)
     window.search_btn.clicked.connect(window._perform_search)
     window.search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     header_layout.addWidget(window.search_btn)
     
-    window.clear_search_btn = ActionButton("✕", main_widget)
+    window.clear_search_btn = ActionButton("✕", main_widget, is_toggle=False)
     window.clear_search_btn.setObjectName("header_clear_btn")
     window.clear_search_btn.setFixedSize(32, 28)
     window.clear_search_btn.clicked.connect(window._clear_search)

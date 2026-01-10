@@ -61,6 +61,8 @@ class ScoreDelegate(QStyledItemDelegate):
     """Delegate for editing scores with a SpinBox."""
     def createEditor(self, parent, option, index):
         editor = StyledSpinBox(parent)
+        # Install event filter to ignore right-click focus/selection
+        editor.installEventFilter(self)
         editor.setFrame(False)
         editor.setMinimum(0)
         editor.setMaximum(9999)
@@ -93,6 +95,14 @@ class ScoreDelegate(QStyledItemDelegate):
         
         editor.valueChanged.connect(on_value_changed)
         return editor
+
+    def eventFilter(self, source, event):
+        """Block right-click press AND release to prevent auto-focus/selection in Mode 2."""
+        if event.type() in [QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease]:
+            if event.button() == Qt.MouseButton.RightButton:
+                return True
+        return super().eventFilter(source, event)
+
 
     def setEditorData(self, editor, index):
         value = index.data(Qt.ItemDataRole.UserRole)
@@ -240,7 +250,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
     Avoids creating thousands of QWidgets.
     """
     def __init__(self, parent, items_data, frequent_tags, db, storage_root, show_hidden=True, scope="category"):
-        super().__init__(parent, items_data, frequent_tags, db, storage_root, show_hidden, scope=scope)
+        super().__init__(parent, items_data, frequent_tags, db, storage_root, show_hidden, scope=scope, mode_suffix="2")
         self.setObjectName("QuickViewDelegateDialog")
         # Base title is already set by super().__init__ based on scope
         self.setWindowTitle(self._base_title)
@@ -310,9 +320,9 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         for i, col_info in enumerate(self._all_tag_columns):
             col_idx = 6 + i
             if col_info['type'] == 'sep':
-                self.table.setColumnWidth(col_idx, 2) # Narrower separator
+                self.table.setColumnWidth(col_idx, 9) # Match Mode 1
             else:
-                self.table.setColumnWidth(col_idx, 32)
+                self.table.setColumnWidth(col_idx, 33) # Match Mode 1
 
         # Connect itemChanged for Display Name persistence
         # We need to block signals during data fill to prevent recursive calls
@@ -338,8 +348,11 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         
         # Enforce separator widths AFTER automatic resize
         for i, col_info in enumerate(self._all_tag_columns):
+            col_idx = 6 + i
             if col_info['type'] == 'sep':
-                self.table.setColumnWidth(6 + i, 2)
+                self.table.setColumnWidth(col_idx, 9)
+            else:
+                self.table.setColumnWidth(col_idx, 33)
         
         # Connect after loading
         self.table.itemChanged.connect(self._on_item_changed_delegate)
@@ -350,6 +363,11 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         for row, item in enumerate(self.items_data):
             self._create_row_delegate(row, item)
         self.table.setSortingEnabled(True)
+        
+        # Phase 16.1: Clear selection to prevent startup highlight
+        from PyQt6.QtCore import QModelIndex
+        self.table.clearSelection()
+        self.table.setCurrentIndex(QModelIndex())
         
         # Initial Fade In
         self.table.updateGeometry()
@@ -376,11 +394,21 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         
         # 3. Finally enforce separator widths AFTER automatic resize
         for i, col_info in enumerate(self._all_tag_columns):
+            col_idx = 6 + i
             if col_info['type'] == 'sep':
-                self.table.setColumnWidth(6 + i, 2)
+                self.table.setColumnWidth(col_idx, 9)
+            else:
+                self.table.setColumnWidth(col_idx, 33)
         
         self.raise_()
         self.activateWindow()
+        
+        # Phase 16.2: Final selection clear after window is active/shown
+        # This is critical to catch any auto-selection triggered by window activation
+        from PyQt6.QtCore import QModelIndex
+        self.table.clearSelection()
+        self.table.setCurrentIndex(QModelIndex())
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         
         # Diagnostic Log
         logging.info(f"[QuickViewDebug] Delegate State: Pos={self.pos()}, Size={self.size()}, Visible={self.isVisible()}, Opacity={self.windowOpacity()}")

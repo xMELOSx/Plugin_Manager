@@ -15,6 +15,7 @@ from src.ui.window_mixins import OptionsMixin
 from src.core.lang_manager import _
 from src.ui.frameless_window import FramelessDialog
 from src.core.link_master.core_paths import get_backup_dir, get_backup_path_for_file
+from src.ui.common_widgets import ProtectedLineEdit
 
 class SelectionAwareDelegate(QStyledItemDelegate):
     """Delegate that brightens background color for selected items, preserving state visibility."""
@@ -53,10 +54,9 @@ class SelectionAwareDelegate(QStyledItemDelegate):
         super().paint(painter, opt, index)
 
     def createEditor(self, parent, option, index):
-        editor = super().createEditor(parent, option, index)
-        if isinstance(editor, QLineEdit):
-            # Requirements: Ensure editor text is visible (no excessive internal padding)
-            editor.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555; padding: 2px; margin: 0;")
+        editor = ProtectedLineEdit(parent)
+        # Ensure editor text is visible (no excessive internal padding)
+        editor.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555; padding: 2px; margin: 0;")
         return editor
 
 class CheckableFileModel(QFileSystemModel):
@@ -586,7 +586,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         manual_row.addWidget(create_aligned_label(_("任意パス:")))
         manual_row.addSpacing(12)
         
-        self.target_edit = QLineEdit()
+        self.target_edit = ProtectedLineEdit()
         self.target_edit.setPlaceholderText(_("任意パス"))
         self.target_edit.setStyleSheet("background-color: #2d2d2d; color: #ffffff; border: 1px solid #555; padding: 5px; border-radius: 4px;")
         self.target_edit.setText(self.primary_target)

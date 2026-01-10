@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.core.lang_manager import _
-from src.ui.common_widgets import StyledLineEdit
+from src.ui.common_widgets import StyledLineEdit, ProtectedLineEdit
 from src.ui.slide_button import SlideButton
 
 
@@ -64,7 +64,7 @@ class URLItemWidget(QWidget):
         self.url_label.setStyleSheet("color: #e0e0e0;" if self.is_active else "color: #666; text-decoration: line-through;")
         self.url_label.mousePressEvent = self._start_edit
         
-        self.url_edit = QLineEdit(self.url)
+        self.url_edit = ProtectedLineEdit(self.url)
         self.url_edit.setStyleSheet("background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 2px;")
         self.url_edit.returnPressed.connect(self._finish_edit)
         self.url_edit.editingFinished.connect(self._finish_edit)
@@ -196,7 +196,7 @@ class URLListDialog(QDialog):
         
         # URL Input
         input_layout = QHBoxLayout()
-        self.url_input = StyledLineEdit()
+        self.url_input = ProtectedLineEdit()
         self.url_input.setPlaceholderText(_("Enter URL (https://...)"))
         self.url_input.returnPressed.connect(self._add_url)
         input_layout.addWidget(self.url_input)

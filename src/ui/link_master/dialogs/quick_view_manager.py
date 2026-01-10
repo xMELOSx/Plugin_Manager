@@ -14,7 +14,10 @@ from src.ui.link_master.tag_bar import TagWidget
 from src.ui.window_mixins import OptionsMixin
 from src.ui.frameless_window import FramelessDialog
 from src.ui.toast import Toast
-from src.ui.common_widgets import StyledButton, StyledSpinBox
+from src.ui.common_widgets import (
+    StyledLineEdit, StyledComboBox, StyledSpinBox, StyledDoubleSpinBox, 
+    StyledButton, ProtectedLineEdit
+)
 
 def _normalize_tags(tags_str, lowercase=True):
     """Normalize tag string: sorted, space-trimmed, optionally lowercased."""
@@ -25,8 +28,10 @@ def _normalize_tags(tags_str, lowercase=True):
         tags = {t.strip() for t in tags_str.split(",") if t.strip()}
     return ",".join(sorted(list(tags)))
 
-class QuickEdit(QLineEdit):
+class QuickEdit(ProtectedLineEdit):
     """Custom QLineEdit that handles Enter to move to next row."""
+    # mousePressEvent and contextMenuEvent are inherited from ProtectedLineEdit
+    
     def keyPressEvent(self, event):
         if event.key() in [Qt.Key.Key_Return, Qt.Key.Key_Enter]:
             if event.modifiers() & Qt.KeyboardModifier.AltModifier:
@@ -36,12 +41,9 @@ class QuickEdit(QLineEdit):
                     p = p.parent()
                 if p:
                     # Let the dialog handle its own keyPressEvent for Alt+Enter
-                    # or just call the save method directly if available.
                     if hasattr(p, "_on_save_clicked"):
                         p._on_save_clicked()
                         return
-
-            # Normal Enter: Find the parent dialog to trigger next row focus
             p = self.parent()
             while p and not hasattr(p, "focus_next_row_from"):
                 p = p.parent()
@@ -262,11 +264,12 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     """
     def __init__(self, parent=None, items_data: list = None, frequent_tags=None, 
                  db=None, storage_root=None, thumbnail_loader=None, show_hidden=True,
-                 scope="category"):
+                 scope="category", mode_suffix="1"):
         # Pass None as parent to prevent composition artifacts (darkening of main window)
         super().__init__(None)
         self.setObjectName("QuickViewManagerDialog")
         self.scope = scope
+        self._geo_mode_suffix = mode_suffix
         self._base_title = _("Category QuickView Manager") if scope == "category" else _("Package QuickView Manager")
         self.setWindowTitle(self._base_title)
         
@@ -721,10 +724,13 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             rounded.fill(Qt.GlobalColor.transparent)
             painter = QPainter(rounded)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            path = QPainterPath()
-            path.addRoundedRect(0, 0, 24, 24, 4, 4)
-            painter.setClipPath(path)
-            painter.drawPixmap(0, 0, pixmap)
+            
+            # Use QBrush(pixmap) + drawRoundedRect for cleaner results
+            painter.setOpacity(0.92)
+            brush = QBrush(pixmap)
+            painter.setBrush(brush)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(0, 0, 24, 24, 6, 6)
             painter.end()
             self.icon_label.setPixmap(rounded)
             self.icon_label.setVisible(True)
@@ -915,7 +921,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         
         
         # Load window geometry
-        self.load_options("quick_view_manager")
+        geo_key = f"QuickView_{self.scope}_{self._geo_mode_suffix}"
+        self.load_options(geo_key)
         
         # Set the content widget to the frameless window
         self.set_content_widget(content_widget)
@@ -1147,7 +1154,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
 
     def accept(self):
         """Override accept to save window state before closing."""
-        self.save_options("quick_view_manager")
+        geo_key = f"QuickView_{self.scope}_{self._geo_mode_suffix}"
+        self.save_options(geo_key)
         super().accept()
         
     def closeEvent(self, event):
@@ -1156,7 +1164,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             event.ignore()
             return
             
-        self.save_options("quick_view_manager")
+        geo_key = f"QuickView_{self.scope}_{self._geo_mode_suffix}"
+        self.save_options(geo_key)
         super().closeEvent(event)
 
     def _load_table_data(self):
@@ -1407,10 +1416,9 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             # Enforce min/max widths for tag columns (index 6+)
             # Phase 1.1.180: Narrow widths as requested (33px fits the 31px button perfectly)
             for i in range(6, self.table.columnCount()):
-                # Only apply to tags, not the final spacer
+                # Fixed 33px for all tag columns to ensure immediate packing
                 if i < self.table.columnCount() - 1:
-                    if self.table.columnWidth(i) < 33:
-                        self.table.setColumnWidth(i, 33)
+                    self.table.setColumnWidth(i, 33)
             
             # Phase 1.1.181: Protect Name/Folder columns from over-shrinking during dynamic resize
             if self.table.columnWidth(5) < 200:

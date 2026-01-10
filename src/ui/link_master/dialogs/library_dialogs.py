@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
                              QLineEdit, QMessageBox, QListWidget, QListWidgetItem, QMenu)
 from PyQt6.QtCore import pyqtSignal, Qt, QSize, QByteArray
 from src.core.lang_manager import _
-from src.ui.common_widgets import StyledComboBox
+from src.ui.common_widgets import StyledComboBox, ProtectedLineEdit
 
 class LibrarySettingsDialog(QDialog):
     """ライブラリの詳細設定ダイアログ"""
@@ -55,7 +55,7 @@ class LibrarySettingsDialog(QDialog):
         
         form = QFormLayout()
         
-        self.name_edit = QLineEdit(self.lib_name)
+        self.name_edit = ProtectedLineEdit(self.lib_name)
         form.addRow(_("Library Name:"), self.name_edit)
         
         first_cfg = self.versions[0] if self.versions else {}
@@ -74,7 +74,7 @@ class LibrarySettingsDialog(QDialog):
         form.addRow(_("URLs:"), url_manage_layout)
         self._update_url_count_preview()
         
-        self.author_edit = QLineEdit(first_cfg.get('author', ''))
+        self.author_edit = ProtectedLineEdit(first_cfg.get('author', ''))
         form.addRow(_("Author:"), self.author_edit)
         
         layout.addLayout(form)
@@ -672,7 +672,7 @@ class LibraryRegistrationDialog(QDialog):
         self.existing_versions_label.setStyleSheet("color: #888; font-size: 11px;")
         form.addRow("", self.existing_versions_label)
         
-        self.version_edit = QLineEdit()
+        self.version_edit = ProtectedLineEdit()
         self.version_edit.setPlaceholderText(_("1.0"))
         form.addRow(_("Version:"), self.version_edit)
         layout.addLayout(form)

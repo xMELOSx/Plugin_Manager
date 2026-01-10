@@ -180,7 +180,17 @@ class LMSearchMixin:
                 self._load_items_for_path(storage_root)
             
             self.non_inheritable_tags = self._get_non_inheritable_tags_from_json()
+            
+            # Reset search button state when no search is performed
+            if hasattr(self, 'search_btn'):
+                self.search_btn.setCheckable(False)
+                self.search_btn.setChecked(False)
             return
+
+        # Show search state on button
+        if hasattr(self, 'search_btn'):
+            self.search_btn.setCheckable(True)
+            self.search_btn.setChecked(True)
 
         self._show_search_indicator()
         
@@ -518,6 +528,11 @@ class LMSearchMixin:
         
         self.cat_result_label.setText("")
         self.pkg_result_label.setText("")
+        
+        # Reset search button state
+        if hasattr(self, 'search_btn'):
+            self.search_btn.setChecked(False)
+            self.search_btn.setCheckable(False)
         
         # Phase 28: Restore view AND selected category
         # Need to delay category selection to allow view to load first (async scan)

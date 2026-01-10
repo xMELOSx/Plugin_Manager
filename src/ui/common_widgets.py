@@ -54,6 +54,61 @@ class StyledLineEdit(QLineEdit):
             }
         """)
 
+class ProtectedLineEdit(StyledLineEdit):
+    """
+    StyledLineEdit that prevents startup right-click selection 
+    and forces a dark theme on its context menu.
+    """
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            # Show context menu directly instead of blocking the event
+            # This prevents selection changes while still showing the menu
+            self.showDarkContextMenu(event.globalPosition().toPoint())
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def showDarkContextMenu(self, pos):
+        """Show context menu with forced dark theme."""
+        from PyQt6.QtGui import QPalette, QColor
+        menu = self.createStandardContextMenu()
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2b2b2b;
+                color: #eeeeee;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 4px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #3d5a80;
+                color: #ffffff;
+            }
+            /* Recursive widget style to override any system-forced whites */
+            QWidget {
+                background-color: #2b2b2b;
+                color: #eeeeee;
+            }
+        """)
+        # Ensure the menu uses the dark palette too
+        palette = menu.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor("#2b2b2b"))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#eeeeee"))
+        palette.setColor(QPalette.ColorRole.Base, QColor("#2b2b2b"))
+        palette.setColor(QPalette.ColorRole.Text, QColor("#eeeeee"))
+        palette.setColor(QPalette.ColorRole.Button, QColor("#2b2b2b"))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor("#eeeeee"))
+        menu.setPalette(palette)
+        
+        menu.exec(pos)
+
+    def contextMenuEvent(self, event):
+        # Override to use our custom dark context menu
+        self.showDarkContextMenu(event.globalPos())
+
+
 class StyledComboBox(QComboBox):
     """Premium QComboBox with a dedicated dropdown indicator area."""
     def __init__(self, parent=None):
@@ -160,6 +215,13 @@ class StyledSpinBox(QSpinBox):
         _draw_spinbox_arrows(painter, self.rect())
         painter.end()
 
+    def mousePressEvent(self, event):
+        """Prevent right-click from triggering selection/focus changes."""
+        if event.button() == Qt.MouseButton.RightButton:
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
 class StyledDoubleSpinBox(QDoubleSpinBox):
     """Standardized QDoubleSpinBox with project dark theme."""
     def __init__(self, parent=None):
@@ -194,6 +256,13 @@ class StyledDoubleSpinBox(QDoubleSpinBox):
         painter = QPainter(self)
         _draw_spinbox_arrows(painter, self.rect())
         painter.end()
+
+    def mousePressEvent(self, event):
+        """Prevent right-click from triggering selection/focus changes."""
+        if event.button() == Qt.MouseButton.RightButton:
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
 class StyledButton(QPushButton):
     """
