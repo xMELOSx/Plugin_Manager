@@ -1096,9 +1096,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                     current_tags = [p.strip().lower() for p in (self.current_config.get('tags', '') or '').split(',') if p.strip()]
                     if name.lower() in current_tags:
                         btn.setChecked(True)
-                        btn.setStyleSheet("background-color: #2980b9; color: white; border: 1px solid #3498db; padding: 4px 8px;")
+                        btn.setStyleSheet("background-color: #2980b9; color: white; border: 1px solid #3498db; padding: 2px 4px; font-size: 11px; min-width: 0px;")
                     else:
-                        btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 4px 8px;")
+                        btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 2px 4px; font-size: 11px; min-width: 0px;")
                         
                     # Use toggled signal for reliable checked state tracking
                     btn.toggled.connect(lambda checked, n=name: self._on_tag_toggled(n, checked))
