@@ -2395,6 +2395,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 if self.presets_panel:
                     self.presets_panel.refresh()
                 # Connect to existing toast instance
+                self.logger.debug(f"[PresetProperties] Saving success, showing toast")
                 if hasattr(self, '_toast_instance') and self._toast_instance:
                     self._toast_instance.show_message(_("Preset properties saved"), preset="success")
                 else:

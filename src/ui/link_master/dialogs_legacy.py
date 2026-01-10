@@ -2610,6 +2610,8 @@ class TagManagerDialog(QDialog):
         self.accept()
         # Use main window for toast so it persists
         app_window = self.window().parent() or self.window()
+        import logging
+        logging.debug(f"[FrequentTagEdit] Save success, showing toast on window={app_window}")
         if hasattr(app_window, '_toast_instance'):
             app_window._toast_instance.show_message(_("Tags saved successfully"), preset="success")
         else:
@@ -2653,6 +2655,7 @@ class FrequentTagEditDialog(QDialog):
         layout = QVBoxLayout(self)
         
         self.label = QLabel(_("Edit frequent tags (one per line):"))
+        self.label.setStyleSheet("background: transparent; color: #ffffff; border: none;")
         layout.addWidget(self.label)
         
         self.text_edit = QTextEdit()

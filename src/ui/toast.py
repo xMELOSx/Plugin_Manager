@@ -58,7 +58,11 @@ class Toast(QLabel):
         """Helper to show a toast on a parent without needing an instance.
         Automatically finds the main window to prevent clipping in small dialogs.
         """
-        if not parent: return
+        import logging
+        logging.debug(f"[Toast] show_toast called with parent={parent}, message={message}, preset={preset}")
+        if not parent: 
+            logging.debug("[Toast] show_toast failed: No parent provided")
+            return
         
         # Redirect to Main Window if possible
         from PyQt6.QtWidgets import QMainWindow
@@ -83,6 +87,7 @@ class Toast(QLabel):
         if y_offset is not None:
             toast.set_y_offset(y_offset)
             
+        logging.debug(f"[Toast] show_message being called on instance {toast} for target {target}")
         toast.show_message(message, preset=preset, duration=duration)
         return toast
 
@@ -122,7 +127,7 @@ class Toast(QLabel):
             self.setText(text)
         
         # Apply color
-        actual_preset = preset or kwargs.get('level', 'info')
+        actual_preset = preset or "info"
         if actual_preset and actual_preset in self.COLORS:
             self._color = self.COLORS[actual_preset]
         elif color:
@@ -136,6 +141,9 @@ class Toast(QLabel):
         
         # Position at top center with y_offset
         parent = self.parentWidget()
+        import logging
+        logging.debug(f"[Toast] show_message start: text='{text}', parent_w={parent.width() if parent else 'None'}")
+
         if parent:
             x = (parent.width() - self.width()) // 2
             y = self._y_offset
@@ -143,6 +151,7 @@ class Toast(QLabel):
         
         self.show()
         self.raise_()
+        logging.debug(f"[Toast] show_message visible: pos=({self.x()}, {self.y()}), parent={parent}")
         
         # Start Fade In
         self.opacity_effect.setOpacity(0.0)

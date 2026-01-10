@@ -189,6 +189,10 @@ class LMFileOpsMixin:
             
             if 'conflict_tag' in data or 'conflict_scope' in data:
                  self._refresh_tag_visuals()
+            
+            from src.ui.toast import Toast
+            self.logger.debug(f"[PropertiesEdit] Saving success for {rel}, showing toast")
+            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
 
     def _open_properties_from_rel_path(self, rel_path: str):
         """Wrapper to open properties EDIT dialog from a relative path."""

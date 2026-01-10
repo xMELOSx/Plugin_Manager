@@ -665,15 +665,15 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 padding: 0px 4px;
             }
             
-            /* Vertical Header */
+            /* Vertical Header - Remove all borders */
             QHeaderView::section:vertical {
                 background-color: #333;
                 color: #ffffff;
-                border: 1px solid #444;
+                border: none;
                 padding: 4px 8px;
             }
             
-            QTableCornerButton::section { background-color: #333; border: 1px solid #444; }
+            QTableCornerButton::section { background-color: #333; border: none; }
             
             QLineEdit { 
                 background-color: #3a3a3a; 
@@ -684,7 +684,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             }
             QLineEdit:focus { border: 1px solid #3498db; background-color: #444; }
             
-            QLabel { color: #ffffff; background: transparent; } 
+            QLabel { color: #ffffff; background: transparent; border: none; } 
             
             QPushButton {
                 background-color: #3a3a3a;

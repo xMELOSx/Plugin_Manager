@@ -523,6 +523,10 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             
         self._pending_changes.clear()
         self._has_changes = False
+        
+        from src.ui.toast import Toast
+        Toast.show_toast(self, _("Successfully saved {0} items").format(len(self.results)), "success")
+        
         self.accept()
 
     def reject(self):

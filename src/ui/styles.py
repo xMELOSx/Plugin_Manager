@@ -217,6 +217,7 @@ class DialogStyles:
         QLabel, QRadioButton, QCheckBox, QGroupBox {
             color: #e0e0e0;
             background-color: transparent;
+            border: none;
         }
         
         QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QAbstractItemView {
@@ -237,7 +238,7 @@ class DialogStyles:
             background-color: #333;
             color: #ddd;
             padding: 4px;
-            border: 1px solid #555;
+            border: none;
         }
 
         QPushButton {
@@ -270,6 +271,7 @@ def apply_common_dialog_style(dialog):
         QLabel {
             color: #ffffff;
             background-color: transparent;
+            border: none;
         }
     """
     
