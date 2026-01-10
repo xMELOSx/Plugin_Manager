@@ -405,6 +405,7 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self._last_scope = scope
         self._init_original_markers(self.items_data)
         self._update_window_title()
+        self.results = [] # CLEAR RESULTS ON RELOAD
         self._pending_tag_changes.clear()
         
         # 1. Update Columns
@@ -1659,12 +1660,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
     def _on_save_clicked(self):
         saved, count = self._perform_save()
         if saved:
-            # Show toast on parent window since this dialog is closing
-            target = self.parent() or self
-            if count > 0:
-                Toast.show_toast(target, _("Successfully saved {0} items").format(count), preset="success")
-            else:
-                Toast.show_toast(target, _("変更はありません"), preset="warning")
+            # We remove Toast calls here! 
+            # They will be handled by LinkMasterWindow._on_quick_view_finished
             self.accept()
 
     def _on_interim_save_clicked(self):

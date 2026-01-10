@@ -502,27 +502,31 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
 
     def _perform_save(self):
         """Mode 2 specific save logic."""
-        if not self._pending_changes:
+        if not hasattr(self, '_pending_changes') or not self._pending_changes:
             return True, 0
 
         count = 0
         if self.db:
             try:
-                for rel_path, changes in self._pending_changes.items():
-                    self.db.update_folder_display_config(rel_path, **changes)
+                # IMPORTANT: Use copy to avoid modification during iteration
+                pending = dict(self._pending_changes)
+                for rel_path, changes in pending.items():
+                    # Ensure path normalization
+                    norm_rel = rel_path.replace('\\', '/')
+                    self.db.update_folder_display_config(norm_rel, **changes)
                     
                     # Update results for Main Window
-                    data = {'rel_path': rel_path}
+                    data = {'rel_path': norm_rel}
                     data.update(changes)
                     # Check if already in results to avoid duplicates
-                    existing = next((r for r in self.results if r['rel_path'] == rel_path), None)
+                    existing = next((r for r in self.results if r['rel_path'] == norm_rel), None)
                     if existing:
                         existing.update(changes)
                     else:
                         self.results.append(data)
                     
                     # Update local item data to keep sync during interim saves
-                    item = next((i for i in self.items_data if i['rel_path'] == rel_path), None)
+                    item = next((i for i in self.items_data if i['rel_path'] == rel_path or i['rel_path'] == norm_rel), None)
                     if item:
                         item.update(changes)
                     
@@ -533,19 +537,15 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
                 
         self._pending_changes.clear()
         self._has_changes = False
-        self._update_window_title()
+        if hasattr(self, '_update_window_title'):
+             self._update_window_title()
         return True, count
 
     def _on_save_clicked(self):
         """Override to perform bulk save and close."""
         saved, count = self._perform_save()
         if saved:
-            # Show toast on parent window since this dialog is closing
-            target = self.parent() or self
-            if count > 0:
-                Toast.show_toast(target, _("Successfully saved {0} items").format(count), preset="success")
-            else:
-                Toast.show_toast(target, _("変更はありません"), preset="warning")
+            # Handled by Main Window
             self.accept()
 
     def reject(self):

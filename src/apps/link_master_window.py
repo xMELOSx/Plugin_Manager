@@ -1203,14 +1203,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._refresh_current_view(force=False)
             
             from src.core.lang_manager import _
-            # Optional: Show small notification or status log
-            self.logger.info(f"QuickView updated {len(dialog.results)} items.")
-            
             if not hasattr(self, '_toast_instance'):
-                self._toast_instance = Toast(self, "", y_offset=140)  # Below QuickTag bar
+                self._toast_instance = Toast(self, "", y_offset=140)
             
-            msg = _("{count}件 変更しました！").format(count=len(dialog.results))
-            self._toast_instance.show_message(msg, preset='success')
+            if dialog.results:
+                msg = _("{count}件 変更しました！").format(count=len(dialog.results))
+                self._toast_instance.show_message(msg, preset='success')
+            else:
+                self._toast_instance.show_message(_("変更はありません"), preset='warning')
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)

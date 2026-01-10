@@ -126,76 +126,18 @@ class LMFileOpsMixin:
         self._refresh_current_view()
 
     def _open_properties_for_path(self, abs_path: str):
-        """Opens property edit dialog for a single path."""
-        app_data = self.app_combo.currentData()
-        if not app_data: return
-        
-        from src.ui.link_master.dialogs import FolderPropertiesDialog
-        storage_root = app_data.get('storage_root')
+        """Opens property edit dialog for a single path. Unified to use batch method state."""
+        # Sync selection state to the target path so the batch method picks it up correctly
+        original_selection = set(self.selected_paths)
+        self.selected_paths = {abs_path}
         try:
-            rel = os.path.relpath(abs_path, storage_root).replace('\\', '/')
-            if rel == ".": rel = ""
-        except: rel = ""
-        
-        current_config = self.db.get_folder_config(rel) or {}
-        
-        dialog = FolderPropertiesDialog(
-            parent=self,
-            folder_path=abs_path,
-            current_config=current_config,
-            batch_mode=False,
-            app_name=app_data['name'],
-            storage_root=storage_root,
-            thumbnail_manager=self.thumbnail_manager,
-            app_deploy_default=app_data.get('deployment_type', 'folder'),
-            app_conflict_default=app_data.get('conflict_policy', 'backup'),
-            app_cat_style_default=app_data.get('default_category_style', 'image'),
-            app_pkg_style_default=app_data.get('default_package_style', 'image')
-        )
-        if dialog.exec():
-            data = dialog.get_data()
-            
-            # Phase 14: Auto-Redeploy on Settings Change
-            # If item was linked and deployment settings changed, re-deploy with new settings
-            was_linked = current_config.get('last_known_status') == 'linked'
-            old_rule = current_config.get('deploy_rule') or current_config.get('deploy_type')
-            old_mode = current_config.get('transfer_mode', 'symlink')
-            new_rule = data.get('deploy_rule')
-            new_mode = data.get('transfer_mode', 'symlink')
-            
-            from src.ui.toast import Toast
-            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
-            
-            settings_changed = (old_rule != new_rule) or (old_mode != new_mode)
-            
-            if was_linked and settings_changed:
-                self.logger.info(f"[AutoRedeploy] Settings changed for linked item: {rel}")
-                self.logger.info(f"  Old: rule={old_rule}, mode={old_mode}")
-                self.logger.info(f"  New: rule={new_rule}, mode={new_mode}")
-                
-                # Unlink using OLD settings (before DB update)
-                # This is handled by _unlink_single which reads from current DB
-                self._unlink_single(rel, update_ui=False)
-            
-            # Save new settings to DB
-            self.db.update_folder_display_config(rel, **data)
-            
-            # Re-deploy with new settings if was linked and settings changed
-            if was_linked and settings_changed:
-                self.logger.info(f"[AutoRedeploy] Re-deploying with new settings: {rel}")
-                self._deploy_single(rel, update_ui=True)
-            
-            abs_norm = abs_path.replace('\\', '/')
-            card = self._get_active_card_by_path(abs_norm)
-            if card:
-                card.update_data(**data)
-            
-            if 'conflict_tag' in data or 'conflict_scope' in data:
-                 self._refresh_tag_visuals()
-            
-            from src.ui.toast import Toast
-            self.logger.debug(f"[PropertiesEdit] Saving success for {rel}, showing toast")
-            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
+            self._batch_edit_properties_selected()
+        finally:
+            # Restore selection afterwards if needed, but usually properties dialog is non-modal
+            # and we want the card to stay selected. If we restore immediately, the dialog's
+            # on_accepted might use the restored selection.
+            # Actually, _batch_edit_properties_selected captures target_paths internally.
+            self.selected_paths = original_selection
 
     def _open_properties_from_rel_path(self, rel_path: str):
         """Wrapper to open properties EDIT dialog from a relative path."""
@@ -323,6 +265,26 @@ class LMFileOpsMixin:
         }
         TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
         
+        # Check if anything actually changed
+        has_real_changes = False
+        if not is_batch:
+            # Single: compare with original
+            for k, v in data.items():
+                if v != original_config.get(k):
+                    has_real_changes = True
+                    break
+        else:
+            # Batch: if any value is not "KEEP" and not None
+            has_real_changes = any(v is not None and v != "KEEP" for v in data.values())
+
+        if not has_real_changes:
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("変更はありません"), preset="warning")
+            return
+
+        from src.ui.toast import Toast
+        Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
+
         if not is_batch:
             # Single Mode Update
             path = target_paths[0]
@@ -344,7 +306,7 @@ class LMFileOpsMixin:
         else:
             # Batch Mode Update
             batch_updates = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
-            if not batch_updates: return
+            # Already checked has_real_changes above
             
             for path in target_paths:
                 try:
@@ -364,9 +326,6 @@ class LMFileOpsMixin:
             
             # Refresh visuals
             self._refresh_tag_visuals()
-            
-            from src.ui.toast import Toast
-            Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
         
         if any(k in data for k in TAG_AFFECTING_KEYS):
              self._refresh_tag_visuals()
