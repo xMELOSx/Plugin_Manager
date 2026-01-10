@@ -344,14 +344,20 @@ class LibraryPanel(QWidget):
         
         dep_counts = self._count_dependent_packages(libraries.keys(), all_configs)
         
-        # Save current expansion and selection (simplified - based on item type and name/id)
-        expanded_folders = set()
-        selected_ids = [] # List of (type, id_or_name)
+        # Save current selection before clearing
+        selected_lib_name = None
+        selected_folder_id = None
+        current_items = self.lib_tree.selectedItems()
+        if current_items:
+            data = current_items[0].data(0, Qt.ItemDataRole.UserRole)
+            if data:
+                if data.get('type') == 'library':
+                    selected_lib_name = data.get('name')
+                elif data.get('type') == 'folder':
+                    selected_folder_id = data.get('id')
         
         # Rebuild tree logic
-        self.lib_tree.clear() # Clear and rebuild is easier for hierarchy for now, but loses focus if not careful.
-        # However, let's try to maintain continuity if possible. 
-        # For simplicity in this complex view with widgets, we will rebuild.
+        self.lib_tree.clear()
         
         folder_items = {} # folder_id -> item
         
@@ -496,6 +502,21 @@ class LibraryPanel(QWidget):
             # Dep count
             item.setText(4, str(dep_counts.get(lib_name, 0)))
             item.setTextAlignment(4, Qt.AlignmentFlag.AlignCenter)
+        
+        # Restore selection after rebuild
+        if selected_lib_name or selected_folder_id:
+            iterator = QTreeWidgetItemIterator(self.lib_tree)
+            while iterator.value():
+                item = iterator.value()
+                data = item.data(0, Qt.ItemDataRole.UserRole)
+                if data:
+                    if selected_lib_name and data.get('type') == 'library' and data.get('name') == selected_lib_name:
+                        self.lib_tree.setCurrentItem(item)
+                        break
+                    elif selected_folder_id and data.get('type') == 'folder' and data.get('id') == selected_folder_id:
+                        self.lib_tree.setCurrentItem(item)
+                        break
+                iterator += 1
             
         self._update_buttons()
 
