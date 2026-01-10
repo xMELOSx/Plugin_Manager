@@ -19,6 +19,7 @@ from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.lang_manager import _
 import shutil
+import logging
 
 
 class JumpSlider(QSlider):
@@ -925,6 +926,8 @@ class PreviewWindow(QWidget):
                 window = window.parent()
             
             if window:
+                # Flag to prevent "Cancelled" toast
+                self._changes_saved = True
                 # Close this window first
                 self.close()
                 # Open non-modal dialog via Main Window
@@ -1259,9 +1262,12 @@ class PreviewWindow(QWidget):
         # Show "Cancelled" toast if closed without saving (and if not purely closing after Save)
         if not getattr(self, '_changes_saved', False):
             from src.ui.toast import Toast
-            Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+            parent = self.parent() or self
+            Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
             
         super().closeEvent(event)
+
+
 
 
     def keyPressEvent(self, event):

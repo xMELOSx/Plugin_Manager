@@ -504,12 +504,13 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
         """Perform save without closing the dialog (Mode 2)."""
         saved, count = self._perform_save()
         if saved:
+            # Proper parent lookup for non-modal toast
+            parent = self.parent() or self
+            from src.ui.toast import Toast
             if count > 0:
-                from src.ui.toast import Toast
-                Toast.show_toast(self.parent(), _("Changes saved! ({0} items)").format(count), preset="success")
+                Toast.show_toast(parent, _("Changes saved! ({0} items)").format(count), preset="success")
             else:
-                from src.ui.toast import Toast
-                Toast.show_toast(self.parent(), _("変更はありません"), preset="warning")
+                Toast.show_toast(parent, _("変更はありません"), preset="warning")
 
     def _perform_save(self):
         """Mode 2 specific save logic."""
@@ -572,7 +573,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
 
     def reject(self):
         from src.ui.toast import Toast
-        if self.parent():
-             Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+        parent = self.parent() or self
+        Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
         super().reject()
 

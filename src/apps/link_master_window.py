@@ -1202,15 +1202,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # but use force=False to avoid UI flicker if nothing else changed
             self._refresh_current_view(force=False)
             
-            from src.core.lang_manager import _
-            if not hasattr(self, '_toast_instance'):
-                self._toast_instance = Toast(self, "", y_offset=140)
-            
+            from src.ui.toast import Toast
             if dialog.results:
                 msg = _("{count}件 変更しました！").format(count=len(dialog.results))
-                self._toast_instance.show_message(msg, preset='success')
+                Toast.show_toast(self, msg, preset='success', y_offset=140)
             else:
-                self._toast_instance.show_message(_("変更はありません"), preset='warning')
+                Toast.show_toast(self, _("変更はありません"), preset='warning', y_offset=140)
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)

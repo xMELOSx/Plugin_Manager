@@ -1782,7 +1782,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             return True, 0
 
     def reject(self):
+        self.results = [] # Clear results to prevent sticky toasts in Main Window
         from src.ui.toast import Toast
-        if self.parent():
-             Toast.show_toast(self.parent(), _("Edit Cancelled"), preset="warning")
+        parent = self.parent() or self
+        Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
         super().reject()
