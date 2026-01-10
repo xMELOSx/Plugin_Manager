@@ -1095,6 +1095,21 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                                        QMessageBox.StandardButton.Cancel)
             msg_box.setDefaultButton(QMessageBox.StandardButton.Save)
             
+            # Apply dark theme styling directly
+            msg_box.setStyleSheet("""
+                QMessageBox { background-color: #2b2b2b; }
+                QMessageBox QLabel { color: #eeeeee; }
+                QMessageBox QPushButton { 
+                    background-color: #444; 
+                    color: #eeeeee; 
+                    border: 1px solid #555; 
+                    padding: 6px 12px; 
+                    border-radius: 4px;
+                    min-width: 60px;
+                }
+                QMessageBox QPushButton:hover { background-color: #555; }
+            """)
+            
             ret = msg_box.exec()
             
             if ret == QMessageBox.StandardButton.Save:

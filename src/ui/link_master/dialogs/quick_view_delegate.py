@@ -66,8 +66,17 @@ class ScoreDelegate(QStyledItemDelegate):
         editor.setFrame(False)
         editor.setMinimum(0)
         editor.setMaximum(9999)
-        # Inherit the high-quality arrow drawing from StyledSpinBox
-        editor.setStyleSheet(editor.styleSheet() + "background-color: #444; color: white; border: none;") 
+        # Style to prevent "selected" text appearance - match selection colors to normal colors
+        editor.setStyleSheet(editor.styleSheet() + """
+            background-color: #444; 
+            color: white; 
+            border: none;
+            selection-background-color: #444;
+            selection-color: white;
+        """)
+        # Deselect any text on creation
+        editor.lineEdit().deselect() if editor.lineEdit() else None
+ 
         
         # Phase 1.1.70: Connect valueChanged for persistent editors
         # Since setModelData is not called reliably for persistent editors,
