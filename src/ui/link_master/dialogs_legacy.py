@@ -953,6 +953,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         # ===== Folder Attributes Group =====
         attr_group = QGroupBox(_("Folder Attributes"))
+        attr_group.setStyleSheet("""
+            QGroupBox { color: #ddd; border: 1px solid #555; border-radius: 4px; margin-top: 10px; padding-top: 10px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; }
+        """)
         attr_form = QFormLayout(attr_group)
         
         # Folder Type
