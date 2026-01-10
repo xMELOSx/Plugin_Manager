@@ -1170,16 +1170,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             if hasattr(self, '_on_refresh_triggered'):
                 self._on_refresh_triggered()
         
+        from src.ui.toast import Toast
         if result_code == QDialog.DialogCode.Accepted:
             # Phase 1.1.15: Optimized pinpoint update instead of full re-scan
-            # This immediately reflects changes on active cards
-            
             # Phase 1.1.27: Handle both list (Mode 1) and dict (Mode 2) results
             results_iter = []
             if isinstance(dialog.results, list):
                 results_iter = dialog.results
             elif isinstance(dialog.results, dict):
-                # Convert dict {rel_path: changes} to list of changes with rel_path included
                 for rel_path, changes in dialog.results.items():
                     if isinstance(changes, dict):
                         c = changes.copy()
@@ -1189,25 +1187,32 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             for changes in results_iter:
                 rel_path = changes.get('rel_path')
                 if not rel_path or not self.storage_root: continue
-                
                 full_path = os.path.join(self.storage_root, rel_path)
                 card = self._get_active_card_by_path(full_path)
                 if card:
-                    # Update the card directly with the new data
                     card.update_data(**changes)
-                    # Ensure visibility/filters are re-evaluated if tags or name changed
                     self._apply_card_filters()
             
-            # Still trigger a background re-scan just to be safe and update other Mixins
-            # but use force=False to avoid UI flicker if nothing else changed
             self._refresh_current_view(force=False)
             
-            from src.ui.toast import Toast
             if dialog.results:
                 msg = _("{count}件 変更しました！").format(count=len(dialog.results))
                 Toast.show_toast(self, msg, preset='success', y_offset=140)
             else:
                 Toast.show_toast(self, _("変更はありません"), preset='warning', y_offset=140)
+        else:
+            # Case: Rejected (Cancelled or X button)
+            # We show toasts here because the Main Window now has focus.
+            has_changes = False
+            if hasattr(dialog, '_has_real_changes'):
+                 has_changes = dialog._has_real_changes()
+            elif hasattr(dialog, '_has_changes'):
+                 has_changes = dialog._has_changes
+            
+            if has_changes:
+                Toast.show_toast(self, _("Edit Cancelled"), preset="warning", y_offset=140)
+            else:
+                Toast.show_toast(self, _("変更はありません"), preset="warning", y_offset=140)
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)

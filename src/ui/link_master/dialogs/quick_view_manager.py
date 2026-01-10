@@ -1101,15 +1101,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         if not self._check_unsaved_changes():
             return
 
-        # Phase 1.1.280: Explicit feedback on closure for user audit
-        from src.ui.toast import Toast
-        parent = self.parent() or self
-        if self._has_real_changes() or getattr(self, '_has_changes', False):
-            # User specifically chose to Discard in the message box
-            Toast.show_toast(parent, _("Edit Cancelled"), preset="warning")
-        else:
-            # No changes were made at all
-            Toast.show_toast(parent, _("変更はありません"), preset="warning")
+        # Phase 1.1.280: Feedback will be handled by LinkMasterWindow._on_quick_view_finished
+        # when the window loses focus or is destroyed.
 
         self.save_options("quick_view_manager")
         # Restore original data to ensure the cache stays clean
@@ -1678,10 +1671,12 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         """Perform save without closing the dialog."""
         saved, count = self._perform_save()
         if saved:
+            # INTERIM SAVE: Dialog has focus, so it's safe to use self as parent
+            from src.ui.toast import Toast
             if count > 0:
-                self.show_toast(_("Changes saved! ({0} items)").format(count), "success")
+                Toast.show_toast(self, _("Changes saved! ({0} items)").format(count), preset="success")
             else:
-                self.show_toast(_("変更はありません"), "warning")
+                Toast.show_toast(self, _("変更はありません"), preset="warning")
 
     def _perform_save(self):
         """Collect changes by mapping table widgets back to items_data via rel_path."""
