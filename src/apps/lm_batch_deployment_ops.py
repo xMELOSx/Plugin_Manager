@@ -1088,8 +1088,12 @@ class LMDeploymentOpsMixin:
                     child_tag = child_cfg.get('conflict_tag')
                     if child_tag:
                         if child_tag in child_conflict_tags:
-                            QMessageBox.warning(self, _("Category Deploy"), 
-                                _("Cannot deploy category: Duplicate conflict tag '{tag}' found.").format(tag=child_tag))
+                            msg_box = QMessageBox(self)
+                            msg_box.setIcon(QMessageBox.Icon.Warning)
+                            msg_box.setWindowTitle(_("Category Deploy"))
+                            msg_box.setText(_("Cannot deploy category: Duplicate conflict tag '{tag}' found.").format(tag=child_tag))
+                            apply_common_dialog_style(msg_box)
+                            msg_box.exec()
                             return
                         child_conflict_tags.add(child_tag)
                     
@@ -1097,8 +1101,12 @@ class LMDeploymentOpsMixin:
                     lib_name = child_cfg.get('library_name')
                     if lib_name:
                         if lib_name in child_libraries:
-                            QMessageBox.warning(self, _("Category Deploy"), 
-                                _("Cannot deploy category: Duplicate library '{lib}' found.").format(lib=lib_name))
+                            msg_box = QMessageBox(self)
+                            msg_box.setIcon(QMessageBox.Icon.Warning)
+                            msg_box.setWindowTitle(_("Category Deploy"))
+                            msg_box.setText(_("Cannot deploy category: Duplicate library '{lib}' found.").format(lib=lib_name))
+                            apply_common_dialog_style(msg_box)
+                            msg_box.exec()
                             return
                         child_libraries.add(lib_name)
                     
@@ -1113,8 +1121,12 @@ class LMDeploymentOpsMixin:
         for tag in child_conflict_tags:
             conflict = self._check_tag_conflict(category_rel_path, {'conflict_tag': tag}, app_data)
             if conflict:
-                QMessageBox.warning(self, _("Category Deploy"),
-                    _("Cannot deploy category: Tag conflict with '{name}'.").format(name=conflict.get('name', 'unknown')))
+                msg_box = QMessageBox(self)
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.setWindowTitle(_("Category Deploy"))
+                msg_box.setText(_("Cannot deploy category: Tag conflict with '{name}'.").format(name=conflict.get('name', 'unknown')))
+                apply_common_dialog_style(msg_box)
+                msg_box.exec()
                 return
         
         if linked_children:

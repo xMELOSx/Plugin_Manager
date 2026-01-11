@@ -42,6 +42,22 @@ class LMSettingsPanelMixin:
                 QTabWidget::pane { border: 1px solid #555; background: #333; }
                 QTabBar::tab { background: #3a3a3a; color: #ddd; padding: 5px 10px; }
                 QTabBar::tab:selected { background: #555; }
+                QSpinBox {
+                    background-color: #3a3a3a; color: white; 
+                    border: 1px solid #555; border-radius: 3px;
+                    padding: 2px 20px 2px 4px;  /* Right padding for arrows */
+                    min-width: 50px;
+                }
+                QSpinBox::up-button, QSpinBox::down-button {
+                    width: 16px;
+                    background-color: #4a4a4a;
+                    border: none;
+                }
+                QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                    background-color: #5a5a5a;
+                }
+                QSpinBox::up-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #ccc; }
+                QSpinBox::down-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #ccc; }
             """)
             
             layout = QVBoxLayout(self._settings_panel)
@@ -128,15 +144,22 @@ class LMSettingsPanelMixin:
         self._settings_backup = copy.deepcopy(self.card_settings)
         self._overrides_backup = (self.cat_display_override, self.pkg_display_override)
         
-        # Initial Tab Selection
+        # Initial Tab Selection - Use category override OR app default setting
         cur_mode = self.cat_display_override
         if not cur_mode:
-            if self.btn_cat_text.styleSheet() == self.btn_selected_style or self.btn_cat_text.styleSheet() == self.btn_no_override_style:
-                cur_mode = "text_list"
-            elif self.btn_cat_image.styleSheet() == self.btn_selected_style or self.btn_cat_image.styleSheet() == self.btn_no_override_style:
-                cur_mode = "mini_image"
+            # Get default from app_data if available
+            if hasattr(self, 'app_data') and self.app_data:
+                default_style = self.app_data.get('default_category_style', 'image')
+                style_to_mode = {'text': 'text_list', 'image': 'mini_image', 'both': 'image_text'}
+                cur_mode = style_to_mode.get(default_style, 'mini_image')
             else:
-                cur_mode = "image_text"
+                # Fallback: check button styles
+                if hasattr(self, 'btn_cat_text') and (self.btn_cat_text.styleSheet() == self.btn_selected_style or self.btn_cat_text.styleSheet() == self.btn_no_override_style):
+                    cur_mode = "text_list"
+                elif hasattr(self, 'btn_cat_image') and (self.btn_cat_image.styleSheet() == self.btn_selected_style or self.btn_cat_image.styleSheet() == self.btn_no_override_style):
+                    cur_mode = "mini_image"
+                else:
+                    cur_mode = "image_text"
 
         mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
         self._settings_tabs.blockSignals(True)

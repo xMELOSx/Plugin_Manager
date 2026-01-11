@@ -336,9 +336,13 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         title_h.setContentsMargins(0,0,0,0)
         
         icon_btn = QPushButton("📂")
-        icon_btn.setFixedSize(30, 30)
+        icon_btn.setFixedSize(44, 44)
         icon_btn.setStyleSheet("""
-            QPushButton { background: transparent; border: none; font-size: 18pt; }
+            QPushButton { 
+                background: transparent; border: none; 
+                font-size: 24pt; line-height: 44px; 
+                padding: 0; margin: 0;
+            }
             QPushButton:hover { background-color: rgba(255, 255, 255, 0.15); border-radius: 4px; }
         """)
         icon_btn.setToolTip(_("ソースフォルダを開く"))

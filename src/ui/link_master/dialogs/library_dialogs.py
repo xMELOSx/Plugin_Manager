@@ -2,7 +2,7 @@ import os
 import json
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
                              QPushButton, QTreeWidget, QTreeWidgetItem, QFormLayout, 
-                             QLineEdit, QMessageBox, QListWidget, QListWidgetItem, QMenu)
+                             QLineEdit, QMessageBox, QListWidget, QListWidgetItem, QMenu, QWidget)
 from PyQt6.QtCore import pyqtSignal, Qt, QSize, QByteArray
 from src.core.lang_manager import _
 from src.ui.common_widgets import StyledComboBox, ProtectedLineEdit
@@ -24,9 +24,9 @@ class LibrarySettingsDialog(QDialog):
             QDialog { background-color: #1e1e1e; color: #e0e0e0; }
             QLineEdit, QTextEdit { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; padding: 4px; }
             QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QTreeWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #333; color: #eee; border: none; padding: 4px; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; min-height: 24px; }
+            QTreeWidget::item { padding: 0px; margin: 0px; min-height: 32px; }
+            QHeaderView::section { background-color: #333; color: white; border: none; padding: 6px; font-weight: bold; }
+            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 2px 4px; margin: 0px; min-height: 20px; }
             QPushButton:hover { background-color: #5d5d5d; }
         """)
         self._init_ui()
@@ -82,14 +82,52 @@ class LibrarySettingsDialog(QDialog):
         layout.addWidget(QLabel(_("Registered Versions:")))
         
         self.ver_tree = QTreeWidget()
+        self.ver_tree.setUniformRowHeights(True)  # Ensure consistent row heights
         self.ver_tree.setEditTriggers(QTreeWidget.EditTrigger.DoubleClicked | QTreeWidget.EditTrigger.SelectedClicked)
-        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), _("URL"), _("View"), _("Edit"), _("Unreg")])
-        self.ver_tree.setColumnWidth(0, 80)
-        self.ver_tree.setColumnWidth(1, 150)
-        self.ver_tree.setColumnWidth(2, 120)
-        self.ver_tree.setColumnWidth(3, 50)
-        self.ver_tree.setColumnWidth(4, 50)
-        self.ver_tree.setColumnWidth(5, 50)
+        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), "URL", _("View"), _("Edit"), _("Unreg")])
+        
+        # Column widths: Version fixed, Package Name stretches, button columns fixed
+        header = self.ver_tree.header()
+        header.setSectionResizeMode(0, header.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, header.ResizeMode.Stretch)  # Package Name stretches
+        header.setSectionResizeMode(2, header.ResizeMode.Fixed)
+        header.setSectionResizeMode(3, header.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, header.ResizeMode.Fixed)
+        header.setSectionResizeMode(5, header.ResizeMode.Fixed)
+        self.ver_tree.setColumnWidth(0, 100)
+        self.ver_tree.setColumnWidth(2, 45)  # URL button
+        self.ver_tree.setColumnWidth(3, 45)  # View button
+        self.ver_tree.setColumnWidth(4, 45)  # Edit button
+        self.ver_tree.setColumnWidth(5, 45)  # Unreg button
+        
+        # Common button style - shared by all buttons
+        btn_style = """
+            QPushButton {
+                padding: 0; margin: 0; font-size: 14px;
+                background-color: #3d3d3d; color: #e0e0e0; 
+                border: none; border-radius: 3px;
+            }
+            QPushButton:hover { background-color: #5d5d5d; }
+            QPushButton:pressed { background-color: #2d2d2d; }
+        """
+        delete_btn_style = """
+            QPushButton {
+                background-color: #c0392b; color: white; 
+                padding: 0; margin: 0; font-size: 14px;
+                border: none; border-radius: 3px;
+            }
+            QPushButton:hover { background-color: #e74c3c; }
+            QPushButton:pressed { background-color: #922b21; }
+        """
+        
+        # Helper to create centered button container
+        def create_centered_btn(btn):
+            container = QWidget()
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+            return container
         
         for v in self.versions:
             item = QTreeWidgetItem(self.ver_tree)
@@ -98,33 +136,44 @@ class LibrarySettingsDialog(QDialog):
             rel_path = v.get('_rel_path') or v.get('rel_path', '')
             item.setText(1, os.path.basename(rel_path))
             
+            # Set row height - smaller at 26px
+            item.setSizeHint(0, QSize(0, 26))
+            
             # URL Button
             url_btn = QPushButton("🌐")
-            url_btn.setFixedSize(30, 24)
+            url_btn.setFixedSize(32, 22)
+            url_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            url_btn.setStyleSheet(btn_style)
             url_btn.setToolTip(_("URL Management"))
             url_btn.clicked.connect(lambda _, p=rel_path, c=v.get('url_list', '[]'): self._open_version_url_manager(p, c))
-            self.ver_tree.setItemWidget(item, 2, url_btn)
+            self.ver_tree.setItemWidget(item, 2, create_centered_btn(url_btn))
             
             # Column 3 (View)
             view_btn = QPushButton("📋")
-            view_btn.setFixedSize(30, 24)
+            view_btn.setFixedSize(32, 22)
+            view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            view_btn.setStyleSheet(btn_style)
             view_btn.setToolTip(_("View Properties"))
             view_btn.clicked.connect(lambda _, p=rel_path: self.request_view_properties.emit(p))
-            self.ver_tree.setItemWidget(item, 3, view_btn)
+            self.ver_tree.setItemWidget(item, 3, create_centered_btn(view_btn))
             
             # Column 4 (Edit)
             edit_btn = QPushButton("✏")
-            edit_btn.setFixedSize(30, 24)
+            edit_btn.setFixedSize(32, 22)
+            edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            edit_btn.setStyleSheet(btn_style)
             edit_btn.setToolTip(_("Edit Properties"))
             edit_btn.clicked.connect(lambda _, p=rel_path: self.request_edit_properties.emit(p))
-            self.ver_tree.setItemWidget(item, 4, edit_btn)
+            self.ver_tree.setItemWidget(item, 4, create_centered_btn(edit_btn))
             
-            # Column 5 (Unregister)
+            # Column 5 (Unregister) - red with hover
             unreg_btn = QPushButton("🗑")
-            unreg_btn.setFixedSize(30, 24)
-            unreg_btn.setStyleSheet("background-color: #c0392b; color: white; padding: 0;")
+            unreg_btn.setFixedSize(32, 22)
+            unreg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            unreg_btn.setStyleSheet(delete_btn_style)
+            unreg_btn.setToolTip(_("Unregister"))
             unreg_btn.clicked.connect(lambda _, p=rel_path, it=item: self._unregister_version(p, it))
-            self.ver_tree.setItemWidget(item, 5, unreg_btn)
+            self.ver_tree.setItemWidget(item, 5, create_centered_btn(unreg_btn))
             
             item.setData(0, Qt.ItemDataRole.UserRole, rel_path)
         
