@@ -37,7 +37,7 @@ class ExplorerPanel(QWidget):
         self.header_frame.setWindowFlags(Qt.WindowType.Widget)
         self.header_frame.setFixedHeight(30)
         self.header_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        self.header_frame.setStyleSheet("QFrame { background-color: #333; border-radius: 4px; } QLabel { color: #eee; font-weight: bold; }")
+        self.header_frame.setStyleSheet("QFrame { background-color: transparent; border: 1px solid #444; border-radius: 4px; } QLabel { color: #eee; font-weight: bold; }")
         
         header_layout = QHBoxLayout(self.header_frame)
         header_layout.setContentsMargins(4, 2, 4, 2)
@@ -77,7 +77,7 @@ class ExplorerPanel(QWidget):
         self.tree = QTreeView(self)
         self.tree.setStyleSheet("""
             QTreeView {
-                background-color: #2b2b2b;
+                background-color: transparent;
                 color: #ffffff;
                 border: none;
             }
@@ -113,7 +113,7 @@ class ExplorerPanel(QWidget):
         self._resize_handle.setWindowFlags(Qt.WindowType.Widget)
         self._resize_handle.setFixedWidth(5)
         self._resize_handle.setCursor(Qt.CursorShape.SizeHorCursor)
-        self._resize_handle.setStyleSheet("QFrame { background: #555; } QFrame:hover { background: #777; }")
+        self._resize_handle.setStyleSheet("QFrame { background: rgba(85, 85, 85, 0.3); } QFrame:hover { background: rgba(119, 119, 119, 0.5); }")
         self._resize_handle.raise_()
         self._drag_start = None
         self._init_resize_events()

@@ -215,6 +215,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.allow_folder_deploy_cb.toggled.connect(self._on_allow_folder_deploy_toggled)
         layout.addWidget(self.allow_folder_deploy_cb)
         
+        # Background Destruction Test Button
+        self.btn_bg_destruct = QPushButton(_("背景破棄 (Background Destruction Test)"))
+        self.btn_bg_destruct.clicked.connect(self._test_background_destruction)
+        layout.addWidget(self.btn_bg_destruct)
+        
         # Window Count Debug Button
         self.btn_window_count = QPushButton(_("🔍 Show Top-Level Widget Count"))
         self.btn_window_count.clicked.connect(self._show_window_count)
@@ -276,6 +281,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.ui_debug_lbl.setText(_("<b>UI Debug</b>"))
         self.show_hitbox_cb.setText(_("当たり判定を表示 (Show Hitboxes)"))
         self.show_outlines_cb.setText(_("全ウィジェットに枠線を表示 (Global Outlines)"))
+        self.btn_bg_destruct.setText(_("背景破棄 (Background Destruction Test)"))
         self.lang_header_lbl.setText(_("<b>Language Settings / 言語設定</b>"))
         self.lang_label.setText(f"{_('Current:')} {self.lang_manager.current_language_name}")
 
@@ -318,6 +324,29 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
         self._save_debug_setting('allow_folder_deploy_pkg_view', checked)
         self.logger.info(f"Folder Deploy in Package View: {checked}")
+
+    def _test_background_destruction(self):
+        """Toggle WA_TranslucentBackground and related attributes to test accumulation."""
+        if not self.parent_window:
+            QMessageBox.warning(self, "Debug", "Parent window not connected")
+            return
+        
+        # Toggle TranslucentBackground
+        current = self.parent_window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        new_state = not current
+        
+        self.parent_window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, new_state)
+        # Also toggle WA_NoSystemBackground for deep destruction test
+        self.parent_window.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, new_state)
+        
+        self.logger.info(f"[Debug] Background Destruction Toggle: WA_TranslucentBackground={new_state}")
+        
+        # Force a full repaint and layout update
+        self.parent_window.update()
+        
+        msg = f"WA_TranslucentBackground set to: {new_state}\n"
+        msg += "Note: Toggling this may require resizing or moving the window to see the effect of background discarding."
+        QMessageBox.information(self, "Background Debug", msg)
 
     def _get_debug_settings_path(self):
         """Get path to debug settings JSON file."""

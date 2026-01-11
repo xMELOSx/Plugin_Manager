@@ -226,7 +226,7 @@ def _setup_content_area(window, main_layout, main_widget):
 def _setup_sidebar(window, layout):
     btn_strip = QWidget(window.content_wrapper)
     btn_strip.setFixedWidth(28)
-    btn_strip.setStyleSheet("background-color: #222; border-right: 1px solid #333;")
+    btn_strip.setStyleSheet("background-color: transparent; border-right: 1px solid #333;")
     btn_strip.installEventFilter(window)
     btn_strip.setAttribute(Qt.WidgetAttribute.WA_Hover)
     btn_strip_layout = QVBoxLayout(btn_strip)
@@ -678,4 +678,4 @@ def _setup_floating_explorer(window):
     window.explorer_panel.request_properties_edit.connect(window._handle_explorer_properties_edit)
     window.explorer_panel.width_changed.connect(window._on_explorer_panel_width_changed)
     window.explorer_panel.hide()
-    window.explorer_panel.setStyleSheet("background-color: #2b2b2b; border-right: 1px solid #444;")
+    window.explorer_panel.setStyleSheet("background-color: transparent; border-right: 1px solid #444;")
