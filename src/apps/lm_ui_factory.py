@@ -469,6 +469,7 @@ def _setup_navigation_bar(window, right_layout):
 
 def _setup_main_card_view(window, right_layout):
     window.v_splitter = QSplitter(Qt.Orientation.Vertical, window.sidebar_splitter)
+    right_layout.addWidget(window.v_splitter) # FIX: Add to layout!
     
     btn_style = """
         QPushButton { background-color: #3b3b3b; color: #fff; font-size: 14px; border: 1px solid #555; border-radius: 4px; padding: 2px 6px; }
@@ -488,6 +489,7 @@ def _setup_main_card_view(window, right_layout):
     
     # Categories Area
     cat_group = QWidget(window.v_splitter)
+    window.v_splitter.addWidget(cat_group)  # FIX: Explicit add to splitter
     cat_group_layout = QVBoxLayout(cat_group)
     cat_group_layout.setContentsMargins(0, 0, 0, 0)
     
@@ -564,7 +566,11 @@ def _setup_main_card_view(window, right_layout):
     window.cat_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     window.cat_container.customContextMenuRequested.connect(window._show_cat_context_menu)
     window.cat_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+    # Background added per user request (Shared Transparency Dark)
+    window.cat_container.setStyleSheet("#ItemCardPool { background-color: rgba(30, 30, 30, 150); border-radius: 6px; }")
     window.cat_layout = FlowLayout(window.cat_container, margin=10, spacing=10)
+
+    # FIX: Restore Category Scroll Area
     window.cat_scroll = QScrollArea(cat_group)
     window.cat_scroll.setWindowFlags(Qt.WindowType.Widget)
     window.cat_scroll.setWidgetResizable(True)
@@ -575,12 +581,12 @@ def _setup_main_card_view(window, right_layout):
     window.cat_scroll.setWidget(window.cat_container)
     window.cat_scroll.setMinimumHeight(50)
     cat_group_layout.addWidget(window.cat_scroll)
-    
+
     # Packages Area
     pkg_group = QWidget(window.v_splitter)
+    window.v_splitter.addWidget(pkg_group) # FIX: Explicit add to splitter
     pkg_group_layout = QVBoxLayout(pkg_group)
     pkg_group_layout.setContentsMargins(0, 0, 0, 0)
-    
     
     # Packages Area - Wrap Header in Container for Dragging
     window.pkg_header_container = QWidget(pkg_group)
@@ -597,7 +603,8 @@ def _setup_main_card_view(window, right_layout):
     window.btn_import_pkg.setStyleSheet(btn_style)
     window.btn_import_pkg.clicked.connect(lambda: window._open_import_dialog("package"))
     pkg_header.addWidget(window.btn_import_pkg)
-    
+
+    # FIX: Restore Missing Header Elements
     window.pkg_title_lbl = QLabel(_("<b>Packages</b>"), pkg_group, styleSheet="color: #fff;")
     pkg_header.addWidget(window.pkg_title_lbl)
     
@@ -642,32 +649,36 @@ def _setup_main_card_view(window, right_layout):
     window.btn_pkg_quick_manage.setToolTip(_("Quick View Manager for Packages"))
     window.btn_pkg_quick_manage.released.connect(lambda: window._open_quick_view_cached(scope="package"))
     pkg_header.addWidget(window.btn_pkg_quick_manage)
-    
-    # pkg_group_layout.addLayout(pkg_header) # Replaced by addWidget(container)
-    
+
+    # Continue with pkg_container...
     window.pkg_container = QWidget(pkg_group)
-    window.pkg_container.setObjectName("ItemCardPool") # Whitelisted via class or parent
+    window.pkg_container.setObjectName("ItemCardPool")
     window.pkg_container.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     window.pkg_container.customContextMenuRequested.connect(window._show_pkg_context_menu)
     window.pkg_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+    # Background added per user request
+    window.pkg_container.setStyleSheet("#ItemCardPool { background-color: rgba(30, 30, 30, 150); border-radius: 6px; }")
     window.pkg_layout = FlowLayout(window.pkg_container, margin=10, spacing=10)
+    
+    # FIX: Restore Package Scroll Area
     window.pkg_scroll = QScrollArea(pkg_group)
     window.pkg_scroll.setWindowFlags(Qt.WindowType.Widget)
     window.pkg_scroll.setWidgetResizable(True)
+    window.pkg_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    window.pkg_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    window.pkg_scroll.setFrameShape(QFrame.Shape.NoFrame)
+    window.pkg_scroll.setStyleSheet("background: transparent;")
     window.pkg_scroll.setWidget(window.pkg_container)
+    window.pkg_scroll.setMinimumHeight(50)
     pkg_group_layout.addWidget(window.pkg_scroll)
     
-    window.v_splitter.addWidget(cat_group)
-    window.v_splitter.addWidget(pkg_group)
-    
+    # FIX: Restore Splitter Configuration (Deleted by mistake)
     saved_cat_height = window.registry.get_global("category_view_height", 200)
     window._category_fixed_height = saved_cat_height
     window.v_splitter.setSizes([saved_cat_height, 400])
     window.v_splitter.setStretchFactor(0, 0)
     window.v_splitter.setStretchFactor(1, 1)
     window.v_splitter.splitterMoved.connect(window._on_splitter_moved)
-    
-    right_layout.addWidget(window.v_splitter, 1)
 
 def _setup_floating_explorer(window):
     window.explorer_panel = ExplorerPanel(window)

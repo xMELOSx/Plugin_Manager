@@ -111,7 +111,7 @@ class LMSelectionMixin:
                 try:
                     rel_path = os.path.relpath(active_card.path, self.storage_root).replace('\\', '/')
                     if rel_path == ".": rel_path = ""
-                    menu = self._create_item_context_menu(rel_path)
+                    menu = self._create_item_context_menu(rel_path, is_package_context=(area_type == 'package'))
                 except Exception as e:
                     self.logger.error(f"Failed to create context menu: {e}")
                     return
@@ -142,26 +142,27 @@ class LMSelectionMixin:
             menu.addSeparator()
             
             # Determine selection composition
-            has_categories = False
-            has_packages = False
-            for path in self.selected_paths:
-                rel = os.path.relpath(path, self.storage_root).replace('\\', '/') if self.storage_root else ''
-                cfg = self.db.get_folder_config(rel) if self.db else {}
-                folder_type = cfg.get('folder_type', 'auto') if cfg else 'auto'
-                if folder_type == 'category':
-                    has_categories = True
-                elif folder_type == 'package':
-                    has_packages = True
-                else:
-                    # Auto-detect based on heuristic
-                    if hasattr(self, '_detect_folder_type'):
-                        detected = self._detect_folder_type(path)
-                        if detected == 'category':
-                            has_categories = True
-                        else:
-                            has_packages = True
-                    else:
-                        has_packages = True  # Default to package
+            # Determine selection composition based on View Source (Strict Separation)
+            has_cat_source = False
+            has_pkg_source = False
+            
+            # Check if selected paths belong to Category Layout
+            for i in range(self.cat_layout.count()):
+                w = self.cat_layout.itemAt(i).widget()
+                if isinstance(w, ItemCard) and w.path in self.selected_paths:
+                    has_cat_source = True
+                    break
+            
+            # Check if selected paths belong to Package Layout
+            for i in range(self.pkg_layout.count()):
+                w = self.pkg_layout.itemAt(i).widget()
+                if isinstance(w, ItemCard) and w.path in self.selected_paths:
+                    has_pkg_source = True
+                    break
+            
+            # Map to logical types for downstream checks
+            has_categories = has_cat_source
+            has_packages = has_pkg_source
             
             # Category Deploy/Unlink
             act_cat_deploy = menu.addAction(_("📁 Batch Category Deploy"))

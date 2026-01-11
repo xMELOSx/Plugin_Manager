@@ -300,13 +300,36 @@ class ScannerWorker(QObject):
 
     def _enrich_item(self, item, item_abs_path, parent_path, folder_configs):
         # Rel Path for config check (standardize to '/')
+        item_rel = ""
         try:
-            item_rel = os.path.relpath(item_abs_path, self.storage_root)
-            if item_rel == ".": item_rel = ""
-            item_rel = item_rel.replace('\\', '/')  # Standardize for DB lookup
-        except: item_rel = ""
+            raw_rel = os.path.relpath(item_abs_path, self.storage_root)
+            if raw_rel == ".": raw_rel = ""
+            item_rel = raw_rel.replace('\\', '/')  # Standard format
+        except: pass
         
-        item_config = folder_configs.get(item_rel, {})
+        # Phase 36 Fix: Case-Insensitive Config Lookup
+        # Windows file system logic: 'Foo' should match config for 'foo'
+        # We need to find the correct key in folder_configs that matches item_rel (case-insensitive)
+        item_config = folder_configs.get(item_rel)
+        if item_config is None:
+            # Fallback: linear search for case check (only if direct hit fails)
+            target_lower = item_rel.lower()
+            for key in folder_configs:
+                if key.lower() == target_lower:
+                    item_config = folder_configs[key]
+                    break
+        
+        if item_config is None:
+            item_config = {}
+            
+        # Phase 42 Fix: Explicitly preserve metadata from config to item
+        # This ensures UI receives the persisted values even if scanner didn't populate them from file system
+        if 'url_list' in item_config: item['url_list'] = item_config['url_list']
+        if 'is_favorite' in item_config: item['is_favorite'] = item_config['is_favorite']
+        if 'score' in item_config: item['score'] = item_config['score']
+        if 'tags' in item_config: item['tags'] = item_config['tags']
+        if 'manual_preview_path' in item_config: item['manual_preview_path'] = item_config['manual_preview_path']
+        item['folder_type'] = item_config.get('folder_type', 'auto') # Carry this over too
         
         # 1. Determine Item Type (Package vs Category) for UI/logic purposes
         t_auto_start = time.perf_counter()
@@ -326,51 +349,190 @@ class ScannerWorker(QObject):
         deploy_rule = item_config.get('deploy_rule') or item_config.get('deploy_type') or app_deploy_default
         if deploy_rule == 'flatten': deploy_rule = 'files'
 
-        if target_override:
-            target_link = target_override
-        elif deploy_rule == 'files':
-            # Flatten: link is directly in target_root
-            target_link = os.path.join(self.target_root, item['name'])
-        elif deploy_rule == 'tree':
-            # Hierarchical reconstruction
-            rules_json = item_config.get('deployment_rules')
-            skip_val = 0
-            if rules_json:
-                try:
-                    ro = json.loads(rules_json)
-                    skip_val = int(ro.get('skip_levels', 0))
-                except: pass
+        # STRICT TARGET LOGIC:
+        # 1. Use Item's 'target_override' if set.
+        # 2. If not, check PARENT directories for 'target_override' (Inheritance).
+        # 3. Use Primary Target Root (Target A) defined in App Settings as fallback.
+        
+        primary_target_root = self.app_data.get('target_root')
+        scan_base = primary_target_root if primary_target_root else self.target_root
+        
+        # Logic to determine effective target root and relative path for deployment
+        effective_target_base = scan_base
+        effective_rel_path = item_rel
+        
+        # Helper to resolve actual target path from Config
+        def resolve_target_from_config(cfg, item_name_for_fallback=None):
+            if not cfg: return None
             
-            parts = item_rel.split('/')
-            if len(parts) > skip_val:
-                mirrored = "/".join(parts[skip_val:])
-                target_link = os.path.join(self.target_root, mirrored)
-            else:
-                target_link = self.target_root
+            # 1. New Schema: Explicit Selection
+            selection = cfg.get('target_selection')
+            if selection:
+                if selection == 'primary':
+                    return self.app_data.get('target_root')
+                elif selection == 'secondary':
+                    return self.app_data.get('target_root_2')
+                elif selection == 'tertiary':
+                    return self.app_data.get('target_root_3')
+                elif selection == 'custom':
+                    return cfg.get('target_override')
+            
+            # 2. Legacy Fallback: Infer from 'target_override' path matching
+            # This handles old DBs or "Garbage Value" cleanup dynamically
+            raw_override = cfg.get('target_override')
+            if raw_override:
+                # Normalization for dynamic check
+                ov_norm = os.path.normpath(raw_override).lower() if os.name == 'nt' else os.path.normpath(raw_override)
+                targets = {
+                    'primary': self.app_data.get('target_root'),
+                    'secondary': self.app_data.get('target_root_2'),
+                    'tertiary': self.app_data.get('target_root_3')
+                }
+                for key, val in targets.items():
+                    if val:
+                        val_norm = os.path.normpath(val).lower() if os.name == 'nt' else os.path.normpath(val)
+                        if ov_norm == val_norm:
+                            return val # Dynamic Match!
+                
+                # No dynamic match -> Treat as Custom
+                return raw_override
+            
+            return None
+
+        # 1. Resolve Target Base
+        # Check Item Level
+        item_target_base = resolve_target_from_config(item_config)
+        
+        # Check Inheritance if not set on item
+        ancestor_override = None
+        ancestor_rel_path = ""
+        
+        if not item_target_base:
+             # Walk up from parent_rel
+            parent_rel = os.path.dirname(item_rel)
+            curr = parent_rel
+            while curr:
+                if curr == "" or curr == ".": break
+                
+                # Case-insensitive lookup
+                p_cfg = folder_configs.get(curr)
+                if not p_cfg:
+                    curr_lower = curr.lower()
+                    for k in folder_configs:
+                        if k.lower() == curr_lower:
+                            p_cfg = folder_configs[k]
+                            break
+                            
+                inherited_base = resolve_target_from_config(p_cfg)
+                if inherited_base:
+                    # Found ancestor with explicit target!
+                    item_target_base = inherited_base
+                    ancestor_override = inherited_base # For logging
+                    ancestor_rel_path = curr
+                    
+                    # Calculate remaining path
+                    try:
+                        remaining_subpath = os.path.relpath(item_rel, curr).replace('\\', '/')
+                    except:
+                        remaining_subpath = item['name']
+                    
+                    # Adjust item_rel effectively for the final join
+                    # But wait, logic below expects 'scan_base' + 'item_rel' OR 'target_link'
+                    # We need to set 'scan_base' to the resolved root, and modify how we join.
+                    break
+                
+                curr = os.path.dirname(curr)
+
+        # Apply Resolved Base
+        if item_target_base:
+             scan_base = item_target_base # The resolved target becomes the new Base Root
+             
+             if ancestor_override:
+                  # Inherited: Use the relative path from the ancestor
+                  # Example: Item "A/B", Ancestor "A"->Override "T". Result "T/B".
+                  effective_rel_to_base = remaining_subpath
+                  
+                  # Logging for debug
+                  scan_base_debug = f"[Inherited from {ancestor_rel_path}] {ancestor_override}"
+             else:
+                  # Direct Override: The item IS the child of the base.
+                  # Example: Item "A"->Override "T". Result "T/A".
+                  # UNLESS we are in 'files' mode? 
+                  # For 'folder' mode: T/A.
+                  # For 'files' mode: T/A (if flattening into T/A) or T (if flattening into T directly)?
+                  # App standard is: Roots contain the Item Folders.
+                  effective_rel_to_base = item['name']
+                  scan_base_debug = f"[Direct Override] {item_target_base}"
+
+             # Construct final link based on rule
+             if deploy_rule == 'files':
+                 # Flatten: usually creates the folder anyway in LinkMaster?
+                 # Or does it link individual files? 
+                 # If 'flatten' (files), we assume the target FOLDER is scan_base/item_name
+                 # And we put files inside.
+                 target_link = os.path.join(scan_base, effective_rel_to_base)
+                 
+             elif deploy_rule == 'tree': 
+                 target_link = os.path.join(scan_base, effective_rel_to_base)
+                 
+             else: # folder (default)
+                 target_link = os.path.join(scan_base, effective_rel_to_base)
+                 
         else:
-            # 'folder' (Standard): Mirror parent's location + self name
-            # If in contents view, target_root passed from handler is actually the BASE root.
-            # We need to reconstruct the relative path.
-            # However, for simplicity and backward compatibility, we usually expect 
-            # target_root + item_rel for non-root items.
-            target_link = os.path.join(self.target_root, item_rel)
+             # Standard default logic (Primary Root)
+             # Use original relative path from storage root
+             if deploy_rule == 'files':
+                 target_link = os.path.join(scan_base, item['name'])
+             elif deploy_rule == 'tree':
+                  rules_json = item_config.get('deployment_rules')
+                  skip_val = 0
+                  if rules_json:
+                     try:
+                         ro = json.loads(rules_json)
+                         skip_val = int(ro.get('skip_levels', 0))
+                     except: pass
+                  
+                  parts = item_rel.split('/')
+                  if len(parts) > skip_val:
+                     mirrored = "/".join(parts[skip_val:])
+                     target_link = os.path.join(scan_base, mirrored)
+                  else:
+                     target_link = scan_base
+             else:
+                 target_link = os.path.join(scan_base, item_rel)
+
             
+        # DEBUG: Trace target calculation for specific item
+        # if "15Folder" in item_rel: 
         status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
         link_status = status_info.get('status', 'none')
-        t_link_end = time.perf_counter()
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)
         db_status = item_config.get('last_known_status')
-        # CRITICAL: Do NOT overwrite conflict with none/linked if we just detected something else
+        
+        # DEBUG LOGGING for analysis
+        if link_status == 'none' and db_status == 'linked':
+             self.logger.warning(f"[SCAN DEBUG] Lost Link: {item_rel}")
+             self.logger.warning(f"  > Override: {target_override}")
+             self.logger.warning(f"  > Rule: {deploy_rule}")
+             self.logger.warning(f"  > ScanBase: {scan_base}")
+             self.logger.warning(f"  > Looking At: {target_link}")
+             self.logger.warning(f"  > Exists?: {os.path.exists(target_link)}")
+             self.logger.warning(f"  > Symlink?: {os.path.islink(target_link)}")
+
+        t_link_end = time.perf_counter()
+        
+        # FIX Step 3784: Always trust this scan result because it's based on STATIC properties.
+        # We are no longer shifting targets dynamically, so "none" means "not in Primary/Override".
         if (item_config or link_status != 'none') and db_status != link_status:
-            try:
-                # If existing is 'conflict', be careful about overwriting it unless current is definitive
-                if db_status == 'conflict' and link_status not in ('linked', 'partial'):
-                    pass # Keep conflict if new is just 'none' or 'misplaced'
-                else:
-                    self.db.update_folder_display_config(item_rel, last_known_status=link_status)
-            except Exception as e:
-                self.logger.warning(f"Failed to sync status for {item_rel}: {e}")
+             try:
+                 # If existing is 'conflict', be careful about overwriting it unless current is definitive
+                 if db_status == 'conflict' and link_status not in ('linked', 'partial'):
+                     pass # Keep conflict if new is just 'none' or 'misplaced'
+                 else:
+                     self.db.update_folder_display_config(item_rel, last_known_status=link_status)
+             except Exception as e:
+                 self.logger.warning(f"Failed to sync status for {item_rel}: {e}")
 
         # 3. Child Status Check (Folders only)
         has_linked = item_rel in getattr(self, '_linked_ancestors', set())

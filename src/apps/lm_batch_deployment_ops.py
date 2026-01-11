@@ -7,9 +7,11 @@ import logging
 import time
 from src.ui.common_widgets import FramelessMessageBox
 from PyQt6.QtCore import QThread, QTimer
+from PyQt6.QtWidgets import QMessageBox
 
 from src.core.lang_manager import _
 from src.core.link_master.deployer import DeploymentCollisionError
+from src.ui.styles import apply_common_dialog_style
 from .lm_batch_ops_worker import TagConflictWorker
 
 class LMDeploymentOpsMixin:
@@ -383,16 +385,31 @@ class LMDeploymentOpsMixin:
 
         # 🚨 Safety Check: Prevent replacing any target root in 'folder' mode
         if deploy_rule == 'folder' and target_link:
-            t_roots = {os.path.normpath(app_data.get(k)).lower() for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)}
-            if os.path.normpath(target_link).lower() in t_roots:
+            t_roots_map = {k: os.path.normpath(app_data.get(k)).lower() for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)}
+            target_norm = os.path.normpath(target_link).lower()
+            
+            matched_root_key = None
+            for k, root_path in t_roots_map.items():
+                if target_norm == root_path:
+                    matched_root_key = k
+                    break
+            
+            if matched_root_key:
+                # Phase 28: Reverted to Critical Block per User Request (Strict Safety)
                 from PyQt6.QtWidgets import QMessageBox
-                QMessageBox.critical(self.window() if hasattr(self, 'window') else self, _("Safety Block"), 
-                    _("Deployment blocked: Cannot replace target root directory itself in 'folder' mode.\n\n"
-                      "Target: {target}\n\n"
-                      "To deploy contents into this folder, please use 'files' (Flatten) or 'tree' mode.").format(
-                        target=target_link
-                    ))
-                self.logger.error(f"Safety Block: Prevented 'folder' mode deployment targeting search root: {target_link}")
+                msg = QMessageBox(self.window() if hasattr(self, 'window') else self)
+                msg.setIcon(QMessageBox.Icon.Critical)
+                msg.setWindowTitle(_("Safety Block"))
+                msg.setText(_("Deployment blocked: Destination matches a configured Target Root!\n\n"
+                              "Target: {target}\n"
+                              "Matched Root: {root_key}\n\n"
+                              "Deploying here in 'folder' mode would replace the target root directory itself.\n"
+                              "Please use 'files' (Flatten) mode or check your path settings.").format(
+                                  target=target_link, root_key=matched_root_key
+                              ))
+                apply_common_dialog_style(msg)
+                msg.exec()
+                self.logger.error(f"Safety Block: Prevented 'folder' mode deployment targeting search root: {target_link} (Matches {matched_root_key})")
                 return False
 
         rules = config.get('deployment_rules')

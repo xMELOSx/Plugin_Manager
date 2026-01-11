@@ -445,6 +445,11 @@ class LinkMasterDB:
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_library_alt_version INTEGER DEFAULT 0")
             except: pass
+            
+            # Phase 42: Separate Target Selection from Physical Path (User Request)
+            try:
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN target_selection TEXT")
+            except: pass
 
             # Create indexes for performance
             try:
@@ -666,7 +671,7 @@ class LinkMasterDB:
                        'is_library', 'lib_name', 'lib_version', 'lib_deps', 'lib_priority', 'lib_priority_mode', 'lib_memo', 'lib_hidden',
                        'lib_folder_id',
                        'has_logical_conflict', 'is_library_alt_version', 'category_deploy_status',
-                       'size_bytes', 'scanned_at']
+                       'size_bytes', 'scanned_at', 'target_selection']
         updates = []
         params = []
         for k, v in kwargs.items():

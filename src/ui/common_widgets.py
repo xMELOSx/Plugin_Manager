@@ -528,6 +528,25 @@ class FramelessMessageBox(FramelessDialog):
         self.set_title_bar_icon_visible(True)
         self.set_default_icon()
         self._result = self.StandardButton.NoButton
+        
+        # Play confirmation sound
+        try:
+            from PyQt6.QtCore import QUrl
+            from PyQt6.QtMultimedia import QSoundEffect
+            import os
+            # Assume sound is in src/resource/se relative to project root
+            # We need to find the absolute path. Assuming standard project structure.
+            # Using __file__ of common_widgets.py -> src/ui/common_widgets.py
+            # ../../resource/se/confirmation.wav
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            sound_path = os.path.join(base_dir, "src", "resource", "se", "confirmation.wav")
+            
+            if os.path.exists(sound_path):
+                self.effect = QSoundEffect()
+                self.effect.setSource(QUrl.fromLocalFile(sound_path))
+                self.effect.setVolume(0.5)
+                self.effect.play()
+        except: pass
 
     def _setup_ui(self):
         # Initial Setup is done by FramelessDialog._init_frameless_ui

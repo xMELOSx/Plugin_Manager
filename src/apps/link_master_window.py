@@ -2859,9 +2859,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     # --- Trash Methods moved to: lm_trash.py ---
     # Tag methods moved to LMTagsMixin
 
-    def _create_item_context_menu(self, rel_path):
+    def _create_item_context_menu(self, rel_path, is_package_context=False):
         """Centralized factory to create a context menu. Delegated to factory module."""
-        return create_item_context_menu(self, rel_path)
+        return create_item_context_menu(self, rel_path, is_package_context=is_package_context)
 
     def _open_path_in_explorer(self, path):
         import subprocess

@@ -437,6 +437,12 @@ class ItemCard(QFrame):
         self._update_style()
         self._update_icon_overlays()
 
+    def update_link_status(self, status):
+        """Directly update link status and refresh style."""
+        self.link_status = status
+        self._update_style()
+        self._update_icon_overlays()
+
     def _check_link_status(self):
         if not self.deployer: return
         

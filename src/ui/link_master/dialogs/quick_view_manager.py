@@ -1140,32 +1140,39 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             return
 
         # 4. Actual Rejection (Discard or No changes)
-        self.save_options("quick_view_manager")
-        # Restore original data to ensure the cache stays clean
-        self.items_data.clear()
-        self.items_data.extend(copy.deepcopy(self._raw_items_data))
+        try:
+            self.save_options("quick_view_manager")
+            # Restore original data to ensure the cache stays clean
+            if hasattr(self, '_raw_items_data') and self._raw_items_data:
+                self.items_data.clear()
+                self.items_data.extend(copy.deepcopy(self._raw_items_data))
+            
+            # Reset change buffers to prevent leaking discards into next open
+            if hasattr(self, '_pending_tag_changes'):
+                self._pending_tag_changes.clear()
+            if hasattr(self, '_pending_changes'): # Mode 2
+                self._pending_changes.clear()
+            if hasattr(self, '_has_changes'):
+                self._has_changes = False
+            
+            # Phase 1.1.291: CRITICAL - Only clear results on TRUE rejection.
+            # If we reached here, it means user either had no changes or hit Discard.
+            self.results = [] 
+            logging.info(f"[QuickView] reject() complete. results cleared. Calling super().reject()")
+            self._last_items_data = copy.deepcopy(self.items_data)
+        except Exception as e:
+            logging.error(f"[QuickView] Error during rejection cleanup: {e}", exc_info=True)
         
-        # Reset change buffers to prevent leaking discards into next open
-        if hasattr(self, '_pending_tag_changes'):
-            self._pending_tag_changes.clear()
-        if hasattr(self, '_pending_changes'): # Mode 2
-            self._pending_changes.clear()
-        if hasattr(self, '_has_changes'):
-            self._has_changes = False
-        
-        # Phase 1.1.291: CRITICAL - Only clear results on TRUE rejection.
-        # If we reached here, it means user either had no changes or hit Discard.
-        self.results = [] 
-        logging.info(f"[QuickView] reject() complete. results cleared. Calling super().reject()")
-        self._last_items_data = copy.deepcopy(self.items_data)
+        # Always close the dialog
         super().reject()
         
-        # Restore original data AFTER super().reject() so parent can still check changes if needed
-        # (Though super().reject() triggers the signal, the parent handler executes synchronously on the same thread in most cases)
-        # To be safe, let's restore it here.
-        self.items_data.clear()
-        self.items_data.extend(copy.deepcopy(self._raw_items_data))
-        logging.debug(f"[QuickView] Data restored to original state.")
+        # Restore data safety (redundant but safe)
+        try:
+            if hasattr(self, '_raw_items_data') and self._raw_items_data:
+                self.items_data.clear()
+                self.items_data.extend(copy.deepcopy(self._raw_items_data))
+        except: pass
+        logging.debug(f"[QuickView] Data restored state confirmed.")
 
     def accept(self):
         """Override accept to save window state before closing."""

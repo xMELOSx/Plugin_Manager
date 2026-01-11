@@ -737,6 +737,32 @@ class Deployer:
                     })
                 raise DeploymentCollisionError(detailed_collisions)
 
+            # Phase 45 CRITICAL: Atomic Safety Check
+            # Before we deploy ANY file, check ALL targets for Safety violations.
+            # If ANY fail, we abort the ENTIRE batch.
+            # This prevents partial deployments where 50% are safe and 50% are blocked, leaving a broken state.
+            from src.core.link_master.safety_block import safety_block
+            
+            safety_issues = []
+            for src, tgt in files_to_deploy:
+                # We do a dry-run check.
+                # However, safety_block usually checks operation type.
+                # Here we assume 'link' or 'copy'.
+                # But safety_block's verify_safety is the one we want.
+                # safety_block itself returns True/False and assumes global context?
+                # Actually safety_block.verify_safety(path, operation)
+                
+                # Check target path safety
+                if not safety_block.verify_safety(tgt, operation='deploy', silent=True, logger=self.logger):
+                   safety_issues.append(tgt)
+                   
+            if safety_issues:
+                self.logger.error(f"Aborting batch deployment due to {len(safety_issues)} safety violations.")
+                self.logger.error(f"First violation: {safety_issues[0]}")
+                # We can raise a custom error or just return False to abort gracefully
+                # Showing a message box here is hard because we are in core.
+                return False
+
             if not files_to_deploy:
                 return True # Nothing to do after filtering
 

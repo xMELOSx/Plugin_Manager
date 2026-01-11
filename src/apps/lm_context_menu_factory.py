@@ -6,7 +6,7 @@ import os
 from PyQt6.QtWidgets import QMenu
 from src.core.lang_manager import _
 
-def create_item_context_menu(window, rel_path):
+def create_item_context_menu(window, rel_path, is_package_context=False):
     """Centralized factory to create a context menu for any item (Category or Package).
     Used by ItemCard, ExplorerPanel, and Breadcrumbs.
     """
@@ -68,9 +68,76 @@ def create_item_context_menu(window, rel_path):
                     app_default_rule = app_data.get(app_rule_key) or app_data.get('deployment_rule', 'folder')
                     deploy_rule = app_default_rule
             
-            # Reconstruct Target Path based on Rule
-            target_link = config.get('target_override')
-            if not target_link:
+            # Reconstruct Target Path based on Rule & Selection logic (Phase 42)
+            # 1. Resolve Target Base (Root)
+            target_base = target_dir # Default to current app target root
+            
+            sel = config.get('target_selection')
+            ov_val = config.get('target_override')
+            
+            if sel == 'primary': 
+                target_base = app_data.get('target_root', target_base)
+            elif sel == 'secondary': 
+                target_base = app_data.get('target_root_2', target_base)
+            elif sel == 'tertiary': 
+                target_base = app_data.get('target_root_3', target_base)
+            elif sel == 'custom' and ov_val:
+                target_base = ov_val
+            elif ov_val: # Legacy fallback
+                # Try simple match? Or just treat as custom if no selection
+                 target_base = ov_val
+                 
+            # 2. Join with item name based on rule
+            # Note: Context Menu assumes 'target_dir' in original code was the Root.
+            # So if we changed target_base, we use it as the Root.
+            
+            target_link = target_base # fallback
+            
+            if not sel and not ov_val: # Standard default
+                if deploy_rule == 'files':
+                    target_link = target_base
+                elif deploy_rule == 'tree':
+                    # ... tree logic ...
+                    import json
+                    skip_val = 0
+                    rules_json = config.get('deployment_rules')
+                    if rules_json:
+                        try:
+                            rules_obj = json.loads(rules_json)
+                            skip_val = int(rules_obj.get('skip_levels', 0))
+                        except: pass
+                    
+                    parts = rel_path.replace('\\', '/').split('/')
+                    if len(parts) > skip_val:
+                        mirrored = "/".join(parts[skip_val:])
+                        target_link = os.path.join(target_base, mirrored)
+                    else:
+                        target_link = target_base
+                else:
+                    target_link = os.path.join(target_base, folder_name)
+
+            else:
+                # Explicit Target (Override/Selection) logic
+                # Treats target_base as the NEW Root.
+                if deploy_rule == 'files':
+                     target_link = os.path.join(target_base, folder_name) # Flatten into Folder
+                elif deploy_rule == 'tree':
+                     target_link = os.path.join(target_base, folder_name) # Simple mirror? Or subpath?
+                     # Context menu logic usually deals with single item.
+                     # If I override root, and rule is tree, usually I want 'Root/ItemRel'?
+                     # But here we are at 'rel_path'.
+                     # If I override 'A/B' to 'T'. Result 'T'.
+                     # The code above uses 'folder_name'.
+                     # Let's align with ScannerWorker:
+                     # join(scan_base, effective_rel_to_base) where effective_rel is item['name'] for direct override.
+                     target_link = os.path.join(target_base, folder_name)
+                else:
+                     target_link = os.path.join(target_base, folder_name)
+
+            # Skip the old block
+            if False:
+             target_link = config.get('target_override')
+             if not target_link:
                 if deploy_rule == 'files':
                     target_link = target_dir
                 elif deploy_rule == 'tree':
@@ -118,16 +185,34 @@ def create_item_context_menu(window, rel_path):
             
             # Phase: Detect if this is a Category (has subfolders with packages)
             is_category = False
-            child_count = 0
-            try:
-                for item in os.listdir(full_src):
-                    if os.path.isdir(os.path.join(full_src, item)) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
-                        child_count += 1
-                        if child_count > 0:
-                            is_category = True
-                            break
-            except:
-                pass
+            
+            # Use explicit context flag if provided (e.g. from Package List)
+            # If is_package_context is True, we force it to be treated as a package (Deploy Link)
+            is_package_view = is_package_context
+            
+            # Also check global mode ONLY if we are generic (but careful not to override explicit context)
+            if not is_package_view and hasattr(window, 'search_mode') and hasattr(window.search_mode, 'currentData'):
+                # Only trust global mode if we are essentially in a "Package Only" environment
+                # BUT user said Top is Category View. So global mode 'all_packages' might be active while we click on Top.
+                # So we should rely more on is_package_context passed by the caller.
+                pass 
+            
+            if not is_package_view:
+                # Prioritize explicit config (Re-enabled as per user request implicit context)
+                # Actually user reverted this before. Let's stick to heuristic + view context.
+                
+                # Auto-detect (heuristic) via directory structure
+                # Only if NOT in package context
+                child_count = 0
+                try:
+                    for item in os.listdir(full_src):
+                        if os.path.isdir(os.path.join(full_src, item)) and not item.startswith('.') and item not in ('_Trash', 'Trash'):
+                            child_count += 1
+                            if child_count > 0:
+                                is_category = True
+                                break
+                except:
+                    pass
             
             if is_category:
                 # Category-specific menu

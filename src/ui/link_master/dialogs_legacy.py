@@ -1250,25 +1250,43 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         target_v_layout.addWidget(self.manual_path_container)
         
         # Initial Selection Logic (Standardized to Primary by default to avoid 'latesttarget' noise)
+        # Initial Selection Logic
+        # Priority: 1. target_selection (New), 2. target_override (Legacy inference)
+        curr_selection = self.current_config.get('target_selection')
         curr_override = self.current_config.get('target_override')
-        if not curr_override:
-            # Strictly default to Primary (1) as requested to simplify design
-            idx = self.target_combo.findData(1)
-            if idx >= 0: self.target_combo.setCurrentIndex(idx)
-            else: self.target_combo.setCurrentIndex(0)
-        else:
+        
+        target_set = False
+        if curr_selection:
+            # New Logic: Map selection string to combo data
+            sel_map = {'primary': 1, 'secondary': 2, 'tertiary': 3, 'custom': 4}
+            val = sel_map.get(curr_selection)
+            if val:
+                idx = self.target_combo.findData(val)
+                if idx >= 0:
+                    self.target_combo.setCurrentIndex(idx)
+                    target_set = True
+                    
+        if not target_set and curr_override:
+            # Legacy Logic: Try to infer from path
             found = False
             for i, root_path in enumerate(self.target_roots):
                 if root_path and os.path.normpath(curr_override) == os.path.normpath(root_path):
                     target_idx = self.target_combo.findData(i + 1)
                     if target_idx >= 0:
                         self.target_combo.setCurrentIndex(target_idx)
-                        found = True
+                        target_set = True
                         break
-            if not found:
+            if not target_set:
                 custom_idx = self.target_combo.findData(4)
                 if custom_idx >= 0:
                     self.target_combo.setCurrentIndex(custom_idx)
+                    target_set = True
+
+        if not target_set:
+            # Default to Primary
+            idx = self.target_combo.findData(1)
+            if idx >= 0: self.target_combo.setCurrentIndex(idx)
+            else: self.target_combo.setCurrentIndex(0)
         
         # [CRITICAL] Defer signal connection to end of init to prevent loops during setup
         # self.target_combo.currentIndexChanged.connect(self._on_target_choice_changed)
@@ -1600,7 +1618,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         # Phase 40: Save current state to cache before switching
         current_rule = self.deploy_rule_override_combo.currentData()
         if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
-            self.deploy_rules[self.prev_target_data] = current_rule
+           self.deploy_rules[self.prev_target_data] = current_rule
 
         data = self.target_combo.currentData()
         self.prev_target_data = data # Update for next switch
@@ -1609,7 +1627,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         new_rule = self.deploy_rules.get(data, "inherit")
         idx = self.deploy_rule_override_combo.findData(new_rule)
         if idx >= 0:
-            # We don't block signals because _on_deploy_rule_changed was removed/simplified
             self.deploy_rule_override_combo.setCurrentIndex(idx)
         
         # Show/hide custom path editor
@@ -1646,10 +1663,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             if inherit_idx >= 0:
                 self.deploy_rule_override_combo.setItemText(inherit_idx, _("Default ({rule})").format(rule=default_display))
             
-            # Enable JSON editor ONLY if current rule is custom or target is custom
+            # Enable JSON editor ONLY if current rule is custom
             # (Simplified logic, not stateful per target)
             current_rule = self.deploy_rule_override_combo.currentData()
-            enable_json = (is_custom or current_rule == 'custom')
+            enable_json = (current_rule == 'custom')
             if hasattr(self, 'rules_edit'):
                 self.rules_edit.setEnabled(enable_json)
 
@@ -2174,21 +2191,26 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
              self.deploy_rules[self.prev_target_data] = current_rule
         
-        # Resolve target override properly: Store selected target path for all choices
+        # Phase 42: Separate Target Selection from Physical Path
+        current_target_code = self.target_combo.currentData()
+        target_selection = None
         target_override = None
-        current_target = self.target_combo.currentData()
-        if current_target == 4:  # Custom
+        
+        if current_target_code == 4: # Custom
+            target_selection = 'custom'
             target_override = self.target_override_edit.text().strip() or None
-        elif current_target == "KEEP":
+        elif current_target_code == "KEEP":
+            target_selection = "KEEP"
             target_override = "KEEP"
-        elif current_target in [1, 2, 3]:
-            # Save the actual target root path for Primary/Secondary/Tertiary selections
-            idx = current_target - 1
-            if 0 <= idx < len(self.target_roots) and self.target_roots[idx]:
-                target_override = self.target_roots[idx]
-        else:
-            # Fallback to whatever is in the edit field if somehow selection is lost
-            target_override = self.target_override_edit.text().strip() or None
+        elif current_target_code == 1:
+            target_selection = 'primary'
+            target_override = None # Clear override logic to enforce dynamic lookups
+        elif current_target_code == 2:
+            target_selection = 'secondary'
+            target_override = None
+        elif current_target_code == 3:
+            target_selection = 'tertiary'
+            target_override = None
 
 
         data = {
@@ -2207,13 +2229,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             'is_visible': 0 if self.hide_checkbox.isChecked() else 1,
             
             # Use cached values for all targets
+            # Phase 42 Fix: Do NOT save per-target rules automatically to prevent unintended overwrites
+            # Only saving the Primary rule which is standard.
             'deploy_rule': self.deploy_rules.get(1, 'KEEP' if self.batch_mode else 'inherit'),
-            'deploy_rule_b': self.deploy_rules.get(2, 'KEEP' if self.batch_mode else 'inherit'),
-            'deploy_rule_c': self.deploy_rules.get(3, 'KEEP' if self.batch_mode else 'inherit'),
+            
+            # REMOVED: Saving deploy_rule_b/c. User must edit DB manually for these or use a dedicated tool
+            # to avoid switching targets in dialog accidentally saving "inherit" over custom rules.
+            # 'deploy_rule_b': ...,
+            # 'deploy_rule_c': ...,
             
             'transfer_mode': self.transfer_mode_override_combo.currentData(),
             'conflict_policy': self.conflict_override_combo.currentData(),
             'inherit_tags': 1 if self.inherit_tags_chk.isChecked() else 0,
+            'target_selection': target_selection,
             'target_override': target_override, 
             'conflict_tag': ", ".join(self.conflict_tag_edit.get_tags()) if self.conflict_tag_edit.get_tags() else (None if not self.batch_mode else "KEEP"),
             'conflict_scope': self.conflict_scope_combo.currentData(),
