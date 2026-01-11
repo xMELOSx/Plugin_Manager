@@ -42,23 +42,18 @@ class LMSettingsPanelMixin:
                 QTabWidget::pane { border: 1px solid #555; background: #333; }
                 QTabBar::tab { background: #3a3a3a; color: #ddd; padding: 5px 10px; }
                 QTabBar::tab:selected { background: #555; }
+                
+                /* SpinBox: Background only, buttons are hidden by NoButtons */
                 QSpinBox {
-                    background-color: #3a3a3a; color: white; 
-                    border: 1px solid #555; border-radius: 3px;
-                    padding: 2px 20px 2px 4px;  /* Right padding for arrows */
-                    min-width: 50px;
+                    background-color: #222; 
+                    color: white; 
+                    border: 1px solid #555; 
+                    border-radius: 3px;
                 }
-                QSpinBox::up-button, QSpinBox::down-button {
-                    width: 16px;
-                    background-color: #4a4a4a;
-                    border: none;
-                }
-                QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                    background-color: #5a5a5a;
-                }
-                QSpinBox::up-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #ccc; }
-                QSpinBox::down-arrow { image: none; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #ccc; }
             """)
+            
+            # Flag to prevent mode forcing on initial open
+            self._settings_panel_initializing = False
             
             layout = QVBoxLayout(self._settings_panel)
             layout.setContentsMargins(8, 8, 8, 8)
@@ -134,7 +129,7 @@ class LMSettingsPanelMixin:
                 tab_layout.addStretch()
                 self._settings_tabs.addTab(tab, mode_name)
             
-            self._settings_tabs.currentChanged.connect(self._on_settings_tab_changed)
+            # DON'T connect signal yet - wait until after initial tab selection
             layout.addWidget(self._settings_tabs)
             self._settings_panel.adjustSize()
             
@@ -144,27 +139,49 @@ class LMSettingsPanelMixin:
         self._settings_backup = copy.deepcopy(self.card_settings)
         self._overrides_backup = (self.cat_display_override, self.pkg_display_override)
         
-        # Initial Tab Selection - Use category override OR app default setting
-        cur_mode = self.cat_display_override
+        # Initial Tab Selection - Detect current active mode robustly (Check Green/Blue states)
+        self._settings_panel_initializing = True
+        
+        cur_mode = None
+        # Priority 1: Check actual button states (Blue/Green)
+        candidate_modes = [
+            ("text_list", getattr(self, 'btn_cat_text', None)),
+            ("mini_image", getattr(self, 'btn_cat_image', None)),
+            ("image_text", getattr(self, 'btn_cat_both', None))
+        ]
+        
+        for mode, btn in candidate_modes:
+            if btn and hasattr(btn, 'styleSheet'):
+                ss = btn.styleSheet()
+                # If either the Green (Selected) or Blue (No-Override) style is in the stylesheet
+                if (self.btn_selected_style and self.btn_selected_style in ss) or \
+                   (self.btn_no_override_style and self.btn_no_override_style in ss):
+                    cur_mode = mode
+                    break
+        
+        # Priority 2: Use override flag if detection failed or as primary if set
+        if not cur_mode or self.cat_display_override:
+            cur_mode = self.cat_display_override or cur_mode
+
+        # Final Fallback
         if not cur_mode:
-            # Get default from app_data if available
-            if hasattr(self, 'app_data') and self.app_data:
-                default_style = self.app_data.get('default_category_style', 'image')
-                style_to_mode = {'text': 'text_list', 'image': 'mini_image', 'both': 'image_text'}
-                cur_mode = style_to_mode.get(default_style, 'mini_image')
-            else:
-                # Fallback: check button styles
-                if hasattr(self, 'btn_cat_text') and (self.btn_cat_text.styleSheet() == self.btn_selected_style or self.btn_cat_text.styleSheet() == self.btn_no_override_style):
-                    cur_mode = "text_list"
-                elif hasattr(self, 'btn_cat_image') and (self.btn_cat_image.styleSheet() == self.btn_selected_style or self.btn_cat_image.styleSheet() == self.btn_no_override_style):
-                    cur_mode = "mini_image"
-                else:
-                    cur_mode = "image_text"
+            mapping = {'image': 'mini_image', 'text': 'text_list', 'both': 'image_text'}
+            app_cat_default = self.app_data.get('default_category_style', 'image') if hasattr(self, 'app_data') and self.app_data else 'image'
+            cur_mode = mapping.get(app_cat_default, 'mini_image')
 
         mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
+        
+        # Block signals during initial tab selection to prevent mode forcing
         self._settings_tabs.blockSignals(True)
         self._settings_tabs.setCurrentIndex(mode_to_tab.get(cur_mode, 1))
         self._settings_tabs.blockSignals(False)
+        
+        # Ensure signal is connected (only once) and AFTER setup
+        if not hasattr(self, '_settings_tab_signal_connected') or not self._settings_tab_signal_connected:
+            self._settings_tabs.currentChanged.connect(self._on_settings_tab_changed)
+            self._settings_tab_signal_connected = True
+            
+        self._settings_panel_initializing = False
 
         # Position near button
         btn_pos = self.btn_card_settings.mapToGlobal(self.btn_card_settings.rect().bottomLeft())
@@ -194,7 +211,11 @@ class LMSettingsPanelMixin:
 
     def _on_settings_tab_changed(self, index):
         """Automatically switch display mode when settings tab is changed."""
+        # Guard against initialization signals
+        if getattr(self, '_settings_panel_initializing', False):
+            return
+            
         modes = ["text_list", "mini_image", "image_text"]
         target_mode = modes[index]
-        self._toggle_cat_display_mode(target_mode, force=True)
-        self._toggle_pkg_display_mode(target_mode, force=True)
+        self._toggle_cat_display_mode(target_mode, force=False) # Changed to force=False to avoid unnecessary locks
+        self._toggle_pkg_display_mode(target_mode, force=False)

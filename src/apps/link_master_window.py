@@ -884,6 +884,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _on_settings_tab_changed(self, index):
         """Automatically switch display mode when settings tab is changed."""
+        # Guard against initialization signals
+        if getattr(self, '_settings_initializing', False):
+            return
+            
         modes = ["text_list", "mini_image", "image_text"]
         target_mode = modes[index]
         self._toggle_cat_display_mode(target_mode, force=True)
@@ -922,19 +926,49 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.card_settings_window.cancelRequested.connect(self._cancel_settings_window)
             self.card_settings_window.closed.connect(self._on_card_settings_closed)
             
-            # Connect Tab Change (Directly access tabs widget)
+            # Only connect tab signal once
             if hasattr(self.card_settings_window, 'tabs'):
                 self.card_settings_window.tabs.currentChanged.connect(self._on_settings_tab_changed)
 
-            # Initial Tab Selection
-            cur_mode = self.cat_display_override
-            if not cur_mode:
-                if hasattr(self, 'btn_cat_text') and 'selected' in self.btn_cat_text.styleSheet(): cur_mode = "text_list"
-                elif hasattr(self, 'btn_cat_image') and 'selected' in self.btn_cat_image.styleSheet(): cur_mode = "mini_image"
-                else: cur_mode = "image_text"
+        # Detect and sync mode EVERY time shown
+        self._settings_initializing = True
+        
+        # Detect current active mode robustly (Check Green/Blue states)
+        cur_mode = None
+        # Priority 1: Check actual button states (Blue/Green)
+        candidate_modes = [
+            ("text_list", getattr(self, 'btn_cat_text', None)),
+            ("mini_image", getattr(self, 'btn_cat_image', None)),
+            ("image_text", getattr(self, 'btn_cat_both', None))
+        ]
+        
+        for mode, btn in candidate_modes:
+            if btn and hasattr(btn, 'styleSheet'):
+                ss = btn.styleSheet()
+                # If either the Green (Selected) or Blue (No-Override) style is in the stylesheet
+                if (self.btn_selected_style and self.btn_selected_style in ss) or \
+                   (self.btn_no_override_style and self.btn_no_override_style in ss):
+                    cur_mode = mode
+                    break
+        
+        # Priority 2: Use override flag if detection failed or as primary if set
+        if not cur_mode or self.cat_display_override:
+            cur_mode = self.cat_display_override or cur_mode
 
-            mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
+        # Final Fallback
+        if not cur_mode:
+            mapping = {'image': 'mini_image', 'text': 'text_list', 'both': 'image_text'}
+            app_cat_default = self.app_data.get('default_category_style', 'image') if hasattr(self, 'app_data') and self.app_data else 'image'
+            cur_mode = mapping.get(app_cat_default, 'mini_image')
+
+        # Sync Tab Selection with signals blocked
+        mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
+        if hasattr(self.card_settings_window, 'tabs'):
+            self.card_settings_window.tabs.blockSignals(True)
             self.card_settings_window.tabs.setCurrentIndex(mode_to_tab.get(cur_mode, 1))
+            self.card_settings_window.tabs.blockSignals(False)
+        
+        self._settings_initializing = False
 
         # Always update backup on show (Start of transaction)
         self._settings_backup = copy.deepcopy(self.card_settings)

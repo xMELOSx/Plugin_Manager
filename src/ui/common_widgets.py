@@ -242,11 +242,14 @@ class StyledSpinBox(QSpinBox):
         """)
 
     def paintEvent(self, event):
-        """Draw custom arrows for precision and anti-aliasing."""
+        """Draw custom arrows if buttons are visible."""
         super().paintEvent(event)
-        painter = QPainter(self)
-        _draw_spinbox_arrows(painter, self.rect())
-        painter.end()
+        # ONLY draw arrows if not hidden (Fix for overlap in Card Settings)
+        if self.buttonSymbols() != QSpinBox.ButtonSymbols.NoButtons:
+            painter = QPainter(self)
+            _draw_spinbox_arrows(painter, self.rect())
+            painter.end()
+
 
     def mousePressEvent(self, event):
         """Handle right-click to show dark context menu."""
@@ -356,11 +359,13 @@ class StyledDoubleSpinBox(QDoubleSpinBox):
         """)
 
     def paintEvent(self, event):
-        """Draw custom arrows for precision and anti-aliasing."""
+        """Draw custom arrows if buttons are visible."""
         super().paintEvent(event)
-        painter = QPainter(self)
-        _draw_spinbox_arrows(painter, self.rect())
-        painter.end()
+        # ONLY draw arrows if not hidden (Fix for overlap in Card Settings)
+        if self.buttonSymbols() != QSpinBox.ButtonSymbols.NoButtons:
+            painter = QPainter(self)
+            _draw_spinbox_arrows(painter, self.rect())
+            painter.end()
 
     def mousePressEvent(self, event):
         """Handle right-click to show dark context menu."""

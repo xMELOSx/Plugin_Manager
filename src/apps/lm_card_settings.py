@@ -175,13 +175,7 @@ class LMCardSettingsMixin:
         setattr(self, attr_name, value)
         # self._save_card_settings() # Phase 1.1.5: Save only on OK
         
-        # 編集中のモードに自動切り替え
-        current_override = getattr(self, f'{prefix}_display_override', None)
-        if current_override != mode:
-            if type_ == 'category':
-                self._toggle_cat_display_mode(mode)
-            else:
-                self._toggle_pkg_display_mode(mode)
+        # NOTE: Removed automatic mode switch - mode should only change on tab click
         
         self._apply_card_params_to_layout_debounced(type_, mode)
 
@@ -194,12 +188,7 @@ class LMCardSettingsMixin:
         setattr(self, attr_name, scale)
         # self._save_card_settings() # Phase 1.1.5: Save only on OK
         
-        current_override = getattr(self, f'{prefix}_display_override', None)
-        if current_override != mode:
-            if type_ == 'category':
-                self._toggle_cat_display_mode(mode)
-            else:
-                self._toggle_pkg_display_mode(mode)
+        # NOTE: Removed automatic mode switch - mode should only change on tab click
         
         self._apply_card_params_to_layout_debounced(type_, mode)
 
