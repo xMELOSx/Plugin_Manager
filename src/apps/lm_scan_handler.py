@@ -562,16 +562,18 @@ class LMScanHandlerMixin:
                 has_unlinked = True
             
             # Phase 35: Internal Conflict Check
-            ctag = cfg.get('conflict_tag')
-            if ctag:
-                if ctag in child_tags:
-                    has_internal_conflict = True
-                child_tags.add(ctag)
+            ctag_str = cfg.get('conflict_tag')
+            if ctag_str:
+                my_tags = [t.strip().lower() for t in ctag_str.split(',') if t.strip()]
+                for t in my_tags:
+                    if t in child_tags:
+                        has_internal_conflict = True
+                    child_tags.add(t)
                 
                 # Also check External Tag Conflict for this child tag
                 if not has_internal_conflict and hasattr(self, '_check_tag_conflict'):
                      # Note: we pass card_rel as context to ignore itself, but here context is folder_rel
-                     ext_conflict = self._check_tag_conflict(folder_rel, {'conflict_tag': ctag}, app_data)
+                     ext_conflict = self._check_tag_conflict(folder_rel, {'conflict_tag': ctag_str}, app_data)
                      if ext_conflict:
                          has_internal_conflict = True
 

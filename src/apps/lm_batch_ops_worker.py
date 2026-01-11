@@ -69,21 +69,23 @@ class TagConflictWorker(QObject):
 
                     # Tag tracking (Index ALL linked tags)
                     if cfg.get('conflict_scope', 'disabled') != 'disabled':
-                        t = cfg.get('conflict_tag')
-                        if t:
-                            t = t.strip()
-                            rel_p = p
-                            if os.path.isabs(p):
-                                try: rel_p = os.path.relpath(p, self.storage_root)
-                                except: pass
-                            
-                            cat_path = os.path.dirname(rel_p).replace('\\', '/')
-                            if t not in active_tags_map: active_tags_map[t] = []
-                            active_tags_map[t].append({
-                                'path': p,
-                                'scope': cfg.get('conflict_scope', 'disabled'),
-                                'cat': cat_path
-                            })
+                        tag_str = cfg.get('conflict_tag')
+                        if tag_str:
+                            tags = [t.strip() for t in tag_str.split(',') if t.strip()]
+                            for t in tags:
+                                if not t: continue
+                                rel_p = p
+                                if os.path.isabs(p):
+                                    try: rel_p = os.path.relpath(p, self.storage_root)
+                                    except: pass
+                                
+                                cat_path = os.path.dirname(rel_p).replace('\\', '/')
+                                if t not in active_tags_map: active_tags_map[t] = []
+                                active_tags_map[t].append({
+                                    'path': p,
+                                    'scope': cfg.get('conflict_scope', 'disabled'),
+                                    'cat': cat_path
+                                })
 
             logger.debug(f"[Profile] TagConflictWorker: Indexed {len(all_configs)} items, {linked_count} linked. Found {len(active_tags_map)} active tags.")
 
@@ -131,21 +133,23 @@ class TagConflictWorker(QObject):
                         alt_count += 1
                 
                 # B. Tag Match Conflict
-                tag = cfg.get('conflict_tag')
+                tag_str = cfg.get('conflict_tag')
                 scope = cfg.get('conflict_scope', 'disabled')
-                if tag and scope != 'disabled':
-                    tag = tag.strip()
-                    matches = active_tags_map.get(tag, [])
-                    
-                    for m in matches:
-                        if m.get('path') == p: continue
-                        if scope == 'global' or m['scope'] == 'global':
-                            has_logical_conflict = True
-                            logger.debug(f"[ConflictDebug] TAG GLOBAL: '{p}' conflicts with '{m.get('path')}' via tag '{tag}'")
-                            break
-                        if scope == 'category' and m['cat'] == my_cat:
-                            has_logical_conflict = True
-                            logger.debug(f"[ConflictDebug] TAG CATEGORY: '{p}' conflicts with '{m.get('path')}' via tag '{tag}' in category '{my_cat}'")
+                if tag_str and scope != 'disabled':
+                    my_tags = [t.strip() for t in tag_str.split(',') if t.strip()]
+                    for tag in my_tags:
+                        matches = active_tags_map.get(tag, [])
+                        for m in matches:
+                            if m.get('path') == p: continue
+                            if scope == 'global' or m['scope'] == 'global':
+                                has_logical_conflict = True
+                                logger.debug(f"[ConflictDebug] TAG GLOBAL: '{p}' conflicts with '{m.get('path')}' via tag '{tag}'")
+                                break
+                            if scope == 'category' and m['cat'] == my_cat:
+                                has_logical_conflict = True
+                                logger.debug(f"[ConflictDebug] TAG CATEGORY: '{p}' conflicts with '{m.get('path')}' via tag '{tag}' in category '{my_cat}'")
+                                break
+                        if has_logical_conflict:
                             break
                 
                 # C. Global Physical Occupancy Check

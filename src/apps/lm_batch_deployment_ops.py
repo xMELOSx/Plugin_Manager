@@ -200,8 +200,11 @@ class LMDeploymentOpsMixin:
         Check if deploying the item at rel_path causes a conflict based on 'conflict_tag'.
         Returns a conflict message string if a conflict exists, otherwise None.
         """
-        tag = config.get('conflict_tag')
-        if not tag: return None
+        tag_str = config.get('conflict_tag')
+        if not tag_str: return None
+        
+        my_tags = [t.strip().lower() for t in tag_str.split(',') if t.strip()]
+        if not my_tags: return None
         
         scope = config.get('conflict_scope', 'disabled')
         if scope == 'disabled': return None
@@ -218,23 +221,34 @@ class LMDeploymentOpsMixin:
         
         for other_path, other_cfg in all_configs.items():
             if other_path == rel_path: continue # Skip self
+            if other_cfg.get('last_known_status') != 'linked': continue
             
-            other_tag = other_cfg.get('conflict_tag')
-            if other_tag != tag: continue
+            other_tag_str = other_cfg.get('conflict_tag')
+            if not other_tag_str: continue
+            
+            other_tags = [t.strip().lower() for t in other_tag_str.split(',') if t.strip()]
+            
+            # Check for overlap
+            overlap_tag = None
+            for t in my_tags:
+                if t in other_tags:
+                    overlap_tag = t
+                    break
+            
+            if not overlap_tag: continue
             
             if scope == 'category':
                 other_cat = os.path.dirname(other_path).replace('\\', '/')
                 if other_cat != current_category: continue
             
-            if other_cfg.get('last_known_status') == 'linked':
-                other_name = os.path.basename(other_path)
-                return {
-                    'conflict': True,
-                    'name': other_name,
-                    'path': other_path,
-                    'tag': tag,
-                    'scope': scope
-                }
+            other_name = os.path.basename(other_path)
+            return {
+                'conflict': True,
+                'name': other_name,
+                'path': other_path,
+                'tag': overlap_tag,
+                'scope': scope
+            }
         
         return None
 

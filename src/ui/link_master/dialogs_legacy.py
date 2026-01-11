@@ -28,6 +28,7 @@ from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, Previe
 
 from src.ui.styles import apply_common_dialog_style
 from src.ui.toast import Toast
+from src.ui.link_master.tag_chip_input import TagChipInput
 
 class TagIconLineEdit(StyledLineEdit):
     """QLineEdit that accepts image drag and drop."""
@@ -1116,23 +1117,51 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # Tags (comma-separated) (Bottom Position) - Only MANUAL tags shown here
         # Quick Tags are stored in buttons and merged at save time
-        self.tags_edit = StyledLineEdit()
-        self.tags_edit.setPlaceholderText(_("Additional custom tags (e.g. my_custom, special)"))
+        all_known_tags = []
+        if hasattr(self, 'db'):
+            all_known_tags = self.db.get_all_tags()
+            
+        quick_tag_names = {t.lower() for t in self.tag_buttons.keys()}
+        
+        ph = _("Additional custom tags (e.g. my_custom, special)")
+        if self.batch_mode:
+            ph = _("Leave empty to keep existing")
+            
+        self.tags_edit = TagChipInput(
+            placeholder=ph,
+            suggestions=all_known_tags,
+            quick_tags=list(quick_tag_names)
+        )
         
         # Filter out quick tags from the text area on load
         all_tags_str = self.current_config.get('tags', '') or ''
         all_tags = [t.strip() for t in all_tags_str.split(',') if t.strip()]
-        quick_tag_names = {t.lower() for t in self.tag_buttons.keys()}
         manual_only = [t for t in all_tags if t.lower() not in quick_tag_names]
-        self.tags_edit.setText(", ".join(manual_only))
+        self.tags_edit.set_tags(manual_only)
         
-        attr_form.addRow(_("Additional Tags:"), self.tags_edit)
+        # Tag Section Container (Tags + Inherit toggle below)
+        tag_section_container = QWidget()
+        tag_section_v = QVBoxLayout(tag_section_container)
+        tag_section_v.setContentsMargins(0, 0, 0, 0)
+        tag_section_v.setSpacing(4)
+        tag_section_v.addWidget(self.tags_edit)
         
-        # Inherit Tags Toggle (Phase 18.8)
+        # Inherit Tags Toggle (Phase 18.8) - NOW INSIDE tag section
         self.inherit_tags_chk = SlideButton()
         self.inherit_tags_chk.setChecked(bool(self.current_config.get('inherit_tags', 1)))
-        self.inherit_tags_chk.setToolTip(_("If unchecked, tags from parent folders will NOT be applied to this item and its children."))
-        attr_form.addRow(_("Inherit Tags to Subfolders:"), self.inherit_tags_chk)
+        self.inherit_tags_chk.setToolTip(_("Inherit Tags: If unchecked, parent tags will NOT be applied."))
+        
+        inherit_box = QHBoxLayout()
+        inherit_box.setContentsMargins(2, 0, 0, 0)
+        inherit_box.setSpacing(5)
+        inherit_label = QLabel(_("Inherit:")) # Simplified translation as requested
+        inherit_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        inherit_box.addWidget(inherit_label)
+        inherit_box.addWidget(self.inherit_tags_chk)
+        inherit_box.addStretch()
+        tag_section_v.addLayout(inherit_box)
+        
+        attr_form.addRow(_("Additional Tags:"), tag_section_container)
         
         # No sync needed since Quick Tags are independent
         # self.tags_edit.textChanged.connect(self._sync_tag_buttons)
@@ -1426,24 +1455,32 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             adv_form.addRow("", self.manage_redirection_btn)  # Empty label for full width
             
         # Phase 28: Conflict Tag Detection (Available in batch mode)
-        conflict_tag_layout = QHBoxLayout()
-        
+        conflict_tag_row = QHBoxLayout()
+        conflict_tag_row.setContentsMargins(0, 0, 0, 0)
+        conflict_tag_row.setSpacing(5)
+
         # Tag input field
-        self.conflict_tag_edit = StyledLineEdit()
-        self.conflict_tag_edit.setPlaceholderText(_("Tag to search..."))
+        ph_ct = _("Tag to search...")
         if self.batch_mode:
-            self.conflict_tag_edit.setPlaceholderText(_("Leave empty to keep existing"))
-        self.conflict_tag_edit.setText(self.current_config.get('conflict_tag', '') or '')
-        conflict_tag_layout.addWidget(self.conflict_tag_edit, 2)  # stretch=2
-        
-        # Dropdown for scope selection
+            ph_ct = _("Leave empty to keep existing")
+
+        self.conflict_tag_edit = TagChipInput(
+            placeholder=ph_ct,
+            suggestions=all_known_tags,
+            quick_tags=list(quick_tag_names)
+        )
+        self.conflict_tag_edit.set_tags(self.current_config.get('conflict_tag', '') or '')
+        conflict_tag_row.addWidget(self.conflict_tag_edit, 1) # Occupy most space
+
+        # Revert Scope Selection to the RIGHT side as requested
         self.conflict_scope_combo = StyledComboBox()
+        self.conflict_scope_combo.setFixedWidth(80)
         if self.batch_mode:
-            self.conflict_scope_combo.addItem(_("--- No Change ---"), "KEEP")
-        self.conflict_scope_combo.addItem(_("Disabled"), "disabled")
-        self.conflict_scope_combo.addItem(_("Category"), "category")
+            self.conflict_scope_combo.addItem(_("KEEP"), "KEEP")
+        self.conflict_scope_combo.addItem(_("Off"), "disabled")
+        self.conflict_scope_combo.addItem(_("Cat"), "category")
         self.conflict_scope_combo.addItem(_("Global"), "global")
-        # Load initial scope value
+        
         current_scope = self.current_config.get('conflict_scope', 'disabled')
         if self.batch_mode:
             self.conflict_scope_combo.setCurrentIndex(0)
@@ -1451,9 +1488,15 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             scope_idx = self.conflict_scope_combo.findData(current_scope)
             if scope_idx >= 0:
                 self.conflict_scope_combo.setCurrentIndex(scope_idx)
-        conflict_tag_layout.addWidget(self.conflict_scope_combo, 1)  # stretch=1
+
+        scope_h = QHBoxLayout()
+        scope_h.setContentsMargins(0, 0, 0, 0)
+        scope_h.setSpacing(4)
+        scope_h.addWidget(QLabel(_("Scope:")), 0)
+        scope_h.addWidget(self.conflict_scope_combo, 0)
+        conflict_tag_row.addLayout(scope_h)
         
-        adv_form.addRow(_("Conflict Tag:"), conflict_tag_layout)
+        adv_form.addRow(_("Conflict Tag:"), conflict_tag_row)
         
         # Phase X/26: Library Usage Row (Available in batch mode)
         lib_row = QHBoxLayout()
@@ -1578,13 +1621,13 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             elif effective_target == 3:
                 actual_default_rule = self.current_app_data.get('deployment_rule_c') or self.app_deploy_default
             
-            rule_display_map = {'folder': 'Folder', 'files': 'Flat', 'tree': 'Tree', 'custom': 'Custom'}
+            rule_display_map = {'folder': _('Folder'), 'files': _('Flat'), 'tree': _('Tree'), 'custom': _('Custom')}
             default_display = rule_display_map.get(actual_default_rule, str(actual_default_rule).capitalize())
             
             # Update the label for "Default" (inherit) option
             inherit_idx = self.deploy_rule_override_combo.findData("inherit")
             if inherit_idx >= 0:
-                self.deploy_rule_override_combo.setItemText(inherit_idx, _("デフォルト ({rule})").format(rule=default_display))
+                self.deploy_rule_override_combo.setItemText(inherit_idx, _("Default ({rule})").format(rule=default_display))
             
             # Enable JSON editor ONLY if current rule is custom or target is custom
             # (Simplified logic, not stateful per target)
@@ -2105,13 +2148,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             final_image_path = self._resize_and_cache_image(self.pending_icon_path)
 
         # Tags Logic (Phase 18 additive)
-        manual_tags = {t.strip().lower() for t in self.tags_edit.text().split(',') if t.strip()}
-        quick_tags = {name for name, btn in self.tag_buttons.items() if btn.isChecked()}
-        
-        # Merge manual tags with quick tag buttons
+        manual_tags = self.tags_edit.get_tags()
         quick_tags = [name for name, btn in self.tag_buttons.items() if btn.isChecked()]
-        manual_tags = [t.strip() for t in self.tags_edit.text().split(',') if t.strip()]
-        all_tags = sorted(list(set(quick_tags + manual_tags)))
+        all_tags = sorted(list(set([t.lower() for t in quick_tags] + [t.lower() for t in manual_tags])))
         
         # Phase 26: Batch mode display name logic
         display_name = self.name_edit.text().strip() or None
@@ -2169,7 +2208,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             'conflict_policy': self.conflict_override_combo.currentData(),
             'inherit_tags': 1 if self.inherit_tags_chk.isChecked() else 0,
             'target_override': target_override, 
-            'conflict_tag': self.conflict_tag_edit.text().strip() if self.conflict_tag_edit.text().strip() else (None if not self.batch_mode else "KEEP"),
+            'conflict_tag': ", ".join(self.conflict_tag_edit.get_tags()) if self.conflict_tag_edit.get_tags() else (None if not self.batch_mode else "KEEP"),
             'conflict_scope': self.conflict_scope_combo.currentData(),
             'lib_deps': self.lib_deps if not self.batch_mode else (self.lib_deps if self.lib_deps != self.current_config.get('lib_deps', '[]') else "KEEP"),
         }

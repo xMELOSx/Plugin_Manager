@@ -829,11 +829,17 @@ class LinkMasterDB:
     def get_all_tags(self):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT tags FROM lm_folder_config WHERE tags IS NOT NULL AND tags != ''")
+            # Fetch from both tags and conflict_tag columns
+            cursor.execute("SELECT tags, conflict_tag FROM lm_folder_config")
             rows = cursor.fetchall()
             unique = set()
             for r in rows:
-                unique.update([t.strip() for t in r[0].split(',') if t.strip()])
+                # tags column (comma separated)
+                if r[0]:
+                    unique.update([t.strip() for t in r[0].split(',') if t.strip()])
+                # conflict_tag column (comma separated)
+                if r[1]:
+                    unique.update([t.strip() for t in r[1].split(',') if t.strip()])
             return sorted(list(unique))
 
     # --- Frequent Tag Management (lm_tags) ---
