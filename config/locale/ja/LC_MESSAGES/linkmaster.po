@@ -2554,7 +2554,7 @@ msgstr "<b>[デフォルト]</b>: アプリ設定を使用<br><b>[フォルダ]<
 msgid "<b>JSON Example:</b><br><code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>• <b>exclude</b>: List of glob patterns to exclude<br>• <b>rename</b>: Map for internal file renaming"
 msgstr "<b>JSON例:</b><br><code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>• <b>exclude</b>: 除外するGlobパターンリスト<br>• <b>rename</b>: 内部ファイルのリネームマップ"
 msgid "Inherit:"
-msgstr "継承:"
+msgstr "子パッケージに継承:"
 
 msgid "Scope:"
 msgstr "スコープ:"
@@ -2588,3 +2588,5 @@ msgstr "シンボリックリンク"
 
 msgid "copy"
 msgstr "物理コピー"
+msgid "Auto-mark last accessed URL (🔗):"
+msgstr "最終アクセスリンクに優先マーク付与 (🔗):"

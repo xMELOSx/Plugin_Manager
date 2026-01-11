@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.core.lang_manager import _
 from src.ui.common_widgets import StyledLineEdit, ProtectedLineEdit
 from src.ui.slide_button import SlideButton
+from src.ui.styles import TooltipStyles
 
 
 class URLItemWidget(QWidget):
@@ -37,24 +38,27 @@ class URLItemWidget(QWidget):
         
         # Drag Handle (☰)
         drag_label = QLabel("☰")
-        drag_label.setFixedWidth(20)
+        drag_label.setFixedWidth(24)
         drag_label.setStyleSheet("color: #888; font-size: 14px;")
         drag_label.setCursor(Qt.CursorShape.SizeAllCursor)
         layout.addWidget(drag_label)
         
         # Active Toggle (👁/🌑)
         self.active_btn = QPushButton("👁" if self.is_active else "🌑")
-        self.active_btn.setFixedWidth(32)
+        self.active_btn.setFixedWidth(36)
+        self.active_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.active_btn.setToolTip(_("Toggle URL Active/Inactive"))
-        self.active_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; }")
+        self.active_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; } QPushButton:hover { background-color: #444; border-radius: 4px; }")
         self.active_btn.clicked.connect(self._toggle_active)
         layout.addWidget(self.active_btn)
 
         # Mark indicator (🔗 for last working URL)
         self.mark_btn = QPushButton("🔗" if self.is_marked else "  ")
-        self.mark_btn.setFixedWidth(32)
+        self.mark_btn.setFixedWidth(36)
+        self.mark_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mark_btn.setToolTip(_("Mark as Preferred (Fast Access)"))
-        self.mark_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 16px; color: #2ecc71; }" if self.is_marked else "QPushButton { background: transparent; border: none; font-size: 16px; color: #888; }")
+        mark_color = "#2ecc71" if self.is_marked else "#888"
+        self.mark_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; font-size: 16px; color: {mark_color}; }} QPushButton:hover {{ background-color: #444; border-radius: 4px; }}")
         self.mark_btn.clicked.connect(self._mark_as_preferred)
         layout.addWidget(self.mark_btn)
         
@@ -73,12 +77,16 @@ class URLItemWidget(QWidget):
         layout.addWidget(self.url_label, 1)
         layout.addWidget(self.url_edit, 1)
         
-        btn_style = "QPushButton { padding: 2px 5px; background: transparent; border: none; font-size: 14px; } QPushButton:hover { background-color: #5d5d5d; }"
+        btn_style = """
+            QPushButton { padding: 2px; background: transparent; border: none; font-size: 14px; } 
+            QPushButton:hover { background-color: #5d5d5d; border-radius: 4px; }
+        """
         
         # Test connectivity (🔍)
         test_btn = QPushButton("🔍")
         test_btn.setToolTip(_("Test connectivity"))
-        test_btn.setFixedWidth(30)
+        test_btn.setFixedWidth(36)
+        test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         test_btn.setStyleSheet(btn_style)
         test_btn.clicked.connect(self._test_url)
         layout.addWidget(test_btn)
@@ -86,14 +94,16 @@ class URLItemWidget(QWidget):
         # Open in browser (🌐)
         open_btn = QPushButton("🌐")
         open_btn.setToolTip(_("Open in browser"))
-        open_btn.setFixedWidth(30)
+        open_btn.setFixedWidth(36)
+        open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_btn.setStyleSheet(btn_style)
         open_btn.clicked.connect(self._open_url)
         layout.addWidget(open_btn)
         
         # Delete (❌)
         del_btn = QPushButton("❌")
-        del_btn.setFixedWidth(30)
+        del_btn.setFixedWidth(36)
+        del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.setStyleSheet(btn_style)
         del_btn.clicked.connect(self._remove)
         layout.addWidget(del_btn)
@@ -156,15 +166,16 @@ class URLListDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(_("Manage URLs"))
         self.resize(700, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QListWidget::item { padding: 2px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-            QLabel { color: #e0e0e0; }
-            QCheckBox { color: #e0e0e0; }
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: #1e1e1e; color: #e0e0e0; }}
+            QListWidget {{ background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }}
+            QListWidget::item {{ padding: 2px; }}
+            QListWidget::item:selected {{ background-color: #3d5a80; }}
+            QPushButton {{ background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }}
+            QPushButton:hover {{ background-color: #5d5d5d; }}
+            QLabel {{ color: #e0e0e0; }}
+            QCheckBox {{ color: #e0e0e0; }}
+            {TooltipStyles.DARK}
         """)
         
         self.url_data = []
@@ -206,39 +217,48 @@ class URLListDialog(QDialog):
         input_layout.addWidget(add_btn)
         layout.addLayout(input_layout)
 
-        # Header Labels
+        # Header Labels (Standardized to match URLItemWidget)
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(5, 5, 5, 5)
         header_layout.setSpacing(5)
-        header_layout.addSpacing(25)
+        
+        # Padding for drag handle area
+        h_drag = QLabel("")
+        h_drag.setFixedWidth(24)
+        header_layout.addWidget(h_drag)
         
         h_active = QLabel(_("Active"))
-        h_active.setFixedWidth(32)
+        h_active.setFixedWidth(36)
         h_active.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        h_active.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_active)
         
         h_pref = QLabel(_("Priority"))
-        h_pref.setFixedWidth(32)
+        h_pref.setFixedWidth(36)
         h_pref.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        h_pref.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_pref)
         
         h_url = QLabel("URL")
-        h_url.setStyleSheet("padding-left: 5px;")
+        h_url.setStyleSheet("color: #aaa; font-size: 11px; padding-left: 5px;")
         header_layout.addWidget(h_url, 1)
         
         h_test = QLabel("✓")
-        h_test.setFixedWidth(30)
+        h_test.setFixedWidth(36)
         h_test.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        h_test.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_test)
         
         h_link = QLabel(_("Link"))
-        h_link.setFixedWidth(30)
+        h_link.setFixedWidth(36)
         h_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        h_link.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_link)
         
         h_del = QLabel(_("Delete"))
-        h_del.setFixedWidth(30)
+        h_del.setFixedWidth(36)
         h_del.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        h_del.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_del)
         layout.addLayout(header_layout)
         

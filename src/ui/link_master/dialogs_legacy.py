@@ -17,7 +17,7 @@ from src.core.link_master.utils import format_size
 from src.ui.slide_button import SlideButton
 from src.core.lang_manager import _
 from src.ui.window_mixins import OptionsMixin
-from src.ui.common_widgets import StyledLineEdit, StyledComboBox, StyledSpinBox
+from src.ui.common_widgets import StyledLineEdit, StyledComboBox, StyledSpinBox, StyledButton
 import os
 import subprocess
 import shutil
@@ -769,7 +769,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             btn_open_folder = QPushButton()
             btn_open_folder.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
             btn_open_folder.setFixedSize(24, 24)
-            btn_open_folder.setStyleSheet("border: 1px solid #555; border-radius: 3px; background-color: #444; min-width: 0px;") # Fix size override
+            btn_open_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_open_folder.setStyleSheet("""
+                QPushButton { border: 1px solid #555; border-radius: 3px; background-color: #444; min-width: 0px; }
+                QPushButton:hover { background-color: #555; border-color: #777; }
+                QPushButton:pressed { background-color: #333; }
+            """) # Fix size override and add feedback
             btn_open_folder.setToolTip(_("Open actual folder"))
             btn_open_folder.clicked.connect(self._open_actual_folder)
             folder_row.addWidget(btn_open_folder)
@@ -831,13 +836,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.favorite_btn.setChecked(is_fav)
         self.favorite_btn.setFixedWidth(120)
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.favorite_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; min-width: 80px;
-                text-align: center;
+                background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; 
             }
-            QPushButton:hover { background-color: #444; }
-            QPushButton:checked { color: #f1c40f; font-weight: bold; border-color: #f1c40f; }
+            QPushButton:hover { background-color: #4a4a4a; border-color: #3498db; }
+            QPushButton:checked { background-color: #3d5a80; border-color: #3498db; color: #fff; }
+            QPushButton:pressed { background-color: #2c3e50; }
         """)
         self.favorite_btn.toggled.connect(self._on_favorite_toggled_dialog)
         fav_layout.addWidget(self.favorite_btn)
@@ -867,7 +873,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         display_form.addRow("", fav_layout)
         
         # --- Multi-Preview Launcher (Phase 18) ---
-        self.manage_previews_btn = QPushButton(_("📂 Manage Previews..."))
+        self.manage_previews_btn = StyledButton(_("📂 Manage Previews..."), style_type="Gray")
         self.manage_previews_btn.clicked.connect(self._open_multi_preview_browser)
         
         self.full_preview_edit = StyledLineEdit()
@@ -879,19 +885,22 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.image_edit.setPlaceholderText(_("Path to icon image (200x200)"))
         self.image_edit.setText(self.current_config.get('image_path') or '')
         
-        self.image_btn = QPushButton(_("Browse"))
+        # utility buttons
+        image_btn_h = QHBoxLayout()
+        image_btn_h.setSpacing(5)
+        
+        self.image_btn = StyledButton(_(" Browse "), style_type="Gray")
         self.image_btn.clicked.connect(self._browse_image)
         
-        self.crop_btn = QPushButton(_("✂ Edit Region"))
-        self.crop_btn.clicked.connect(self._crop_image)
-        
-        self.paste_btn = QPushButton(_("📋 Paste"))
+        self.paste_btn = StyledButton(_("📋 Paste"), style_type="Gray")
         self.paste_btn.clicked.connect(self._paste_from_clipboard)
         self.paste_btn.setToolTip(_("Paste image from clipboard"))
         
-        self.clear_btn = QPushButton(_("Clear"))
+        self.crop_btn = StyledButton(_("✂ Edit Region"), style_type="Gray")
+        self.crop_btn.clicked.connect(self._crop_image)
+        
+        self.clear_btn = StyledButton(_("Clear"), style_type="Red")
         self.clear_btn.clicked.connect(self._clear_image)
-        self.clear_btn.setStyleSheet("background-color: #8b0000; color: white; border: 1px solid #a00000; border-radius: 4px; padding: 4px 8px;")
         
         image_layout = QHBoxLayout()
         image_layout.addWidget(self.image_edit)
@@ -933,9 +942,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.url_list = json.dumps([old_url])
         
         url_layout = QHBoxLayout()
-        self.url_btn = QPushButton(_("🌐 Manage URLs..."))
+        self.url_btn = StyledButton(_("🌐 Manage URLs..."), style_type="Blue")
         self.url_btn.clicked.connect(self._open_url_manager)
-        self.url_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold;")
         url_layout.addWidget(self.url_btn)
         
         # Hidden field to store structured JSON
@@ -1090,6 +1098,16 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                         
                     btn = QPushButton(btn_text)
                     btn.setCheckable(True)
+                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn.setStyleSheet("""
+                        QPushButton { 
+                            background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 3px; 
+                            padding: 2px 6px; font-size: 11px;
+                        }
+                        QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
+                        QPushButton:checked { background-color: #3498db; color: #fff; border-color: #fff; }
+                        QPushButton:pressed { background-color: #222; }
+                    """)
                     
                     # Add Icon if mode allows or as default
                     show_icon = (mode == 'image' or mode == 'image_text' or mode == 'text')
@@ -1154,7 +1172,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         inherit_box = QHBoxLayout()
         inherit_box.setContentsMargins(2, 0, 0, 0)
         inherit_box.setSpacing(5)
-        inherit_label = QLabel(_("Inherit:")) # Simplified translation as requested
+        inherit_label = QLabel(_("Inherit:")) # PO translation handles "子パッケージに継承:"
         inherit_label.setStyleSheet("color: #aaa; font-size: 11px;")
         inherit_box.addWidget(inherit_label)
         inherit_box.addWidget(self.inherit_tags_chk)
@@ -1215,7 +1233,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.target_override_edit.setText(self.current_config.get('target_override') or '')
         manual_edit_h.addWidget(self.target_override_edit)
         
-        self.target_override_btn = QPushButton(_("Browse"))
+        self.target_override_btn = StyledButton(_("Browse"), style_type="Gray")
         self.target_override_btn.setFixedWidth(70)
         self.target_override_btn.clicked.connect(self._browse_target_override)
         manual_edit_h.addWidget(self.target_override_btn)
@@ -1285,14 +1303,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         # Help Button - Now toggles In-place label with checked visual
         self.rule_help_btn = QPushButton("?")
-        self.rule_help_btn.setFixedSize(20, 20)
+        self.rule_help_btn.setFixedSize(22, 22)
         self.rule_help_btn.setCheckable(True)
         self.rule_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.rule_help_btn.clicked.connect(self._toggle_deploy_help)
         self.rule_help_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
-                min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+                background-color: #555; color: #fff; border-radius: 11px; font-weight: bold; font-size: 14px;
+                min-width: 22px; max-width: 22px; min-height: 22px; max-height: 22px;
                 padding: 0px; margin: 0px; border: none;
             }
             QPushButton:hover { background-color: #777; }
@@ -1395,14 +1413,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         json_label_row.addWidget(QLabel(_("Deployment Rules (JSON):")))
         
         self.json_help_btn = QPushButton("?")
-        self.json_help_btn.setFixedSize(20, 20)
+        self.json_help_btn.setFixedSize(22, 22)
         self.json_help_btn.setCheckable(True)
         self.json_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.json_help_btn.clicked.connect(self._toggle_json_help)
         self.json_help_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
-                min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+                background-color: #555; color: #fff; border-radius: 11px; font-weight: bold; font-size: 14px;
+                min-width: 22px; max-width: 22px; min-height: 22px; max-height: 22px;
                 padding: 0px; margin: 0px; border: none;
             }
             QPushButton:hover { background-color: #777; }
@@ -1445,34 +1463,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         # Phase 3.7: Shortcut to File Management (Now AFTER Rules) - Full width
         if not self.batch_mode:
-            self.manage_redirection_btn = QPushButton(_("Edit Individual Redirections..."))
-            self.manage_redirection_btn.setStyleSheet("""
-                QPushButton { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
-                QPushButton:pressed { background-color: #222; padding-top: 5px; padding-left: 11px; }
-            """)
+            self.manage_redirection_btn = StyledButton(_("Edit Individual Redirections..."), style_type="Gray")
             self.manage_redirection_btn.clicked.connect(self._open_file_management_shortcut)
             adv_form.addRow("", self.manage_redirection_btn)  # Empty label for full width
             
         # Phase 28: Conflict Tag Detection (Available in batch mode)
-        conflict_tag_row = QHBoxLayout()
-        conflict_tag_row.setContentsMargins(0, 0, 0, 0)
-        conflict_tag_row.setSpacing(5)
-
-        # Tag input field
-        ph_ct = _("Tag to search...")
-        if self.batch_mode:
-            ph_ct = _("Leave empty to keep existing")
-
-        self.conflict_tag_edit = TagChipInput(
-            placeholder=ph_ct,
-            suggestions=all_known_tags,
-            quick_tags=list(quick_tag_names)
-        )
-        self.conflict_tag_edit.set_tags(self.current_config.get('conflict_tag', '') or '')
-        conflict_tag_row.addWidget(self.conflict_tag_edit, 1) # Occupy most space
-
-        # Revert Scope Selection to the RIGHT side as requested
+        # Revert Scope Selection to the RIGHT side as requested, aligned with text box
         self.conflict_scope_combo = StyledComboBox()
         self.conflict_scope_combo.setFixedWidth(80)
         if self.batch_mode:
@@ -1489,25 +1485,38 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             if scope_idx >= 0:
                 self.conflict_scope_combo.setCurrentIndex(scope_idx)
 
+        # Tag input field
+        ph_ct = _("Tag to search...")
+        if self.batch_mode:
+            ph_ct = _("Leave empty to keep existing")
+
+        self.conflict_tag_edit = TagChipInput(
+            placeholder=ph_ct,
+            suggestions=all_known_tags,
+            quick_tags=list(quick_tag_names)
+        )
+        self.conflict_tag_edit.set_tags(self.current_config.get('conflict_tag', '') or '')
+        
+        # ADD SCOPE COMBO AS EXTENSION to the line_edit row
         scope_h = QHBoxLayout()
         scope_h.setContentsMargins(0, 0, 0, 0)
         scope_h.setSpacing(4)
-        scope_h.addWidget(QLabel(_("Scope:")), 0)
-        scope_h.addWidget(self.conflict_scope_combo, 0)
-        conflict_tag_row.addLayout(scope_h)
+        scope_label = QLabel(_("Scope:"))
+        scope_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        scope_h.addWidget(scope_label)
+        scope_h.addWidget(self.conflict_scope_combo)
         
-        adv_form.addRow(_("Conflict Tag:"), conflict_tag_row)
+        scope_container = QWidget()
+        scope_container.setLayout(scope_h)
+        self.conflict_tag_edit.add_input_extension(scope_container)
+        
+        adv_form.addRow(_("Conflict Tag:"), self.conflict_tag_edit)
         
         # Phase X/26: Library Usage Row (Available in batch mode)
         lib_row = QHBoxLayout()
         
-        self.btn_lib_usage = QPushButton(_("📚 Library Settings"))
+        self.btn_lib_usage = StyledButton(_("📚 Library Settings"), style_type="Blue")
         self.btn_lib_usage.setFixedWidth(150)
-        self.btn_lib_usage.setStyleSheet("""
-            QPushButton { background-color: #2980b9; color: #fff; border: 1px solid #3498db; border-radius: 4px; padding: 4px 10px; }
-            QPushButton:hover { background-color: #3498db; }
-            QPushButton:pressed { background-color: #1a5276; }
-        """)
         self.btn_lib_usage.clicked.connect(self._open_library_usage)
         lib_row.addWidget(self.btn_lib_usage)
         

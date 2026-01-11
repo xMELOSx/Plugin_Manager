@@ -51,9 +51,15 @@ class TagChipInput(QWidget):
         self.layout.setSpacing(2)
         
         # Input field on TOP for alignment with FormLayout labels
+        self.input_h = QHBoxLayout()
+        self.input_h.setContentsMargins(0, 0, 0, 0)
+        self.input_h.setSpacing(5)
+        
         self.line_edit = StyledLineEdit()
         self.line_edit.setPlaceholderText(placeholder)
-        self.layout.addWidget(self.line_edit)
+        self.input_h.addWidget(self.line_edit, 1) # Occupy main space
+        
+        self.layout.addLayout(self.input_h)
         
         # Display field (ScrollArea) for wrapping behavior
         self.scroll_area = QScrollArea()
@@ -123,6 +129,10 @@ class TagChipInput(QWidget):
             for tag in new_tags:
                 self.add_tag(tag)
             self.line_edit.clear()
+
+    def add_input_extension(self, widget):
+        """Add a widget (like a combo box) to the right of the input field."""
+        self.input_h.addWidget(widget)
 
     def add_tag(self, tag, update=True):
         tag_lower = tag.strip().lower()
