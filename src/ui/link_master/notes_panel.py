@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QListWidgetItem, 
-                             QPushButton, QHBoxLayout, QTextEdit, QLabel, QMenu, QMessageBox)
+                             QPushButton, QHBoxLayout, QTextEdit, QLabel, QMenu, QMessageBox, QSplitter)
 from PyQt6.QtCore import pyqtSignal, Qt
 from src.core.lang_manager import _
 import os
@@ -15,6 +15,7 @@ class NotesPanel(QWidget):
         self.storage_path = storage_path # e.g. root/resource/app/[app]/notes/
         self.current_app_id = None
         self._note_order = [] # List of filenames
+        self._last_saved_content = "" # For dirty check
         self._init_ui()
 
     def _init_ui(self):
@@ -40,7 +41,12 @@ class NotesPanel(QWidget):
         header.addWidget(self.btn_add)
         layout.addLayout(header)
         
-        # List
+        # Use a Splitter for List vs Editor
+        self.splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.splitter.setHandleWidth(4)
+        self.splitter.setStyleSheet("QSplitter::handle { background-color: #444; }")
+        
+        # List Container
         self.list_widget = QListWidget(self)
         self.list_widget.setStyleSheet("""
             QListWidget { background-color: #2b2b2b; border: 1px solid #444; color: #ddd; }
@@ -60,14 +66,19 @@ class NotesPanel(QWidget):
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
         
-        layout.addWidget(self.list_widget, 1)
+        self.splitter.addWidget(self.list_widget)
         
-        # Simple Editor (Internal)
+        # Editor Container
+        self.editor_container = QWidget()
+        ec_layout = QVBoxLayout(self.editor_container)
+        ec_layout.setContentsMargins(0, 5, 0, 0)
+        
+        # Track changes for dirty state
         self.editor = QTextEdit(self)
+        self.editor.textChanged.connect(self._on_editor_text_changed)
         self.editor.setPlaceholderText(_("Select a note to edit..."))
         self.editor.setStyleSheet("background-color: #222; color: #eee; border: 1px solid #444;")
-        self.editor.hide() # Hidden until note selected
-        layout.addWidget(self.editor, 1)
+        ec_layout.addWidget(self.editor, 1)
         
         # Editor Buttons
         self.editor_btns = QWidget(self)
@@ -95,8 +106,14 @@ class NotesPanel(QWidget):
         self.btn_external.clicked.connect(self._open_external)
         eb_layout.addWidget(self.btn_external)
         
-        self.editor_btns.hide()
-        layout.addWidget(self.editor_btns)
+        ec_layout.addWidget(self.editor_btns)
+        self.splitter.addWidget(self.editor_container)
+        
+        layout.addWidget(self.splitter, 1)
+
+        # Initial Heights: Give list more space
+        self.splitter.setSizes([300, 500])
+        self.editor_container.hide()
 
     def retranslate_ui(self):
         """Update strings for current language."""
@@ -116,8 +133,7 @@ class NotesPanel(QWidget):
 
     def refresh(self):
         self.list_widget.clear()
-        self.editor.hide()
-        self.editor_btns.hide()
+        self.editor_container.hide()
         
         if not self.storage_path or not os.path.exists(self.storage_path):
             return
@@ -155,6 +171,44 @@ class NotesPanel(QWidget):
                     self.list_widget.setCurrentRow(i)
                     self._on_item_clicked(self.list_widget.item(i))
                     break
+
+    def is_dirty(self):
+        """Check if current editor content differs from saved file."""
+        if not self.editor.isVisible(): return False
+        return self.editor.toPlainText() != self._last_saved_content
+
+    def maybe_save(self):
+        """Show confirmation dialog if there are unsaved changes. 
+        Returns True if safe to proceed, False if user cancelled.
+        """
+        if not self.is_dirty(): return True
+        
+        from src.core.lang_manager import _
+        from src.ui.styles import apply_common_dialog_style
+        
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle(_("Unsaved Changes"))
+        msg.setText(_("Note '{name}' has unsaved changes.").format(name=getattr(self, 'current_note', '')))
+        msg.setInformativeText(_("Do you want to save your changes?"))
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | 
+                               QMessageBox.StandardButton.Discard | 
+                               QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Save)
+        apply_common_dialog_style(msg)
+        
+        ret = msg.exec()
+        if ret == QMessageBox.StandardButton.Save:
+            return self._save_current_note()
+        elif ret == QMessageBox.StandardButton.Discard:
+            return True
+        else: # Cancel
+            return False
+
+    def _on_editor_text_changed(self):
+        """Handle text change to update UI or state if needed."""
+        # We check dirty status on demand or via styling if we wanted
+        pass
 
     def retranslate_ui(self):
         """Update strings in NotesPanel."""
@@ -211,27 +265,48 @@ class NotesPanel(QWidget):
 
     def _on_item_clicked(self, item):
         if not item: return
+        
+        # Check for unsaved changes before switching
+        if hasattr(self, 'current_note') and self.current_note != item.text():
+            if not self.maybe_save():
+                # Revert selection in list_widget without triggering recursions
+                self.list_widget.blockSignals(True)
+                for i in range(self.list_widget.count()):
+                    if self.list_widget.item(i).text() == self.current_note:
+                        self.list_widget.setCurrentRow(i)
+                        break
+                self.list_widget.blockSignals(False)
+                return
+
         self.current_note = item.text()
         path = os.path.join(self.storage_path, self.current_note)
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                self.editor.setPlainText(f.read())
-            self.editor.show()
-            self.editor_btns.show()
+                content = f.read()
+                self.editor.setPlainText(content)
+                self._last_saved_content = content
+            self.editor_container.show()
             # Save last selected note
             self._save_last_note(self.current_note)
         except Exception as e:
             QMessageBox.critical(self, _("Error"), _("Failed to read note: {e}").format(e=e))
 
     def _save_current_note(self):
-        if not hasattr(self, 'current_note') or not self.current_note: return
+        if not hasattr(self, 'current_note') or not self.current_note: return False
         path = os.path.join(self.storage_path, self.current_note)
         try:
+            content = self.editor.toPlainText()
             with open(path, 'w', encoding='utf-8') as f:
-                f.write(self.editor.toPlainText())
-            # self.refresh() # Don't clear editor on save
+                f.write(content)
+            self._last_saved_content = content
+            
+            # Show Toast
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("Note Saved!"), preset="success")
+            return True
         except Exception as e:
             QMessageBox.critical(self, _("Error"), _("Failed to save note: {e}").format(e=e))
+            return False
 
     def _open_external(self):
         if not hasattr(self, 'current_note') or not self.current_note: return

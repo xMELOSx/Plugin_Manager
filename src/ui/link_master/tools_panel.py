@@ -195,7 +195,7 @@ class ToolsPanel(QWidget):
 
         layout.addWidget(size_group)
 
-        # 3.8 UI Display Settings (Phase 2)
+        # 3.8 UI Display Settings (Phase 2) - Moved to Card Editing, hiding here.
         ui_group = QWidget(self)
         ui_layout = QVBoxLayout(ui_group)
         ui_layout.setContentsMargins(0, 5, 0, 0)
@@ -224,7 +224,7 @@ class ToolsPanel(QWidget):
         opacity_layout.addWidget(self.slider_deploy_opacity)
         
         ui_layout.addLayout(opacity_layout)
-        layout.addWidget(ui_group)
+        # layout.addWidget(ui_group) # Removed to hide the section
 
         # 4. Reset All Attributes (Last, with warning styling)
         reset_group = QWidget(self)

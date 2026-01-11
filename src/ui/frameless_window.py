@@ -563,14 +563,29 @@ class FramelessDialog(QDialog, Win32Mixin):
 
     def set_window_icon_from_path(self, path: str):
         try:
+            from PyQt6.QtGui import QPainter, QBrush
             image = QImage(path)
             if image.isNull(): return
             image = image.scaled(256, 256, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             pixmap = QPixmap.fromImage(image)
+            
+            # Apply rounded corners like FramelessWindow / Main Window
+            scaled = pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            rounded = QPixmap(24, 24)
+            rounded.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(rounded)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setOpacity(0.92)
+            brush = QBrush(scaled)
+            painter.setBrush(brush)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(0, 0, 24, 24, 6, 6)
+            painter.end()
+            
             if hasattr(self, 'icon_label'):
-                self.icon_label.setPixmap(pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.icon_label.setPixmap(rounded)
                 self.icon_label.setVisible(True)
-            self.setWindowIcon(QIcon(pixmap)) 
+            self.setWindowIcon(QIcon(rounded)) 
         except: pass
             
     def set_default_icon(self):

@@ -318,10 +318,10 @@ def _setup_sidebar_drawer(window):
     window.sidebar_tabs.tabBar().hide()
     window.sidebar_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
     
-    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), "Libraries")
-    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), "Presets")
-    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), "Notes")
-    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), "Tools")
+    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), _("Library"))
+    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), _("Presets"))
+    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), _("Notes"))
+    window.sidebar_tabs.addTab(QWidget(window.sidebar_tabs), _("Tools"))
     
     window.drawer_ui_layout.addWidget(window.sidebar_tabs)
     window.drawer_widget.setMinimumWidth(200)

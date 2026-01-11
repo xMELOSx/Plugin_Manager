@@ -474,6 +474,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     
     def closeEvent(self, event):
         """Save geometry and UI state on close, and close subwindows."""
+        # Check for unsaved notes before closing
+        if hasattr(self, 'notes_panel') and self.notes_panel:
+            if not self.notes_panel.maybe_save():
+                event.ignore()
+                return
+
         # 1. Save last viewed app/path
         self._save_last_state()
         
@@ -745,6 +751,16 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if hasattr(self, 'btn_presets'): self.btn_presets.setToolTip(_("Toggle Presets"))
         if hasattr(self, 'btn_notes'): self.btn_notes.setToolTip(_("Toggle Quick Notes"))
         if hasattr(self, 'btn_tools'): self.btn_tools.setToolTip(_("Special Actions"))
+        
+        # Sidebar Tabs (Explicitly update titles)
+        if hasattr(self, 'sidebar_tabs'):
+            # The indices are: 0=Packages/Library, 1=Presets, 2=Notes, 3=Tools
+            # We use conditional strings based on whether the panel is loaded
+            tab0_text = _("Packages") if self.library_panel else _("Library")
+            self.sidebar_tabs.setTabText(0, tab0_text)
+            self.sidebar_tabs.setTabText(1, _("Presets"))
+            self.sidebar_tabs.setTabText(2, _("Notes"))
+            self.sidebar_tabs.setTabText(3, _("Tools"))
         
         # Nav etc
         if hasattr(self, 'btn_filter_linked'): self.btn_filter_linked.setToolTip(_("Show linked folders"))
@@ -1542,6 +1558,23 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     def _on_app_changed(self, index):
         app_data = self.app_combo.currentData()
         
+        # Guard: If leaving an app with unsaved notes
+        if hasattr(self, 'notes_panel') and self.notes_panel and self.notes_panel.is_dirty():
+            if not self.notes_panel.maybe_save():
+                # Revert combo index silently
+                self.app_combo.blockSignals(True)
+                # Find old index via current_app_id
+                old_idx = -1
+                for i in range(self.app_combo.count()):
+                    d = self.app_combo.itemData(i)
+                    if d and d.get('id') == self.current_app_id:
+                        old_idx = i
+                        break
+                if old_idx != -1:
+                    self.app_combo.setCurrentIndex(old_idx)
+                self.app_combo.blockSignals(False)
+                return
+
         if app_data:
             self.current_app_id = app_data.get('id')
             # Switch to App-Specific Database
@@ -1557,10 +1590,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             if getattr(self, 'library_panel', None):
                 self.library_panel.set_app(self.current_app_id, self.db)
- 
+  
             # Refresh notes and presets
             self._update_notes_path()
-            if self.sidebar_tabs.currentIndex() == 1 and self.drawer_widget.isVisible() and self.notes_panel:
+            if self.sidebar_tabs.currentIndex() == 2 and self.drawer_widget.isVisible() and self.notes_panel:
                 self.notes_panel.refresh()
 
             # Sync Target Buttons
@@ -1775,6 +1808,19 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         is_already_open = self.drawer_widget.isVisible()
         current_tab = self.sidebar_tabs.currentIndex()
         
+        # Guard: If leaving Notes tab, check for unsaved changes
+        if is_already_open and current_tab == 2 and index != 2:
+            if self.notes_panel and not self.notes_panel.maybe_save():
+                # Revert button states if cancelled
+                self._reset_sidebar_button_states(current_tab)
+                return
+        
+        # Also check if closing the sidebar entirely
+        if is_already_open and current_tab == index:
+            if current_tab == 2 and self.notes_panel and not self.notes_panel.maybe_save():
+                self._reset_sidebar_button_states(current_tab)
+                return
+        
         # Lazy Loading implementation
         if index == 0 and self.library_panel is None:
             self.library_panel = LibraryPanel(self, db=self.db)
@@ -1807,7 +1853,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Replace placeholder
             old = self.sidebar_tabs.widget(1)
             self.sidebar_tabs.removeTab(1)
-            self.sidebar_tabs.insertTab(1, self.presets_panel, "Presets")
+            self.sidebar_tabs.insertTab(1, self.presets_panel, _("Presets"))
             if old: old.deleteLater()
             
             if self.current_app_id:
@@ -1819,7 +1865,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Replace placeholder
             old = self.sidebar_tabs.widget(2)
             self.sidebar_tabs.removeTab(2)
-            self.sidebar_tabs.insertTab(2, self.notes_panel, "Notes")
+            self.sidebar_tabs.insertTab(2, self.notes_panel, _("Notes"))
             if old: old.deleteLater()
             
             self._update_notes_path()
@@ -1838,7 +1884,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             # Replace placeholder
             old = self.sidebar_tabs.widget(3)
             self.sidebar_tabs.removeTab(3)
-            self.sidebar_tabs.insertTab(3, self.tools_panel, "Tools")
+            self.sidebar_tabs.insertTab(3, self.tools_panel, _("Tools"))
             if old: old.deleteLater()
             
             # Initialize Tool values
@@ -1860,10 +1906,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self._last_splitter_sizes = self.sidebar_splitter.sizes()
             # Close it
             self.drawer_widget.hide()
-            self.btn_libraries.setChecked(False)
-            self.btn_presets.setChecked(False)
-            self.btn_notes.setChecked(False)
-            self.btn_tools.setChecked(False)
+            self._reset_sidebar_button_states(-1) # Uncheck all
         else:
             # Open it / Switch to it
             self.sidebar_tabs.setCurrentIndex(index)
@@ -1874,20 +1917,34 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.sidebar_splitter.setSizes(self._pending_splitter_sizes)
                 self._pending_splitter_sizes = None  # Clear after first use
             
-            self.btn_libraries.setChecked(index == 0)
-            self.btn_presets.setChecked(index == 1)
-            self.btn_notes.setChecked(index == 2)
-            self.btn_tools.setChecked(index == 3)
+            self._reset_sidebar_button_states(index)
             
             # Refresh content
-            if index == 0:
+            if index == 0 and self.library_panel:
                 self.library_panel.refresh()
-            elif index == 1:
+            elif index == 1 and self.presets_panel:
                 self.presets_panel.refresh()
-            elif index == 2:
-                self._update_notes_path()
+            elif index == 2 and self.notes_panel:
                 self.notes_panel.refresh()
-            # index 2 (Tools) is static content, no refresh needed
+
+    def _reset_sidebar_button_states(self, active_index):
+        """Sync button checked states with current sidebar tab."""
+        # active_index handles: 0=Library, 1=Presets, 2=Notes, 3=Tools. -1 for None
+        # We block signals to prevent recursive calls back to _toggle_sidebar_tab
+        self.btn_libraries.blockSignals(True)
+        self.btn_presets.blockSignals(True)
+        self.btn_notes.blockSignals(True)
+        self.btn_tools.blockSignals(True)
+        
+        self.btn_libraries.setChecked(active_index == 0)
+        self.btn_presets.setChecked(active_index == 1)
+        self.btn_notes.setChecked(active_index == 2)
+        self.btn_tools.setChecked(active_index == 3)
+        
+        self.btn_libraries.blockSignals(False)
+        self.btn_presets.blockSignals(False)
+        self.btn_notes.blockSignals(False)
+        self.btn_tools.blockSignals(False)
 
     def _register_selected_as_library(self):
         """Registers all currently selected items as libraries (requires metadata)."""
