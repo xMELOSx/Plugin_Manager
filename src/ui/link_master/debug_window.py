@@ -1,7 +1,7 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox, QCheckBox, QComboBox, QSpinBox, QScrollArea, QLineEdit)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QCheckBox, QComboBox, QSpinBox, QScrollArea, QLineEdit)
 from PyQt6.QtCore import Qt, QPoint
 from src.ui.frameless_window import FramelessWindow
-from src.ui.common_widgets import StyledSpinBox
+from src.ui.common_widgets import StyledSpinBox, FramelessMessageBox
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import OptionsMixin
 from src.core import core_handler
@@ -45,32 +45,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         self.init_ui()
         
-    # --- Qt-based Dragging Implementation ---
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Check for interactive widgets to avoid dragging when clicking buttons/combos
-            child = self.childAt(event.position().toPoint())
-            
-            from PyQt6.QtWidgets import QPushButton, QComboBox, QSpinBox, QCheckBox, QLineEdit, QSlider, QAbstractSlider, QScrollArea
-            interactive_types = (QPushButton, QComboBox, QSpinBox, QCheckBox, QLineEdit, QSlider, QAbstractSlider, QScrollArea)
-            
-            if isinstance(child, interactive_types):
-                return # Let standard interaction take place
-
-            # Start dragging
-            self._drag_active = True
-            # globalPosition() handles DPI scaling correctly across different screens
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_active and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self._drag_active = False
-        event.accept()
+    # Qt-based Dragging removed to avoid conflict with FramelessWindow native dragging
 
     # ... toggle_options and init_ui skipped ...
 
@@ -346,7 +321,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         
         msg = f"WA_TranslucentBackground set to: {new_state}\n"
         msg += "Note: Toggling this may require resizing or moving the window to see the effect of background discarding."
-        QMessageBox.information(self, "Background Debug", msg)
+        FramelessMessageBox.information(self, "Background Debug", msg)
 
     def _get_debug_settings_path(self):
         """Get path to debug settings JSON file."""

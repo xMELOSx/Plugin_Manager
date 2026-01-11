@@ -5,8 +5,7 @@ Handles symlinking, dependency resolution, and tag conflict checks.
 import os
 import logging
 import time
-from src.ui.styles import apply_common_dialog_style
-from PyQt6.QtWidgets import QMessageBox
+from src.ui.common_widgets import FramelessMessageBox
 from PyQt6.QtCore import QThread, QTimer
 
 from src.core.lang_manager import _
@@ -1088,11 +1087,11 @@ class LMDeploymentOpsMixin:
                     child_tag = child_cfg.get('conflict_tag')
                     if child_tag:
                         if child_tag in child_conflict_tags:
-                            msg_box = QMessageBox(self)
-                            msg_box.setIcon(QMessageBox.Icon.Warning)
+                            msg_box = FramelessMessageBox(self)
+                            msg_box.setIcon(FramelessMessageBox.Icon.Warning)
                             msg_box.setWindowTitle(_("Category Deploy"))
                             msg_box.setText(_("Cannot deploy category: Duplicate conflict tag '{tag}' found.").format(tag=child_tag))
-                            apply_common_dialog_style(msg_box)
+                            # apply_common_dialog_style(msg_box) # Removed as FramelessMessageBox is already styled
                             msg_box.exec()
                             return
                         child_conflict_tags.add(child_tag)
@@ -1101,11 +1100,11 @@ class LMDeploymentOpsMixin:
                     lib_name = child_cfg.get('library_name')
                     if lib_name:
                         if lib_name in child_libraries:
-                            msg_box = QMessageBox(self)
-                            msg_box.setIcon(QMessageBox.Icon.Warning)
+                            msg_box = FramelessMessageBox(self)
+                            msg_box.setIcon(FramelessMessageBox.Icon.Warning)
                             msg_box.setWindowTitle(_("Category Deploy"))
                             msg_box.setText(_("Cannot deploy category: Duplicate library '{lib}' found.").format(lib=lib_name))
-                            apply_common_dialog_style(msg_box)
+                            # apply_common_dialog_style(msg_box) # Removed
                             msg_box.exec()
                             return
                         child_libraries.add(lib_name)
@@ -1121,27 +1120,27 @@ class LMDeploymentOpsMixin:
         for tag in child_conflict_tags:
             conflict = self._check_tag_conflict(category_rel_path, {'conflict_tag': tag}, app_data)
             if conflict:
-                msg_box = QMessageBox(self)
-                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box = FramelessMessageBox(self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Warning)
                 msg_box.setWindowTitle(_("Category Deploy"))
                 msg_box.setText(_("Cannot deploy category: Tag conflict with '{name}'.").format(name=conflict.get('name', 'unknown')))
-                apply_common_dialog_style(msg_box)
+                # apply_common_dialog_style(msg_box)
                 msg_box.exec()
                 return
         
         if linked_children:
             # Phase 5: Swap Confirmation Dialog
-            msg = QMessageBox(self)
+            msg = FramelessMessageBox(self)
             msg.setWindowTitle(_("Category Deploy"))
             msg.setText(_("Deploying this category will unlink {count} active packages:\n\n{names}\n\nProceed?").format(
                 count=len(linked_children),
                 names="\n".join([os.path.basename(p) for p in linked_children[:5]]) + ("\n..." if len(linked_children) > 5 else "")
             ))
-            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
-            msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
-            apply_common_dialog_style(msg)
+            msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.Cancel)
+            msg.setDefaultButton(FramelessMessageBox.StandardButton.Cancel)
+            # apply_common_dialog_style(msg)
             
-            if msg.exec() != QMessageBox.StandardButton.Yes:
+            if msg.exec() != FramelessMessageBox.StandardButton.Yes:
                 self.logger.info("[CategoryDeploy] Cancelled by user.")
                 return
 

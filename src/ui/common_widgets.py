@@ -1,6 +1,9 @@
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QPainter, QPolygon, QBrush, QColor
+from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt6.QtCore import Qt, QPoint, QSize
+from PyQt6.QtGui import QPainter, QPolygon, QBrush, QColor, QIcon
+from src.ui.frameless_window import FramelessDialog
+from src.ui.title_bar_button import TitleBarButton
+from src.core.lang_manager import _
 
 def _draw_spinbox_arrows(painter, rect):
     """Common logic for drawing up/down arrows in spinboxes."""
@@ -496,3 +499,159 @@ class StyledButton(QPushButton):
     def set_style_type(self, style_type: str):
         self.style_type = style_type
         self._apply_style()
+
+class FramelessMessageBox(FramelessDialog):
+    """
+    Standardized Frameless Message Box to replace native QMessageBox.
+    Uses Common Window styling (FramelessDialog).
+    """
+    class Icon:
+        NoIcon = 0
+        Information = 1
+        Warning = 2
+        Critical = 3
+        Question = 4
+
+    class StandardButton:
+        NoButton = 0
+        Ok = 1024
+        Cancel = 4194304
+        Yes = 16384
+        No = 65536
+        # Add others as needed
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.resize(400, 200)
+        self.set_resizable(False)
+        self._setup_ui()
+        self.set_title_bar_icon_visible(True)
+        self.set_default_icon()
+        self._result = self.StandardButton.NoButton
+
+    def _setup_ui(self):
+        # Initial Setup is done by FramelessDialog._init_frameless_ui
+        # We just populate the content area
+        
+        # Main Layout (HBox: Icon + VBox(Text + Buttons))
+        self.msg_layout = QHBoxLayout()
+        self.msg_layout.setContentsMargins(20, 20, 20, 20)
+        self.msg_layout.setSpacing(15)
+        
+        # Icon Label
+        self.icon_lbl = QLabel()
+        self.icon_lbl.setFixedSize(48, 48)
+        self.icon_lbl.setVisible(False)
+        self.msg_layout.addWidget(self.icon_lbl, 0, Qt.AlignmentFlag.AlignTop)
+        
+        # Right Side (Text + Buttons)
+        self.right_layout = QVBoxLayout()
+        self.right_layout.setSpacing(20)
+        
+        self.text_lbl = QLabel()
+        self.text_lbl.setWordWrap(True)
+        self.text_lbl.setStyleSheet("color: #eeeeee; font-size: 13px;")
+        self.text_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.text_lbl.setCursor(Qt.CursorShape.IBeamCursor)
+        self.right_layout.addWidget(self.text_lbl)
+        
+        self.pixel_btn_layout = QHBoxLayout()
+        self.pixel_btn_layout.setSpacing(10)
+        self.pixel_btn_layout.addStretch()
+        
+        self.right_layout.addLayout(self.pixel_btn_layout)
+        self.msg_layout.addLayout(self.right_layout)
+        
+        # Set content to FramelessDialog
+        container = QWidget()
+        container.setLayout(self.msg_layout)
+        self.set_content_widget(container)
+
+    def setIcon(self, icon_enum):
+        from PyQt6.QtWidgets import QApplication, QStyle
+        style = QApplication.style()
+        icon = None
+        if icon_enum == self.Icon.Information:
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
+        elif icon_enum == self.Icon.Warning:
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+        elif icon_enum == self.Icon.Critical:
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxCritical)
+        elif icon_enum == self.Icon.Question:
+            icon = style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
+            
+        if icon:
+            self.icon_lbl.setPixmap(icon.pixmap(48, 48))
+            self.icon_lbl.setVisible(True)
+        else:
+            self.icon_lbl.setVisible(False)
+
+    def setText(self, text):
+        self.text_lbl.setText(text)
+
+    def setStandardButtons(self, buttons):
+        # Clear existing buttons
+        while self.pixel_btn_layout.count() > 1: # Keep stretch
+            item = self.pixel_btn_layout.takeAt(1)
+            if item.widget(): item.widget().deleteLater()
+            
+        # Add Buttons based on flags (Simple implementation for common uses)
+        if buttons & self.StandardButton.Ok:
+            self._add_btn("OK", self.StandardButton.Ok, "Blue")
+            
+        if buttons & self.StandardButton.Yes:
+            self._add_btn(_("Yes"), self.StandardButton.Yes, "Blue")
+            
+        if buttons & self.StandardButton.No:
+            self._add_btn(_("No"), self.StandardButton.No, "Gray")
+            
+        if buttons & self.StandardButton.Cancel:
+            self._add_btn(_("Cancel"), self.StandardButton.Cancel, "Gray")
+
+    def _add_btn(self, text, code, style="Gray"):
+        btn = StyledButton(text, style_type=style)
+        btn.setMinimumWidth(80)
+        btn.clicked.connect(lambda: self._done(code))
+        self.pixel_btn_layout.addWidget(btn)
+        
+    def setDefaultButton(self, code):
+        # Optional: Set focus
+        pass
+
+    def _done(self, code):
+        self._result = code
+        if code in [self.StandardButton.Ok, self.StandardButton.Yes]:
+            self.accept()
+        else:
+            self.reject()
+
+    def exec(self):
+        super().exec()
+        return self._result
+
+    @staticmethod
+    def information(parent, title, text):
+        dlg = FramelessMessageBox(parent)
+        dlg.setWindowTitle(title)
+        dlg.setText(text)
+        dlg.setIcon(FramelessMessageBox.Icon.Information)
+        dlg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+        return dlg.exec()
+
+    @staticmethod
+    def warning(parent, title, text):
+        dlg = FramelessMessageBox(parent)
+        dlg.setWindowTitle(title)
+        dlg.setText(text)
+        dlg.setIcon(FramelessMessageBox.Icon.Warning)
+        dlg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+        return dlg.exec()
+
+    @staticmethod
+    def critical(parent, title, text):
+        dlg = FramelessMessageBox(parent)
+        dlg.setWindowTitle(title)
+        dlg.setText(text)
+        dlg.setIcon(FramelessMessageBox.Icon.Critical)
+        dlg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+        return dlg.exec()
