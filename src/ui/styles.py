@@ -265,20 +265,9 @@ class DialogStyles:
 def apply_common_dialog_style(dialog):
     """
     Apply a consistent dark theme to a QDialog or QMessageBox.
-    Includes dark title bar support for Windows.
     """
-    # Windows dark titlebar support
-    try:
-        import ctypes
-        from ctypes import wintypes
-        hwnd = int(dialog.winId())
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        dwmapi = ctypes.windll.dwmapi
-        value = ctypes.c_int(1)  # 1 = dark mode
-        dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, 
-                                      ctypes.byref(value), ctypes.sizeof(value))
-    except Exception:
-        pass  # Ignore on non-Windows or if API fails
+    # Windows dark titlebar support logic removed from here as winId() call 
+    # during construction "crushes" the transparency capability.
     
     # Strong override for all labels within the dialog to ensure visibility
     common_label_style = """

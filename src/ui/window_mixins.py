@@ -302,19 +302,17 @@ class OptionsMixin:
                 if data.get('is_maximized'):
                     self.showMaximized()
             
-            # Restore opacity
             # Restore opacity - DISABLED to prevent artifacting with paintEvent transparency
             # Opacity is now handled via _bg_opacity and paintEvent
-            if hasattr(self, 'setWindowOpacity'):
-                 self.setWindowOpacity(1.0) # Force opaque to ensure visibility
-            # if 'opacity' in data and hasattr(self, 'setWindowOpacity'):
-            #     self.setWindowOpacity(data['opacity'])
+            # if hasattr(self, 'setWindowOpacity'):
+            #      self.setWindowOpacity(1.0) # Force opaque to ensure visibility
             
-            # Restore always_on_top
-            if 'always_on_top' in data and hasattr(self, 'set_always_on_top'):
+            # Restore always_on_top - DISABLED immediate call to avoid premature winId()
+            if 'always_on_top' in data:
                 is_pinned = data['always_on_top']
                 self._always_on_top = is_pinned
-                self.set_always_on_top(is_pinned)
+                # if hasattr(self, 'set_always_on_top'):
+                #    self.set_always_on_top(is_pinned)
             
             # Restore search
             if hasattr(self, 'search_bar') and data.get('search_text'):

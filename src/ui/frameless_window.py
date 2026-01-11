@@ -37,17 +37,14 @@ def force_dark_mode(window):
 class FramelessWindow(QMainWindow, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowOpacity(0.0)
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowMinMaxButtonsHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        force_dark_mode(self)
         self._native_styles_applied = False
         self.border_radius = 8
         self._bg_opacity = 0.95
         self._content_opacity = 1.0
         self.resizable = True
         self._init_frameless_ui()
-        QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
 
     def show_toast(self, message: str, level: str = "info"):
         Toast.show_toast(self, message, level)
@@ -371,17 +368,14 @@ class FramelessWindow(QMainWindow, Win32Mixin):
 class FramelessDialog(QDialog, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowOpacity(0.0)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        force_dark_mode(self)
         self._native_styles_applied = False
         self.border_radius = 8
         self._bg_opacity = 0.95
         self._content_opacity = 1.0
         self.resizable = True # Correctly initialized
         self._init_frameless_ui()
-        QTimer.singleShot(30, lambda: self.setWindowOpacity(1.0))
 
     def show_toast(self, message: str, level: str = "info"):
         Toast.show_toast(self, message, level)
