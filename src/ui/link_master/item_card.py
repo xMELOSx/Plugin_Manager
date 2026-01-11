@@ -1114,7 +1114,7 @@ class ItemCard(QFrame):
     def _open_url_manager(self):
         """Open URL management dialog for this item."""
         import os
-        from src.ui.link_master.dialogs_legacy import URLListDialog
+        from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
 
         rel_path = None
         if self.db and self.storage_root and self.path:
@@ -1125,7 +1125,7 @@ class ItemCard(QFrame):
 
         current_json = getattr(self, 'url_list', '[]') or '[]'
 
-        dialog = URLListDialog(self, url_list_json=current_json)
+        dialog = URLListDialog(self, url_list_json=current_json, caller_id="item_card")
         if dialog.exec():
             new_json = dialog.get_data()
             self.url_list = new_json

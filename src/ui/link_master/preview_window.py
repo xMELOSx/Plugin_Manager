@@ -532,33 +532,47 @@ class PreviewWindow(QWidget):
                     else: # 'text' or fallback
                         btn_text = name
                     
-                    btn = QPushButton(btn_text)
+                    from src.ui.common_widgets import StyledButton
+                    btn = StyledButton(btn_text)
                     btn.setCheckable(True)
+                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
                     
-                    # Add Icon if mode allows
-                    show_icon = (mode in ['image', 'image_text', 'text'])
+                    # Compact stable size: Icon size (approx 28x28) for symbols
+                    btn.setFixedHeight(24)
+                    if mode in ['symbol', 'text_symbol'] and emoji:
+                        btn.setFixedWidth(28)
+                    else:
+                        btn.setMinimumWidth(28)
+                        btn.setMaximumWidth(120)
+                    
+                    # Override StyledButton styles to ensure no font-weight or padding flip
+                    btn.setStyleSheet("""
+                        QPushButton { 
+                            background-color: #3b3b3b; color: #fff; border: 1px solid #555; 
+                            padding: 1px 4px; font-size: 11px; font-weight: normal;
+                        }
+                        QPushButton:hover { background-color: #4a4a4a; }
+                        QPushButton:checked { background-color: #3498db; border-color: #fff; font-weight: normal; }
+                    """)
+                    
+                    # Add Icon if mode allows or as default
+                    show_icon = (mode == 'image' or mode == 'image_text' or mode == 'text')
                     if show_icon and t.get('icon') and os.path.exists(t.get('icon')):
                          btn.setIcon(QIcon(t.get('icon')))
                     elif mode not in ['symbol', 'text_symbol'] and t.get('icon') and os.path.exists(t.get('icon')):
                          # Fallback for complex modes
                          btn.setIcon(QIcon(t.get('icon')))
-
-                    btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 4px 8px;")
                     
                     # トグルイベント
-                    btn.toggled.connect(lambda checked, n=name: self._on_tag_btn_toggled(n, checked))
+                    btn.toggled.connect(lambda checked, n=name: self._on_tag_toggled(n, checked))
                     self.tag_panel_layout.addWidget(btn)
                     self.tag_buttons[name.lower()] = btn
         except Exception as e:
             print(f"Error initializing tag buttons in PreviewWindow: {e}")
 
-    def _on_tag_btn_toggled(self, name, checked):
-        btn = self.tag_buttons.get(name.lower())
-        if btn:
-            if checked:
-                btn.setStyleSheet("background-color: #2980b9; color: white; border: 1px solid #3498db; padding: 4px 8px;")
-            else:
-                btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 4px 8px;")
+    def _on_tag_toggled(self, tag_name, checked):
+        """Quick Tags are stored internally via button state."""
+        pass
 
     def _apply_style(self):
         self.setStyleSheet("""
@@ -821,10 +835,10 @@ class PreviewWindow(QWidget):
 
     def _open_url_manager(self):
         """Open the URL List management dialog."""
-        from src.ui.link_master.dialogs_legacy import URLListDialog
+        from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
         import json
         
-        dialog = URLListDialog(self, url_list_json=self.url_list_json)
+        dialog = URLListDialog(self, url_list_json=self.url_list_json, caller_id="preview_window")
         if dialog.exec():
             # Update state
             new_data = dialog.get_data()

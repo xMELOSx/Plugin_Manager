@@ -23,7 +23,7 @@ import subprocess
 import shutil
 from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDialog
 from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
-from src.ui.link_master.dialogs.url_list_dialog import URLItemWidget, URLListDialog
+from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
 from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
 from src.ui.styles import apply_common_dialog_style
@@ -381,7 +381,7 @@ class AppRegistrationDialog(QDialog):
             self.url_count_label.setText(_("(0 registered)"))
 
     def _open_url_manager(self):
-        dialog = URLListDialog(self, url_list_json=getattr(self, 'url_list_json', '[]'))
+        dialog = URLListDialog(self, url_list_json=getattr(self, 'url_list_json', '[]'), caller_id="app_registration")
         if dialog.exec():
             self.url_list_json = dialog.get_data()
             self._update_url_count()
@@ -1099,30 +1099,38 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                     btn = QPushButton(btn_text)
                     btn.setCheckable(True)
                     btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                    btn.setStyleSheet("""
+                    
+                    # Compact stable size: Icon size for symbols, fit-content for text
+                    btn.setFixedHeight(24)
+                    if mode in ['symbol', 'text_symbol'] and emoji:
+                        btn.setFixedWidth(28)
+                    else:
+                        btn.setMinimumWidth(28)
+                        btn.setMaximumWidth(80)
+                    
+                    # Style with consistent padding/font to prevent size changes on toggle
+                    base_style = """
                         QPushButton { 
-                            background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 3px; 
-                            padding: 2px 6px; font-size: 11px;
+                            background-color: #3b3b3b; color: #fff; border: 1px solid #555; 
+                            padding: 2px 4px; font-size: 10px; font-weight: normal;
+                            border-radius: 3px; min-width: 0px;
                         }
                         QPushButton:hover { background-color: #4a4a4a; border-color: #777; }
                         QPushButton:checked { background-color: #3498db; color: #fff; border-color: #fff; }
                         QPushButton:pressed { background-color: #222; }
-                    """)
+                    """
+                    btn.setStyleSheet(base_style)
                     
-                    # Add Icon if mode allows or as default
+                    # Add Icon if mode allows
                     show_icon = (mode == 'image' or mode == 'image_text' or mode == 'text')
                     if show_icon and t.get('icon') and os.path.exists(t.get('icon')):
                          btn.setIcon(QIcon(t.get('icon')))
                     elif mode not in ['symbol', 'text_symbol'] and t.get('icon') and os.path.exists(t.get('icon')):
-                         # Fallback for complex modes
                          btn.setIcon(QIcon(t.get('icon')))
 
                     current_tags = [p.strip().lower() for p in (self.current_config.get('tags', '') or '').split(',') if p.strip()]
                     if name.lower() in current_tags:
                         btn.setChecked(True)
-                        btn.setStyleSheet("background-color: #2980b9; color: white; border: 1px solid #3498db; padding: 2px 4px; font-size: 11px; min-width: 0px;")
-                    else:
-                        btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 2px 4px; font-size: 11px; min-width: 0px;")
                         
                     # Use toggled signal for reliable checked state tracking
                     btn.toggled.connect(lambda checked, n=name: self._on_tag_toggled(n, checked))
@@ -2064,18 +2072,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
              self.preview_label.setText(_("Error"))
 
     def _on_tag_toggled(self, tag_name, checked):
-        # Quick Tags are stored internally via button state.
-        # They do NOT modify the manual tags_edit text area.
-        # The get_data() method will merge both sources at save time.
-        
-        # Just update button visual state (color)
-        # Note: tag_buttons keys are lowercase
-        btn = self.tag_buttons.get(tag_name.lower())
-        if btn:
-            if checked:
-                btn.setStyleSheet("background-color: #2980b9; color: white; border: 1px solid #3498db; padding: 4px 8px;")
-            else:
-                btn.setStyleSheet("background-color: #444; color: #ccc; border: 1px solid #555; padding: 4px 8px;")
+        """Internal button state updated."""
+        pass
 
 
     def _sync_tag_buttons(self):
@@ -2106,7 +2104,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         """Open specialized URL manager dialog."""
         # Use url_list_edit instead of old self.url_list
         dlg = URLListDialog(self, url_list_json=self.url_list_edit.text(), 
-                            marked_url=self.current_config.get('marked_url'))
+                            marked_url=self.current_config.get('marked_url'), caller_id="folder_properties")
         if dlg.exec():
             json_data = dlg.get_data()
             self.url_list_edit.setText(json_data)
@@ -3115,11 +3113,15 @@ class IconCropDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 10)  # No top margin, text sits right under title
+        layout.setSpacing(5)
+        
+        # Help Text Banner - sits directly under title bar
         self.hint_label = QLabel(_("Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square)."))
         if self.allow_free:
             self.hint_label.setText(_("Drag to move, resize corner for free selection."))
             
-        self.hint_label.setStyleSheet("color: #888; font-style: italic;")
+        self.hint_label.setStyleSheet("background-color: #1a1a1a; color: #aaa; font-style: italic; padding: 8px 10px; border-bottom: 1px solid #444;")
         layout.addWidget(self.hint_label)
         
         # Use Custom Label
@@ -3128,12 +3130,13 @@ class IconCropDialog(QDialog):
         
         btns = QHBoxLayout()
         
-        # Toggle Mode Button
-        self.mode_btn = QPushButton(_("Mode: Free") if self.allow_free else _("Mode: Square"))
+        # Toggle Mode Button (Localized)
+        mode_text = _("Mode: Free") if self.allow_free else _("Mode: Square")
+        self.mode_btn = StyledButton(mode_text)
         self.mode_btn.setCheckable(True)
         self.mode_btn.setChecked(self.allow_free)
         self.mode_btn.clicked.connect(self._toggle_mode)
-        self.mode_btn.setStyleSheet("background-color: #34495e; color: white; border: 1px solid #555;")
+        self.mode_btn.setFixedWidth(140)
         btns.addWidget(self.mode_btn)
         
         btns.addStretch()
@@ -3195,7 +3198,8 @@ class ImportTypeDialog(QDialog):
         self._init_ui()
 
     def _init_ui(self):
-        from src.ui.styles import ButtonStyles
+        from src.ui.common_widgets import StyledButton
+        from src.ui.styles import ButtonStyles, TooltipStyles
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

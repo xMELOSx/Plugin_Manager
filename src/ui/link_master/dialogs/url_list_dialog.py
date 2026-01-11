@@ -52,13 +52,13 @@ class URLItemWidget(QWidget):
         self.active_btn.clicked.connect(self._toggle_active)
         layout.addWidget(self.active_btn)
 
-        # Mark indicator (🔗 for last working URL)
-        self.mark_btn = QPushButton("🔗" if self.is_marked else "  ")
+        # Mark indicator (🔗 for last working URL) - Always show emoji to maintain fixed width
+        self.mark_btn = QPushButton("🔗")  # Always show emoji, use color to indicate state
         self.mark_btn.setFixedWidth(36)
         self.mark_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mark_btn.setToolTip(_("Mark as Preferred (Fast Access)"))
-        mark_color = "#2ecc71" if self.is_marked else "#888"
-        self.mark_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; font-size: 16px; color: {mark_color}; }} QPushButton:hover {{ background-color: #444; border-radius: 4px; }}")
+        mark_style = "QPushButton {{ background: transparent; border: none; font-size: 16px; color: {color}; }} QPushButton:hover {{ background-color: #444; border-radius: 4px; }}"
+        self.mark_btn.setStyleSheet(mark_style.format(color="#2ecc71" if self.is_marked else "transparent"))
         self.mark_btn.clicked.connect(self._mark_as_preferred)
         layout.addWidget(self.mark_btn)
         
@@ -162,8 +162,9 @@ class URLListDialog(QDialog):
     """Dialog to manage multiple URLs with connectivity testing."""
     changed = pyqtSignal()  # Emitted when URLs change
     
-    def __init__(self, parent=None, url_list_json: str = '[]', marked_url: str = None):
+    def __init__(self, parent=None, url_list_json: str = '[]', marked_url: str = None, caller_id: str = "default"):
         super().__init__(parent)
+        self.caller_id = caller_id
         self.setWindowTitle(_("Manage URLs"))
         self.resize(700, 400)
         self.setStyleSheet(f"""
@@ -171,7 +172,7 @@ class URLListDialog(QDialog):
             QListWidget {{ background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }}
             QListWidget::item {{ padding: 2px; }}
             QListWidget::item:selected {{ background-color: #3d5a80; }}
-            QPushButton {{ background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }}
+            QPushButton {{ background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; min-width: 0px; }}
             QPushButton:hover {{ background-color: #5d5d5d; }}
             QLabel {{ color: #e0e0e0; }}
             QCheckBox {{ color: #e0e0e0; }}
@@ -201,6 +202,24 @@ class URLListDialog(QDialog):
                      
         self._init_ui()
         self._load_urls()
+        self._restore_geometry()
+        
+        # Save geometry on close
+        self.finished.connect(self._save_geometry)
+    
+    def _restore_geometry(self):
+        """Restore saved geometry for this caller_id."""
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("LinkMaster", "URLListDialog")
+        geometry = settings.value(f"geometry_{self.caller_id}")
+        if geometry:
+            self.restoreGeometry(geometry)
+    
+    def _save_geometry(self):
+        """Save current geometry for this caller_id."""
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("LinkMaster", "URLListDialog")
+        settings.setValue(f"geometry_{self.caller_id}", self.saveGeometry())
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -217,9 +236,11 @@ class URLListDialog(QDialog):
         input_layout.addWidget(add_btn)
         layout.addLayout(input_layout)
 
-        # Header Labels (Standardized to match URLItemWidget)
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(5, 5, 5, 5)
+        # Header Labels - Add left padding to match QListWidget's internal item padding
+        # QListWidget items have internal left/right margins of ~4-6px
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(10, 3, 10, 3)  # Compensate for QListWidget internal padding (~5px each side)
         header_layout.setSpacing(5)
         
         # Padding for drag handle area
@@ -260,7 +281,7 @@ class URLListDialog(QDialog):
         h_del.setAlignment(Qt.AlignmentFlag.AlignCenter)
         h_del.setStyleSheet("color: #aaa; font-size: 11px;")
         header_layout.addWidget(h_del)
-        layout.addLayout(header_layout)
+        layout.addWidget(header_widget)
         
         # List Widget with Drag-Drop
         self.list_widget = QListWidget()

@@ -177,15 +177,15 @@ class LibrarySettingsDialog(QDialog):
             self.url_count_label.setText("(0)")
 
     def _open_url_manager(self):
-        from src.ui.link_master.dialogs_legacy import URLListDialog
-        dialog = URLListDialog(self, url_list_json=self.url_list_json)
+        from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
+        dialog = URLListDialog(self, url_list_json=self.url_list_json, caller_id="library_settings")
         if dialog.exec():
             self.url_list_json = dialog.get_data()
             self._update_url_count_preview()
 
     def _open_version_url_manager(self, path, current_json):
-        from src.ui.link_master.dialogs_legacy import URLListDialog
-        dialog = URLListDialog(self, url_list_json=current_json)
+        from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
+        dialog = URLListDialog(self, url_list_json=current_json, caller_id="library_version")
         if dialog.exec():
             new_json = dialog.get_data()
             self.db.update_folder_display_config(path, url_list=new_json)

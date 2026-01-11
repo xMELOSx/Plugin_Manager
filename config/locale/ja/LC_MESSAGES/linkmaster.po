@@ -2590,3 +2590,21 @@ msgid "copy"
 msgstr "物理コピー"
 msgid "Auto-mark last accessed URL (🔗):"
 msgstr "最終アクセスリンクに優先マーク付与 (🔗):"
+
+msgid "Select Region"
+msgstr "領域を選択"
+
+msgid "Mode: Square"
+msgstr "モード: 正方形"
+
+msgid "Mode: Free"
+msgstr "モード: 自由"
+
+msgid "Crop && Apply"
+msgstr "切り抜き & 適用"
+
+msgid "Drag to move selection, use bottom-right corner to resize. Aspect ratio: 1:1 (Square)."
+msgstr "ドラッグで移動、右下の角でリサイズします。アスペクト比: 1:1 (正方形)"
+
+msgid "Drag to move, resize corner for free selection."
+msgstr "ドラッグで移動、角で自由な範囲を選択できます。"
