@@ -160,6 +160,19 @@ class Toast(QLabel):
         self.anim.setEndValue(1.0)
         self.anim.start()
         
+        # Play Sound (Only for success/green alerts)
+        if actual_preset == 'success':
+            try:
+                import winsound
+                import os
+                # .../src/ui/toast.py -> .../src/ui -> .../src
+                base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                sound_path = os.path.join(base_path, "resource", "se", "ok.wav")
+                if os.path.exists(sound_path):
+                    winsound.PlaySound(sound_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            except:
+                pass
+        
         # Start hide timer
         self._hide_timer.start(show_duration)
 
