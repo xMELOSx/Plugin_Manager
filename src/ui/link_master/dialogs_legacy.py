@@ -863,7 +863,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         display_form.addRow("", fav_layout)
         
         # --- Multi-Preview Launcher (Phase 18) ---
-        self.manage_previews_btn = QPushButton(_("📂 Manage Full Previews..."))
+        self.manage_previews_btn = QPushButton(_("📂 プレビュー管理..."))
         self.manage_previews_btn.clicked.connect(self._open_multi_preview_browser)
         
         self.full_preview_edit = StyledLineEdit()
@@ -875,7 +875,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.image_edit.setPlaceholderText(_("Path to icon image (200x200)"))
         self.image_edit.setText(self.current_config.get('image_path') or '')
         
-        self.image_btn = QPushButton(_("Browse"))
+        self.image_btn = QPushButton(_("参照"))
         self.image_btn.clicked.connect(self._browse_image)
         
         self.crop_btn = QPushButton(_("✂ Edit Region"))
@@ -885,7 +885,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.paste_btn.clicked.connect(self._paste_from_clipboard)
         self.paste_btn.setToolTip(_("Paste image from clipboard"))
         
-        self.clear_btn = QPushButton(_("Clear"))
+        self.clear_btn = QPushButton(_("クリア"))
         self.clear_btn.clicked.connect(self._clear_image)
         self.clear_btn.setStyleSheet("background-color: #8b0000; color: white; border: 1px solid #a00000; border-radius: 4px; padding: 4px 8px;")
         
@@ -963,10 +963,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.type_combo = StyledComboBox()
         if self.batch_mode:
             self.type_combo.addItem(_("--- No Change ---"), "KEEP")
-        
-        # Show detected type in Auto option for user clarity
-        detected_label = _("Category") if self.detected_folder_type == 'category' else _("Package")
-        self.type_combo.addItem(_("Auto (→ {detected})").format(detected=detected_label), "auto")
+            # In batch mode, don't show detection result (could be mixed)
+            self.type_combo.addItem(_("Auto (Detect)"), "auto")
+        else:
+            # Show detected type in Auto option for user clarity (single item only)
+            detected_label = _("Category") if self.detected_folder_type == 'category' else _("Package")
+            self.type_combo.addItem(_("Auto (→ {detected})").format(detected=detected_label), "auto")
         self.type_combo.addItem(_("Category"), "category")
         self.type_combo.addItem(_("Package"), "package")
         
@@ -1041,7 +1043,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.hide_checkbox = SlideButton()
         is_visible = self.current_config.get('is_visible', 1)
         self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
-        attr_form.addRow(_("Hide from view:"), self.hide_checkbox)
+        attr_form.addRow(_("表示から隠す:"), self.hide_checkbox)
         
         # Quick Tag Selector (Top Position - Phase 18 Swap)
         self.tag_panel = QWidget()
@@ -1127,7 +1129,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.inherit_tags_chk = SlideButton()
         self.inherit_tags_chk.setChecked(bool(self.current_config.get('inherit_tags', 1)))
         self.inherit_tags_chk.setToolTip(_("If unchecked, tags from parent folders will NOT be applied to this item and its children."))
-        attr_form.addRow(_("Inherit tags to subfolders:"), self.inherit_tags_chk)
+        attr_form.addRow(_("サブフォルダにタグを継承:"), self.inherit_tags_chk)
         
         # No sync needed since Quick Tags are independent
         # self.tags_edit.textChanged.connect(self._sync_tag_buttons)
@@ -1135,7 +1137,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         layout.addWidget(attr_group)
         
         # Advanced Link Config (Merged into Folder Attributes or separate Group)
-        adv_group = QGroupBox(_("Advanced Link Config"))
+        adv_group = QGroupBox(_("高度なリンク設定"))
         adv_group.setStyleSheet("QGroupBox { font-weight: bold; color: #3498db; border: 1px solid #555; margin-top: 10px; padding-top: 10px; }")
         adv_form = QFormLayout(adv_group)
 
@@ -1249,16 +1251,19 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
         deploy_rule_row.addWidget(self.deploy_rule_override_combo)
         
-        # Help Button - Now toggles In-place label
+        # Help Button - Now toggles In-place label with checked visual
         self.rule_help_btn = QPushButton("?")
-        self.rule_help_btn.setFixedSize(22, 22)
+        self.rule_help_btn.setFixedSize(20, 20)
+        self.rule_help_btn.setCheckable(True)
         self.rule_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.rule_help_btn.clicked.connect(self._toggle_deploy_help)
         self.rule_help_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #555; color: #fff; border-radius: 11px; font-weight: bold; font-size: 11px;
+                background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
+                min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
             }
             QPushButton:hover { background-color: #777; }
+            QPushButton:checked { background-color: #3498db; }
         """)
         deploy_rule_row.addWidget(self.rule_help_btn)
         deploy_rule_row.addStretch()
@@ -1271,11 +1276,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             padding: 8px; margin: 5px 0 10px 0; border-radius: 4px;
         """)
         msg = (
-            "<b>[デフォルト]</b>: " + _("App-level default.") + "<br>" +
-            "<b>[Folder]</b>: " + _("Keep original structure.") + "<br>" +
-            "<b>[Flat]</b>: " + _("Ignore subfolders.") + "<br>" +
-            "<b>[Tree]</b>: " + _("Recursive tree.") + "<br>" +
-            "<b>[Custom]</b>: " + _("Apply JSON rules.")
+            "<b>[デフォルト]</b>: アプリ設定を使用<br>" +
+            "<b>[Folder]</b>: フォルダ構造を維持<br>" +
+            "<b>[Flat]</b>: サブフォルダを無視<br>" +
+            "<b>[Tree]</b>: 階層を再帰で複製<br>" +
+            "<b>[Custom]</b>: JSONルールを適用"
         )
         self.deploy_help_panel.setText(msg)
         self.deploy_help_panel.setVisible(False)
@@ -1358,28 +1363,35 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         self.json_help_btn = QPushButton("?")
         self.json_help_btn.setFixedSize(20, 20)
+        self.json_help_btn.setCheckable(True)
         self.json_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.json_help_btn.clicked.connect(self._toggle_json_help)
         self.json_help_btn.setStyleSheet("""
-            QPushButton { background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px; }
+            QPushButton { 
+                background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
+                min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+            }
             QPushButton:hover { background-color: #777; }
+            QPushButton:checked { background-color: #3498db; }
         """)
         json_label_row.addWidget(self.json_help_btn)
         json_label_row.addStretch()
         json_v_layout.addLayout(json_label_row)
 
-        # [NEW] In-place JSON Help
+        # [NEW] In-place JSON Help - Selectable for copying with IBeam cursor
         self.json_help_panel = QLabel()
         self.json_help_panel.setWordWrap(True)
+        self.json_help_panel.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.json_help_panel.setCursor(Qt.CursorShape.IBeamCursor)
         self.json_help_panel.setStyleSheet("""
             background-color: #333; color: #aaa; border-left: 3px solid #3498db; 
             padding: 8px; margin: 3px 0 10px 0; border-radius: 4px; font-size: 11px;
         """)
         json_msg = (
-            "<b>JSON Example:</b><br>"
+            "<b>JSON例:</b><br>"
             "<code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>"
-            "• <b>exclude</b>: Glob pattern list.<br>"
-            "• <b>rename</b>: Mapping of internal files."
+            "• <b>exclude</b>: 除外するGlobパターンリスト<br>"
+            "• <b>rename</b>: 内部ファイルのリネームマップ"
         )
         self.json_help_panel.setText(json_msg)
         self.json_help_panel.setVisible(False)
