@@ -253,11 +253,16 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             try:
                 info = ctypes.cast(msg.lParam, ctypes.POINTER(MINMAXINFO)).contents
                 r = self.devicePixelRatioF()
-                screen = self.screen().availableGeometry()
-                info.ptMaxTrackSize.x = int(screen.width() * r) - 2
-                info.ptMaxTrackSize.y = int(screen.height() * r) - 2
-                info.ptMaxSize.x = int(screen.width() * r) - 2
-                info.ptMaxSize.y = int(screen.height() * r) - 2
+                
+                if self.isFullScreen():
+                    screen = self.screen().geometry()
+                else:
+                    screen = self.screen().availableGeometry()
+                
+                info.ptMaxTrackSize.x = int(screen.width() * r)
+                info.ptMaxTrackSize.y = int(screen.height() * r)
+                info.ptMaxSize.x = int(screen.width() * r)
+                info.ptMaxSize.y = int(screen.height() * r)
                 return True, 0
             except: pass
         if msg.message == 0x0083: return True, 0 
@@ -500,11 +505,16 @@ class FramelessDialog(QDialog, Win32Mixin):
             try:
                 info = ctypes.cast(msg.lParam, ctypes.POINTER(MINMAXINFO)).contents
                 r = self.devicePixelRatioF()
-                screen = self.screen().availableGeometry()
-                info.ptMaxTrackSize.x = int(screen.width() * r) - 2
-                info.ptMaxTrackSize.y = int(screen.height() * r) - 2
-                info.ptMaxSize.x = int(screen.width() * r) - 2
-                info.ptMaxSize.y = int(screen.height() * r) - 2
+                
+                if self.isFullScreen():
+                    screen = self.screen().geometry()
+                else:
+                    screen = self.screen().availableGeometry()
+                
+                info.ptMaxTrackSize.x = int(screen.width() * r)
+                info.ptMaxTrackSize.y = int(screen.height() * r)
+                info.ptMaxSize.x = int(screen.width() * r)
+                info.ptMaxSize.y = int(screen.height() * r)
                 return True, 0
             except: pass
         if msg.message == 0x0083: return True, 0

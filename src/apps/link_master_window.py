@@ -2201,6 +2201,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     # Final refresh after all toggles
                     self._refresh_current_view()
                 return
+        if event.key() == Qt.Key.Key_F11:
+            if self.isFullScreen():
+                self.showNormal()
+                self.logger.info("F11: Exit Fullscreen")
+            else:
+                self.showFullScreen()
+                self.logger.info("F11: Enter Fullscreen")
+            return
+
         super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
