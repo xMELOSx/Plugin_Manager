@@ -2480,3 +2480,76 @@ msgstr "このアプリケーションの登録を完全に削除してもよろ
 
 msgid "Application saved successfully"
 msgstr "アプリケーションが保存されました"
+
+# Dropdown / List values
+msgid "Image"
+msgstr "画像"
+
+msgid "Text"
+msgstr "テキスト"
+
+msgid "Image + Text"
+msgstr "画像とテキスト"
+
+msgid "image"
+msgstr "画像"
+
+msgid "text"
+msgstr "テキスト"
+
+msgid "image_text"
+msgstr "画像とテキスト"
+
+msgid "Flat"
+msgstr "フラット"
+
+msgid "Tree"
+msgstr "ツリー"
+
+msgid "Custom"
+msgstr "カスタム"
+
+msgid "Custom..."
+msgstr "カスタム..."
+
+msgid "Symbolic Link"
+msgstr "シンボリックリンク"
+
+msgid "Physical Copy"
+msgstr "物理コピー"
+
+msgid "symlink"
+msgstr "シンボリックリンク"
+
+msgid "copy"
+msgstr "物理コピー"
+
+msgid "Backup"
+msgstr "バックアップ"
+
+msgid "Skip"
+msgstr "スキップ"
+
+msgid "Overwrite"
+msgstr "上書き"
+
+msgid "backup"
+msgstr "バックアップ"
+
+msgid "skip"
+msgstr "スキップ"
+
+msgid "overwrite"
+msgstr "上書き"
+
+msgid "({count} registered)"
+msgstr "({count} 件登録済み)"
+
+msgid "(0 registered)"
+msgstr "(0 件登録済み)"
+
+msgid "<b>[Default]</b>: Use app settings<br><b>[Folder]</b>: Maintain folder structure<br><b>[Flat]</b>: Ignore subfolders (flat file list)<br><b>[Tree]</b>: Recursively replicate hierarchy<br><b>[Custom]</b>: Apply JSON rules"
+msgstr "<b>[デフォルト]</b>: アプリ設定を使用<br><b>[フォルダ]</b>: フォルダ構造を維持<br><b>[フラット]</b>: サブフォルダを無視 (フラット展開)<br><b>[ツリー]</b>: 階層を再帰的に複製<br><b>[カスタム]</b>: JSONルールを適用"
+
+msgid "<b>JSON Example:</b><br><code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>• <b>exclude</b>: List of glob patterns to exclude<br>• <b>rename</b>: Map for internal file renaming"
+msgstr "<b>JSON例:</b><br><code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>• <b>exclude</b>: 除外するGlobパターンリスト<br>• <b>rename</b>: 内部ファイルのリネームマップ"

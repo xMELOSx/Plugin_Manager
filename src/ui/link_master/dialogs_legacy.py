@@ -172,19 +172,19 @@ class AppRegistrationDialog(QDialog):
 
         # Conflict Policy
         self.conflict_combo = StyledComboBox()
-        for p in ["backup", "skip", "overwrite"]:
-            self.conflict_combo.addItem(_(p), p)
+        for p, label in [("backup", _("Backup")), ("skip", _("Skip")), ("overwrite", _("Overwrite"))]:
+            self.conflict_combo.addItem(label, p)
         defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
-        for s in ["image", "text", "image_text"]:
-            self.cat_style_combo.addItem(_(s), s)
+        for s, label in [("image", _("Image")), ("text", _("Text")), ("image_text", _("Image + Text"))]:
+            self.cat_style_combo.addItem(label, s)
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
         self.pkg_style_combo = StyledComboBox()
-        for s in ["image", "text", "image_text"]:
-            self.pkg_style_combo.addItem(_(s), s)
+        for s, label in [("image", _("Image")), ("text", _("Text")), ("image_text", _("Image + Text"))]:
+            self.pkg_style_combo.addItem(label, s)
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
         
         defaults_group.setLayout(defaults_form)
@@ -375,9 +375,9 @@ class AppRegistrationDialog(QDialog):
         try:
             ud = json.loads(self.url_list_json)
             urls = ud if isinstance(ud, list) else ud.get('urls', [])
-            self.url_count_label.setText(f"({len(urls)})")
+            self.url_count_label.setText(_("({count} registered)").format(count=len(urls)))
         except:
-            self.url_count_label.setText("(0)")
+            self.url_count_label.setText(_("(0 registered)"))
 
     def _open_url_manager(self):
         dialog = URLListDialog(self, url_list_json=getattr(self, 'url_list_json', '[]'))
@@ -1279,12 +1279,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             background-color: #333; color: #aaa; border-left: 3px solid #555; 
             padding: 8px; margin: 5px 0 10px 0; border-radius: 4px;
         """)
-        msg = (
-            "<b>[デフォルト]</b>: アプリ設定を使用<br>" +
-            "<b>[Folder]</b>: フォルダ構造を維持<br>" +
-            "<b>[Flat]</b>: サブフォルダを無視<br>" +
-            "<b>[Tree]</b>: 階層を再帰で複製<br>" +
-            "<b>[Custom]</b>: JSONルールを適用"
+        msg = _(
+            "<b>[Default]</b>: Use app settings<br>"
+            "<b>[Folder]</b>: Maintain folder structure<br>"
+            "<b>[Flat]</b>: Ignore subfolders (flat file list)<br>"
+            "<b>[Tree]</b>: Recursively replicate hierarchy<br>"
+            "<b>[Custom]</b>: Apply JSON rules"
         )
         self.deploy_help_panel.setText(msg)
         self.deploy_help_panel.setVisible(False)
@@ -1392,11 +1392,11 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             background-color: #333; color: #aaa; border-left: 3px solid #3498db; 
             padding: 8px; margin: 3px 0 10px 0; border-radius: 4px; font-size: 11px;
         """)
-        json_msg = (
-            "<b>JSON例:</b><br>"
+        json_msg = _(
+            "<b>JSON Example:</b><br>"
             "<code>{\"exclude\": [\"*.txt\"], \"rename\": {\"a\": \"b\"}}</code><br><br>"
-            "• <b>exclude</b>: 除外するGlobパターンリスト<br>"
-            "• <b>rename</b>: 内部ファイルのリネームマップ"
+            "• <b>exclude</b>: List of glob patterns to exclude<br>"
+            "• <b>rename</b>: Map for internal file renaming"
         )
         self.json_help_panel.setText(json_msg)
         self.json_help_panel.setVisible(False)
