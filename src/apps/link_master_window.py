@@ -1880,7 +1880,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.tools_panel.request_import.connect(self._import_portability_package)
             self.tools_panel.request_export.connect(self._export_hierarchy_current)
             self.tools_panel.request_size_check.connect(self._start_bulk_size_check)
-            self.tools_panel.deploy_opacity_changed.connect(self._set_deploy_button_opacity)
+            
             # Replace placeholder
             old = self.sidebar_tabs.widget(3)
             self.sidebar_tabs.removeTab(3)
@@ -1897,8 +1897,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.tools_panel.spin_pool_size.setValue(self.max_pool_size)
             if hasattr(self, 'search_cache_enabled'):
                 self.tools_panel.chk_search_cache.setChecked(self.search_cache_enabled)
-            if hasattr(self, 'deploy_button_opacity'):
-                 self.tools_panel.slider_deploy_opacity.setValue(int(self.deploy_button_opacity * 100))
 
         if is_already_open and current_tab == index:
             # Cache splitter sizes before closing

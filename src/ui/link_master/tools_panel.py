@@ -17,7 +17,6 @@ class ToolsPanel(QWidget):
     request_import = pyqtSignal()
     request_export = pyqtSignal()
     request_size_check = pyqtSignal()
-    deploy_opacity_changed = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,37 +194,6 @@ class ToolsPanel(QWidget):
 
         layout.addWidget(size_group)
 
-        # 3.8 UI Display Settings (Phase 2) - Moved to Card Editing, hiding here.
-        ui_group = QWidget(self)
-        ui_layout = QVBoxLayout(ui_group)
-        ui_layout.setContentsMargins(0, 5, 0, 0)
-        
-        ui_layout.addWidget(self._create_h_line())
-        ui_layout.addSpacing(5)
-        
-        self.ui_header = QLabel(_("🎨 Display Settings"))
-        self.ui_header.setStyleSheet("color: #bbb; font-weight: bold; font-size: 13px;")
-        ui_layout.addWidget(self.ui_header)
-
-        opacity_layout = QHBoxLayout()
-        self.opacity_lbl = QLabel(_("Deploy Button Opacity:"))
-        self.opacity_lbl.setStyleSheet("color: #ddd; font-size: 11px;")
-        opacity_layout.addWidget(self.opacity_lbl)
-        
-        from PyQt6.QtWidgets import QSlider
-        self.slider_deploy_opacity = QSlider(Qt.Orientation.Horizontal)
-        self.slider_deploy_opacity.setRange(0, 100)
-        self.slider_deploy_opacity.setValue(80) # Default 80%
-        self.slider_deploy_opacity.setStyleSheet("""
-            QSlider::groove:horizontal { background: #444; height: 4px; border-radius: 2px; }
-            QSlider::handle:horizontal { background: #3498db; border: 1px solid #2980b9; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }
-        """)
-        self.slider_deploy_opacity.valueChanged.connect(self.deploy_opacity_changed.emit)
-        opacity_layout.addWidget(self.slider_deploy_opacity)
-        
-        ui_layout.addLayout(opacity_layout)
-        # layout.addWidget(ui_group) # Removed to hide the section
-
         # 4. Reset All Attributes (Last, with warning styling)
         reset_group = QWidget(self)
         reset_layout = QVBoxLayout(reset_group)
@@ -277,12 +245,8 @@ class ToolsPanel(QWidget):
         self.btn_import.setText(_("📥 Import"))
         
         self.size_header.setText(_("📦 Package Size Management"))
-        self.size_desc.setText(_("Recalculate disk usage for all packages. Useful for verifying actual size when managing large mods."))
         self.btn_check_sizes.setText(_("Run All Size Checks"))
         # lbl_last_size_check is updated via set_last_check_time
-        
-        self.ui_header.setText(_("🎨 Display Settings"))
-        self.opacity_lbl.setText(_("Deploy Button Opacity:"))
         
         self.reset_label.setText(_("⚠ Reset All Folder Attributes"))
         self.reset_desc.setText(_("Bulk delete all folder settings (type, display, tags) for the current app and reset to initial state."))
