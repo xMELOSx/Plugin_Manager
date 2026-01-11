@@ -107,13 +107,14 @@ class PresetsPanel(QWidget):
         layout.addWidget(self.tree_widget)
 
         
-        # Buttons Row 1: Save / Folder / Delete (Save button moved to header as btn_add)
+        # Buttons Row 1: Save / Folder / Delete
         btn_layout = QHBoxLayout()
         
-        # self.btn_save = QPushButton("💾 保存") # Removed as btn_add replaces it
-        # self.btn_save.clicked.connect(self._on_save_clicked)
-        # self.btn_save.setStyleSheet("background-color: #2980b9; color: white; padding: 6px;")
-        # btn_layout.addWidget(self.btn_save)
+        # Create Preset Button (Restored)
+        self.btn_add = QPushButton(_("💾 Create"), self)
+        self.btn_add.clicked.connect(self.create_preset.emit)
+        self.btn_add.setStyleSheet(ButtonStyles.PRIMARY)
+        btn_layout.addWidget(self.btn_add)
         
         # Folder button for organizing presets
         self.btn_folder = QPushButton(_("📁 Folder"), self)
