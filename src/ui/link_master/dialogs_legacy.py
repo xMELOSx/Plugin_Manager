@@ -145,13 +145,13 @@ class AppRegistrationDialog(QDialog):
 
         # Phase 40: Unified Target Labels
         # Target A (Primary) -> プライマリ
-        create_target_row(_("プライマリ"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
+        create_target_row(_("Primary"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
         
         # Target B (Optional) -> セカンダリ（任意）
-        create_target_row(_("セカンダリ（任意）"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
+        create_target_row(_("Secondary (Optional)"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
 
         # Target C (Optional) -> ターシャリ（任意）
-        create_target_row(_("ターシャリ（任意）"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
+        create_target_row(_("Tertiary (Optional)"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
 
         # Default Folder Property Settings Group (Misc)
         defaults_group = QGroupBox(_("Other Default Settings"))
@@ -172,16 +172,19 @@ class AppRegistrationDialog(QDialog):
 
         # Conflict Policy
         self.conflict_combo = StyledComboBox()
-        self.conflict_combo.addItems(["backup", "skip", "overwrite"])
+        for p in ["backup", "skip", "overwrite"]:
+            self.conflict_combo.addItem(_(p), p)
         defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
-        self.cat_style_combo.addItems(["image", "text", "image_text"])
+        for s in ["image", "text", "image_text"]:
+            self.cat_style_combo.addItem(_(s), s)
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
         self.pkg_style_combo = StyledComboBox()
-        self.pkg_style_combo.addItems(["image", "text", "image_text"])
+        for s in ["image", "text", "image_text"]:
+            self.pkg_style_combo.addItem(_(s), s)
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
         
         defaults_group.setLayout(defaults_form)
@@ -863,7 +866,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         display_form.addRow("", fav_layout)
         
         # --- Multi-Preview Launcher (Phase 18) ---
-        self.manage_previews_btn = QPushButton(_("📂 プレビュー管理..."))
+        self.manage_previews_btn = QPushButton(_("📂 Manage Previews..."))
         self.manage_previews_btn.clicked.connect(self._open_multi_preview_browser)
         
         self.full_preview_edit = StyledLineEdit()
@@ -875,7 +878,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.image_edit.setPlaceholderText(_("Path to icon image (200x200)"))
         self.image_edit.setText(self.current_config.get('image_path') or '')
         
-        self.image_btn = QPushButton(_("参照"))
+        self.image_btn = QPushButton(_("Browse"))
         self.image_btn.clicked.connect(self._browse_image)
         
         self.crop_btn = QPushButton(_("✂ Edit Region"))
@@ -885,7 +888,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.paste_btn.clicked.connect(self._paste_from_clipboard)
         self.paste_btn.setToolTip(_("Paste image from clipboard"))
         
-        self.clear_btn = QPushButton(_("クリア"))
+        self.clear_btn = QPushButton(_("Clear"))
         self.clear_btn.clicked.connect(self._clear_image)
         self.clear_btn.setStyleSheet("background-color: #8b0000; color: white; border: 1px solid #a00000; border-radius: 4px; padding: 4px 8px;")
         
@@ -994,7 +997,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.style_combo.addItem(_("--- No Change ---"), "KEEP")
             
-        self.style_combo.addItem(_("App Default ({default})").format(default=self.app_cat_style_default), None)
+        self.style_combo.addItem(_("App Default ({default})").format(default=_(self.app_cat_style_default)), None)
         self.style_combo.addItem(_("Image Only"), "image")
         self.style_combo.addItem(_("Text Only"), "text")
         self.style_combo.addItem(_("Image + Text"), "image_text")
@@ -1014,7 +1017,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.style_combo_pkg.addItem(_("--- No Change ---"), "KEEP")
             
-        self.style_combo_pkg.addItem(_("App Default ({default})").format(default=self.app_pkg_style_default), None)
+        self.style_combo_pkg.addItem(_("App Default ({default})").format(default=_(self.app_pkg_style_default)), None)
         self.style_combo_pkg.addItem(_("Image Only"), "image")
         self.style_combo_pkg.addItem(_("Text Only"), "text")
         self.style_combo_pkg.addItem(_("Image + Text"), "image_text")
@@ -1043,7 +1046,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.hide_checkbox = SlideButton()
         is_visible = self.current_config.get('is_visible', 1)
         self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
-        attr_form.addRow(_("表示から隠す:"), self.hide_checkbox)
+        attr_form.addRow(_("Hide from View:"), self.hide_checkbox)
         
         # Quick Tag Selector (Top Position - Phase 18 Swap)
         self.tag_panel = QWidget()
@@ -1129,7 +1132,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         self.inherit_tags_chk = SlideButton()
         self.inherit_tags_chk.setChecked(bool(self.current_config.get('inherit_tags', 1)))
         self.inherit_tags_chk.setToolTip(_("If unchecked, tags from parent folders will NOT be applied to this item and its children."))
-        attr_form.addRow(_("サブフォルダにタグを継承:"), self.inherit_tags_chk)
+        attr_form.addRow(_("Inherit Tags to Subfolders:"), self.inherit_tags_chk)
         
         # No sync needed since Quick Tags are independent
         # self.tags_edit.textChanged.connect(self._sync_tag_buttons)
@@ -1137,7 +1140,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         layout.addWidget(attr_group)
         
         # Advanced Link Config (Merged into Folder Attributes or separate Group)
-        adv_group = QGroupBox(_("高度なリンク設定"))
+        adv_group = QGroupBox(_("Advanced Link Settings"))
         adv_group.setStyleSheet("QGroupBox { font-weight: bold; color: #3498db; border: 1px solid #555; margin-top: 10px; padding-top: 10px; }")
         adv_form = QFormLayout(adv_group)
 
@@ -1161,7 +1164,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.target_combo.addItem(_("--- No Change ---"), "KEEP")
 
         # Phase 40: Unified Target Labels
-        labels = [_("プライマリ"), _("セカンダリ"), _("ターシャリ")]
+        labels = [_("Primary"), _("Secondary"), _("Tertiary")]
         for i, root_path in enumerate(self.target_roots):
             if root_path:
                 self.target_combo.addItem(labels[i], i + 1)
@@ -1237,7 +1240,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.deploy_rule_override_combo.addItem(_("--- No Change ---"), "KEEP")
         
         # Options
-        self.deploy_rule_override_combo.addItem(_("デフォルト"), "inherit")
+        self.deploy_rule_override_combo.addItem(_("Default"), "inherit")
         self.deploy_rule_override_combo.addItem(_("Folder"), "folder")
         self.deploy_rule_override_combo.addItem(_("Flat"), "files")
         self.deploy_rule_override_combo.addItem(_("Tree"), "tree")
@@ -1261,6 +1264,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             QPushButton { 
                 background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
                 min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+                padding: 0px; margin: 0px; border: none;
             }
             QPushButton:hover { background-color: #777; }
             QPushButton:checked { background-color: #3498db; }
@@ -1319,7 +1323,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             self.transfer_mode_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
         app_default_mode = getattr(self, 'app_transfer_mode', 'symlink')
-        self.transfer_mode_override_combo.addItem(_("App Default ({default})").format(default=app_default_mode), None)
+        self.transfer_mode_override_combo.addItem(_("App Default ({default})").format(default=_(app_default_mode)), None)
         self.transfer_mode_override_combo.addItem(_("Symbolic Link"), "symlink")
         self.transfer_mode_override_combo.addItem(_("Physical Copy"), "copy")
         
@@ -1337,7 +1341,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if self.batch_mode:
             self.conflict_override_combo.addItem(_("--- No Change ---"), "KEEP")
             
-        self.conflict_override_combo.addItem(_("App Default ({default})").format(default=self.app_conflict_default), None)
+        self.conflict_override_combo.addItem(_("App Default ({default})").format(default=_(self.app_conflict_default)), None)
         self.conflict_override_combo.addItem(_("Backup"), "backup")
         self.conflict_override_combo.addItem(_("Skip"), "skip")
         self.conflict_override_combo.addItem(_("Overwrite"), "overwrite")
@@ -1370,6 +1374,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             QPushButton { 
                 background-color: #555; color: #fff; border-radius: 10px; font-weight: bold; font-size: 10px;
                 min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+                padding: 0px; margin: 0px; border: none;
             }
             QPushButton:hover { background-color: #777; }
             QPushButton:checked { background-color: #3498db; }
@@ -1552,6 +1557,14 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         if hasattr(self, 'manual_path_container'):
             self.manual_path_container.setVisible(is_custom)
             
+        # [CRITICAL FIX] Ensure target_override field is sync'd when switching to Primary/Secondary/Tertiary
+        if not is_custom and data in [1, 2, 3]:
+            idx = data - 1
+            if 0 <= idx < len(self.target_roots) and self.target_roots[idx]:
+                self.target_override_edit.setText(os.path.normpath(self.target_roots[idx]))
+            else:
+                self.target_override_edit.clear()
+
         if hasattr(self, 'deploy_rule_override_combo'):
             # Determine effective target for inheritance display
             effective_target = data
@@ -2117,6 +2130,7 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
         # Resolve target override properly: Store selected target path for all choices
         target_override = None
+        current_target = self.target_combo.currentData()
         if current_target == 4:  # Custom
             target_override = self.target_override_edit.text().strip() or None
         elif current_target == "KEEP":
@@ -2126,6 +2140,9 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             idx = current_target - 1
             if 0 <= idx < len(self.target_roots) and self.target_roots[idx]:
                 target_override = self.target_roots[idx]
+        else:
+            # Fallback to whatever is in the edit field if somehow selection is lost
+            target_override = self.target_override_edit.text().strip() or None
 
 
         data = {

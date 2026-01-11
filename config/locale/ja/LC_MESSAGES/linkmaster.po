@@ -2274,3 +2274,209 @@ msgstr "リンクアイコンを表示"
 
 msgid "Show Deploy Button"
 msgstr "Deployボタンを表示"
+
+# Standard Labels for Property and Registration Dialogs
+msgid "Properties: {name}"
+msgstr "プロパティ: {name}"
+
+msgid "Display Settings"
+msgstr "表示設定"
+
+msgid "Folder Name:"
+msgstr "フォルダ名:"
+
+msgid "Open actual folder"
+msgstr "実際のフォルダを開く"
+
+msgid "Package Size:"
+msgstr "パッケージサイズ:"
+
+msgid " (Scanned: {date})"
+msgstr "（スキャン日時: {date}）"
+
+msgid "Enter name to apply to all"
+msgstr "全フォルダに適用する名前を入力"
+
+msgid "Edit Name:"
+msgstr "名前を編集:"
+
+msgid "Display Name:"
+msgstr "表示名:"
+
+msgid "★Favorite"
+msgstr "★お気に入り"
+
+msgid "☆Favorite"
+msgstr "☆お気に入り"
+
+msgid "Score:"
+msgstr "スコア:"
+
+msgid "Update Score:"
+msgstr "スコアを更新:"
+
+msgid "📂 Manage Previews..."
+msgstr "📂 プレビュー管理..."
+
+msgid "Multi-Preview:"
+msgstr "マルチプレビュー:"
+
+msgid "Path to icon image (200x200)"
+msgstr "アイコン画像のパス (200x200)"
+
+msgid "Browse"
+msgstr "参照"
+
+msgid "Clear"
+msgstr "クリア"
+
+msgid "Icon Path (200x200):"
+msgstr "アイコンパス (200x200):"
+
+msgid "Effective Icon:"
+msgstr "現在のアイコン:"
+
+msgid "Description:"
+msgstr "説明:"
+
+msgid "Author:"
+msgstr "作者:"
+
+msgid "URLs:"
+msgstr "URL:"
+
+msgid "Folder Attributes"
+msgstr "フォルダ属性"
+
+msgid "Folder Type:"
+msgstr "フォルダタイプ:"
+
+msgid "Auto (Detect)"
+msgstr "自動判定"
+
+msgid "Auto (→ {detected})"
+msgstr "自動 (→ {detected})"
+
+msgid "App Default ({default})"
+msgstr "アプリのデフォルト ({default})"
+
+msgid "Hide from View:"
+msgstr "表示から隠す:"
+
+msgid "Quick Tags:"
+msgstr "クイックタグ:"
+
+msgid "Additional Tags:"
+msgstr "追加タグ:"
+
+msgid "Additional custom tags (e.g. my_custom, special)"
+msgstr "追加のカスタムタグ (例: my_custom, special)"
+
+msgid "If unchecked, tags from parent folders will NOT be applied to this item and its children."
+msgstr "チェックを外すと、親フォルダからのタグ継承が無効になります。"
+
+msgid "Inherit Tags to Subfolders:"
+msgstr "サブフォルダにタグを継承:"
+
+msgid "Advanced Link Settings"
+msgstr "高度なリンク設定"
+
+msgid "Primary"
+msgstr "プライマリ"
+
+msgid "Secondary"
+msgstr "セカンダリ"
+
+msgid "Tertiary"
+msgstr "ターシャリ"
+
+msgid "Target Destination:"
+msgstr "ターゲット先:"
+
+msgid "Override path (Absolute)..."
+msgstr "上書きするパス (絶対パス)..."
+
+msgid "Deploy Rule:"
+msgstr "展開ルール:"
+
+msgid "Default"
+msgstr "デフォルト"
+
+msgid "Tree Skip Levels:"
+msgstr "ツリー階層のスキップ:"
+
+msgid " levels"
+msgstr " 階層"
+
+msgid "Transfer Mode:"
+msgstr "転送モード:"
+
+msgid "Deployment Rules (JSON):"
+msgstr "展開ルール (JSON):"
+
+msgid "Edit Individual Redirections..."
+msgstr "個別に転送先を編集..."
+
+msgid "Conflict Tag:"
+msgstr "競合検索タグ:"
+
+msgid "Tag to search..."
+msgstr "検索するタグ..."
+
+msgid "Disabled"
+msgstr "無効"
+
+msgid "Libraries:"
+msgstr "ライブラリ構成:"
+
+msgid "📚 Library Settings"
+msgstr "📚 ライブラリ設定"
+
+msgid "(Batch: Overwrites All If Changed)"
+msgstr "（一括編集：変更すると全て上書きされます）"
+
+msgid "Save (Alt + Enter)"
+msgstr "保存 (Alt + Enter)"
+
+# App Registration Dialog specific
+msgid "App Name:"
+msgstr "アプリ名:"
+
+msgid "Storage Path:"
+msgstr "ストレージパス:"
+
+msgid "Rule:"
+msgstr "ルール:"
+
+msgid "Secondary (Optional)"
+msgstr "セカンダリ (任意)"
+
+msgid "Tertiary (Optional)"
+msgstr "ターシャリ (任意)"
+
+msgid "Other Default Settings"
+msgstr "その他のデフォルト設定"
+
+msgid "Default Tree Skip:"
+msgstr "デフォルトの階層スキップ:"
+
+msgid "Symbolic Link (recommended)"
+msgstr "シンボリックリンク (推奨)"
+
+msgid "Physical Copy (slower)"
+msgstr "物理コピー (低速)"
+
+msgid "Default Transfer Mode:"
+msgstr "デフォルトの転送モード:"
+
+msgid "Default Conflict Policy:"
+msgstr "デフォルトの競合ポリシー:"
+
+msgid "Confirm Unregister"
+msgstr "登録解除の確認"
+
+msgid "Are you sure you want to completely remove this application registration?\nThis will NOT delete physical folders, but will delete all custom names, tags, and settings."
+msgstr "このアプリケーションの登録を完全に削除してもよろしいですか？\n実際のフォルダは削除されませんが、カスタム名、タグ、設定等はすべて削除されます。"
+
+msgid "Application saved successfully"
+msgstr "アプリケーションが保存されました"
