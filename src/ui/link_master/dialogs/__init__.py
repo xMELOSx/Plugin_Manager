@@ -26,7 +26,7 @@ from src.ui.link_master.dialogs.file_management import FileManagementDialog
 from src.ui.link_master.dialogs.quick_view_manager import QuickViewManagerDialog
 from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDialog
 from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
-from src.ui.link_master.dialogs.url_list_dialog import URLItemWidget, URLListDialog
+from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
 from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
 __all__ = [
@@ -45,7 +45,6 @@ __all__ = [
     'ExecutablesManagerDialog',
     'LibraryDependencyDialog',
     'LibraryRegistrationDialog',
-    'URLItemWidget',
     'URLListDialog',
     'PreviewItemWidget',
     'FrequentTagEditDialog',
