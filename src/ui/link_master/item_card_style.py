@@ -36,8 +36,8 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
     elif link_status == 'linked':
         status_color = COLOR_GREEN
         bg_color = "#2a332a"
-    # Priority 7: Unregistered
-    elif not is_registered:
+    # Priority 7: Unregistered (Toggleable via SHOW_UNREGISTERED_BORDER)
+    elif not is_registered and SHOW_UNREGISTERED_BORDER:
         status_color = COLOR_PURPLE
         bg_color = "#322a3d"
     # Priority 8: Category hierarchical status (ONLY for categories, not packages)
@@ -74,6 +74,7 @@ def get_card_stylesheet(status_color, bg_color, radius="8px"):
     """
 
 # Color Constants
+SHOW_UNREGISTERED_BORDER = True  # Phase 42: Toggleable from debug window
 COLOR_RED = "#e74c3c"
 COLOR_GREEN = "#27ae60"
 COLOR_ORANGE = "#e67e22"

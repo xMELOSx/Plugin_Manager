@@ -2803,10 +2803,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         # No, user wants FORCE precedence.
                         # Let's try to clear them by setting them to None explicitly if the DB logic supports unsetting.
                         # If not, setting them to empty string might work if the getter handles empty string as "not set".
-                        self.db.update_folder_config("", {
-                            'display_style': None,
-                            'display_style_package': None
-                        })
+                        self.db.update_folder_display_config("",
+                            display_style=None,
+                            display_style_package=None
+                        )
                         self.logger.info("Cleared root folder display config to enforce App Settings.")
                 except Exception as e:
                     self.logger.warning(f"Failed to reset root folder config: {e}")

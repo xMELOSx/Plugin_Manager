@@ -420,7 +420,7 @@ class LMDeploymentOpsMixin:
         if status_info['status'] == 'linked':
             self.logger.info(f"[Skip] Already linked correctly: {rel_path} -> {target_link}")
             if config.get('last_known_status') != 'linked':
-                self.db.update_folder_config(rel_path, {'last_known_status': 'linked'})
+                self.db.update_folder_display_config(rel_path, last_known_status='linked')
             
             # Still process dependencies if any
             if config.get('lib_deps'):

@@ -190,6 +190,15 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.allow_folder_deploy_cb.toggled.connect(self._on_allow_folder_deploy_toggled)
         layout.addWidget(self.allow_folder_deploy_cb)
         
+        # Unregistered Border Toggle
+        from src.ui.link_master import item_card_style
+        self.show_unregistered_border_cb = QCheckBox(_("DB未登録の紫枠を表示 (Show Unregistered Border)"))
+        saved_border_value = self._load_debug_setting('show_unregistered_border', True)
+        item_card_style.SHOW_UNREGISTERED_BORDER = saved_border_value
+        self.show_unregistered_border_cb.setChecked(saved_border_value)
+        self.show_unregistered_border_cb.toggled.connect(self._on_unregistered_border_toggled)
+        layout.addWidget(self.show_unregistered_border_cb)
+        
         # Background Destruction Test Button
         self.btn_bg_destruct = QPushButton(_("背景破棄 (Background Destruction Test)"))
         self.btn_bg_destruct.clicked.connect(self._test_background_destruction)
@@ -305,6 +314,17 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
         self._save_debug_setting('allow_folder_deploy_pkg_view', checked)
         self.logger.info(f"Folder Deploy in Package View: {checked}")
+
+    def _on_unregistered_border_toggled(self, checked):
+        """Toggle purple border for unregistered items and persist state."""
+        from src.ui.link_master import item_card_style
+        item_card_style.SHOW_UNREGISTERED_BORDER = checked
+        self._save_debug_setting('show_unregistered_border', checked)
+        self.logger.info(f"Show Unregistered Border: {checked}")
+        
+        # Refresh cards to apply new setting
+        if self.parent_window and hasattr(self.parent_window, '_refresh_current_view'):
+            self.parent_window._refresh_current_view(force=False)
 
     def _test_background_destruction(self):
         """Toggle WA_TranslucentBackground and related attributes to test accumulation."""
