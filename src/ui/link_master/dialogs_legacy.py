@@ -2372,10 +2372,11 @@ class TagManagerDialog(QDialog):
         self.tag_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tag_table.verticalHeader().setVisible(False)
         self.tag_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tag_table.horizontalHeader().setStretchLastSection(True)
+        self.tag_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.tag_table.setColumnWidth(0, 40)
         self.tag_table.setColumnWidth(1, 40)
-        self.tag_table.setColumnWidth(3, 40)
+        self.tag_table.setColumnWidth(3, 50)
+        self.tag_table.setColumnWidth(4, 100)
         
         self.tag_table.itemClicked.connect(self._on_table_clicked)
         self.tag_table.setDragEnabled(True)
@@ -2387,7 +2388,7 @@ class TagManagerDialog(QDialog):
         self.tag_table.model().rowsMoved.connect(self._on_rows_moved)
         
         left_layout.addWidget(self.tag_table)
-        layout.addWidget(left_panel, 2)
+        layout.addWidget(left_panel, 12)
         
         # Right: Edit Area
         self.right_panel = QWidget()
@@ -2440,17 +2441,17 @@ class TagManagerDialog(QDialog):
         self.inheritable_check.toggled.connect(self._on_data_changed)
         form.addRow(_("Inherit to children:"), self.inheritable_check)
         
-        self.icon_edit = TagIconLineEdit()
-        self.icon_edit.file_dropped.connect(self._on_icon_dropped_to_edit)
+        self.icon_edit = QLineEdit()
         self.icon_edit.textChanged.connect(self._on_data_changed)
-        self.icon_btn = QPushButton("...")
-        self.icon_btn.setFixedWidth(30)
+        form.addRow(_("Icon (Path):"), self.icon_edit)
+        
+        self.icon_btn = QPushButton(_(" Browse "))
         self.icon_btn.clicked.connect(self._browse_icon)
         
-        h = QHBoxLayout()
-        h.addWidget(self.icon_edit)
-        h.addWidget(self.icon_btn)
-        form.addRow(_("Icon:"), h)
+        icon_btn_row = QHBoxLayout()
+        icon_btn_row.addWidget(self.icon_btn)
+        icon_btn_row.addStretch()
+        form.addRow("", icon_btn_row)
         
         edit_layout.addLayout(form)
         edit_layout.addStretch()
@@ -2490,7 +2491,7 @@ class TagManagerDialog(QDialog):
         btn_layout.addWidget(self.save_btn)
         
         right_layout.addWidget(btn_group)
-        layout.addWidget(self.right_panel, 1)
+        layout.addWidget(self.right_panel, 10)
         
         # Common style applied in __init__
 

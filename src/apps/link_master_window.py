@@ -3065,7 +3065,16 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     def _handle_deploy_single(self, rel_path):
         """Deploy a single item from context menu."""
         if not self._deploy_single(rel_path, update_ui=True):
-            QMessageBox.warning(self, "Deploy Error", f"Failed to deploy {rel_path}")
+            # If it was cancelled by user, don't show error dialog
+            if getattr(self, '_last_deploy_cancelled', False):
+                return
+                
+            from src.ui.frameless_window import FramelessMessageBox
+            err_box = FramelessMessageBox(self)
+            err_box.setIcon(FramelessMessageBox.Icon.Critical)
+            err_box.setWindowTitle(_("Deploy Error"))
+            err_box.setText(_("Failed to deploy {rel}").format(rel=rel_path))
+            err_box.exec()
 
     def _handle_unlink_single(self, rel_path):
         """Unlink a single item from context menu."""
@@ -3073,10 +3082,17 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
     def _handle_conflict_swap(self, rel_path, target_link):
         """Force deploy by removing conflict."""
-        reply = QMessageBox.warning(self, "Conflict Swap", 
-                                    f"Overwrite target?\n{target_link}\n\nThis will DELETE the existing file.",
-                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
+        from src.ui.frameless_window import FramelessMessageBox
+        
+        msg = _("Overwrite target?\n{path}\n\nThis will DELETE the existing file.").format(path=target_link)
+        msg_box = FramelessMessageBox(self)
+        msg_box.setIcon(FramelessMessageBox.Icon.Warning)
+        msg_box.setWindowTitle(_("Conflict Swap"))
+        msg_box.setText(msg)
+        msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+        
+        reply = msg_box.exec()
+        if reply == FramelessMessageBox.StandardButton.Yes:
             try:
                 if os.path.islink(target_link) or os.path.isfile(target_link):
                     os.remove(target_link)
@@ -3087,7 +3103,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 # Now deploy
                 self._deploy_items([rel_path])
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Swap failed: {e}")
+                err_box = FramelessMessageBox(self)
+                err_box.setIcon(FramelessMessageBox.Icon.Critical)
+                err_box.setWindowTitle(_("Error"))
+                err_box.setText(_("Swap failed: {error}").format(error=e))
+                err_box.exec()
 
     # --- Search Methods moved to: lm_search.py ---
     

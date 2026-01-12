@@ -2608,3 +2608,39 @@ msgstr "ドラッグで移動、右下の角でリサイズします。アスペ
 
 msgid "Drag to move, resize corner for free selection."
 msgstr "ドラッグで移動、角で自由な範囲を選択できます。"
+
+msgid "Version (Editable)"
+msgstr "バージョン (編集可能)"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Dependent Packages: {name}"
+msgstr "依存パッケージ: {name}"
+
+msgid "Link"
+msgstr "リンク"
+
+msgid "Linked"
+msgstr "リンク済み"
+
+msgid "Unlinked"
+msgstr "未リンク"
+
+msgid "Overwrite target?\n{path}\n\nThis will DELETE the existing file."
+msgstr "ターゲットを上書きしますか？\n{path}\n\n既存のファイル（またはリンク）は削除されます。"
+
+msgid "Swap failed: {error}"
+msgstr "スワップに失敗しました: {error}"
+
+msgid "Cannot deploy category: Tag conflict with '{name}'."
+msgstr "カテゴリをデプロイできません: '{name}' とタグが競合しています。"
+
+msgid "Icon (Path):"
+msgstr "アイコン (パス):"
+
+msgid "Unreg"
+msgstr "登録解除"
+
+msgid "Package Name"
+msgstr "パッケージ名"

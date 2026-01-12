@@ -260,6 +260,9 @@ class LMDeploymentOpsMixin:
         target_root = app_data.get(self.current_target_key)
         if not target_root: return False
         
+        # Reset cancellation flag
+        self._last_deploy_cancelled = False
+        
         full_src = os.path.join(self.storage_root, rel_path)
         
         # 🚨 Safety Check: Block empty relative paths (prevents accidental root targeting)
@@ -287,6 +290,7 @@ class LMDeploymentOpsMixin:
                     apply_common_dialog_style(msg)
                     
                     if msg.exec() != QMessageBox.StandardButton.Yes:
+                        self._last_deploy_cancelled = True
                         return False
                     
                     # Unlink Category
@@ -462,6 +466,7 @@ class LMDeploymentOpsMixin:
                             self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
                         else:
+                            self._last_deploy_cancelled = True
                             return False
 
         # Library Dependencies
@@ -497,6 +502,7 @@ class LMDeploymentOpsMixin:
                 self._unlink_single(conflict_data['path'], update_ui=True)
                 self._refresh_tag_visuals(target_tag=conflict_data.get('tag'))
             else:
+                self._last_deploy_cancelled = True
                 return False
 
         try:
@@ -881,11 +887,14 @@ class LMDeploymentOpsMixin:
         
         for rel in rel_paths:
             if not self._deploy_single(rel, update_ui=False, show_result=False):
-                msg_box = QMessageBox(self)
-                msg_box.setIcon(QMessageBox.Icon.Warning)
+                # If it was cancelled by user, don't show error dialog
+                if getattr(self, '_last_deploy_cancelled', False):
+                    break
+                    
+                msg_box = FramelessMessageBox(self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Warning)
                 msg_box.setWindowTitle(_("Deploy Error"))
                 msg_box.setText(_("Failed to deploy {rel}").format(rel=rel))
-                apply_common_dialog_style(msg_box)
                 msg_box.exec()
                 break
         
@@ -898,11 +907,11 @@ class LMDeploymentOpsMixin:
                 summary = _("Batch deployment finished with actions:\n")
                 if backups: summary += _("- Backups created: {count} items\n").format(count=len(backups))
                 if overwrites: summary += _("- Files overwritten: {count} items\n").format(count=len(overwrites))
-                msg_box = QMessageBox(self)
-                msg_box.setIcon(QMessageBox.Icon.Information)
+                
+                msg_box = FramelessMessageBox(self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Information)
                 msg_box.setWindowTitle(_("Batch Deployment Summary"))
                 msg_box.setText(summary)
-                apply_common_dialog_style(msg_box)
                 msg_box.exec()
 
         if not skip_refresh:
@@ -1196,13 +1205,14 @@ class LMDeploymentOpsMixin:
             self.logger.info(f"[CategoryDeploy] SUCCESS: {category_rel_path}")
         else:
             self.logger.error(f"[CategoryDeploy] FAILED: {category_rel_path}")
-            # If failed, warn user (with style)
-            warn = QMessageBox(self)
-            warn.setWindowTitle(_("Deployment Failed"))
-            warn.setText(_("Failed to deploy category."))
-            warn.setIcon(QMessageBox.Icon.Warning)
-            apply_common_dialog_style(warn)
-            warn.exec()
+            # If failed manually (not cancelled), warn user
+            if not getattr(self, '_last_deploy_cancelled', False):
+                warn = QMessageBox(self)
+                warn.setWindowTitle(_("Deployment Failed"))
+                warn.setText(_("Failed to deploy category."))
+                warn.setIcon(QMessageBox.Icon.Warning)
+                apply_common_dialog_style(warn)
+                warn.exec()
         
         # --- Immediate UI refresh with Overrides ---
         overrides = {category_rel_path.replace('\\', '/'): {'category_deploy_status': 'deployed'}}

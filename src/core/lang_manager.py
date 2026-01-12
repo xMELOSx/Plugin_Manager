@@ -200,6 +200,8 @@ class LangManager(QObject):
                 elif line.startswith('"') and line.endswith('"'):
                     # Continuation line
                     content = line[1:-1]  # Remove quotes
+                    # Unescape \n and \" for fallback parser
+                    content = content.replace('\\n', '\n').replace('\\"', '"')
                     if in_msgid:
                         current_msgid += content
                     elif in_msgstr:

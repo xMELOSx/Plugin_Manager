@@ -84,7 +84,7 @@ class LibrarySettingsDialog(QDialog):
         self.ver_tree = QTreeWidget()
         self.ver_tree.setUniformRowHeights(True)  # Ensure consistent row heights
         self.ver_tree.setEditTriggers(QTreeWidget.EditTrigger.DoubleClicked | QTreeWidget.EditTrigger.SelectedClicked)
-        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), "URL", _("View"), _("Edit"), _("Unreg")])
+        self.ver_tree.setHeaderLabels([_("Version (Editable)"), _("Package Name"), _("URL"), _("View"), _("Edit"), _("Unreg")])
         
         # Column widths: Version fixed, Package Name stretches, button columns fixed
         header = self.ver_tree.header()
@@ -285,7 +285,7 @@ class DependentPackagesDialog(QDialog):
         self.db = db
         self.lib_name = lib_name
         self.versions = versions
-        self.setWindowTitle(f"依存パッケージ: {lib_name}")
+        self.setWindowTitle(_("Dependent Packages: {name}").format(name=lib_name))
         self.setMinimumSize(650, 400)
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: #e0e0e0; }
@@ -303,7 +303,7 @@ class DependentPackagesDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(_("Packages using '{name}':").format(name=self.lib_name)))
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels([_("Package"), _("Status"), _("Usage"), "🔗", _("View"), _("Edit"), _("Remove")])
+        self.tree.setHeaderLabels([_("Package"), _("Status"), _("Usage"), _("Link"), _("View"), _("Edit"), _("Remove")])
         self.tree.setColumnWidth(0, 180)
         self.tree.setColumnWidth(1, 40)
         self.tree.setColumnWidth(2, 80)
@@ -442,7 +442,7 @@ class DependentPackagesDialog(QDialog):
                 is_linked = True
         
         # Update text
-        status_text = "🟢 Linked" if is_linked else "⚪ Unlinked"
+        status_text = "🟢 " + _("Linked") if is_linked else "⚪ " + _("Unlinked")
         item.setText(1, status_text)
         
         # Update buttons (column 3 is the toggle button)
