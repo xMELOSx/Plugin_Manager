@@ -1,4 +1,4 @@
 {
   "allow_folder_deploy_pkg_view": true,
-  "log_level": "DEBUG"
+  "log_level": "INFO"
 }

@@ -606,6 +606,14 @@ class FramelessMessageBox(FramelessDialog):
         else:
             self.icon_lbl.setVisible(False)
 
+    def setInformativeText(self, text):
+        """Supported for compatibility, appends to main text with newline."""
+        current = self.text_lbl.text()
+        if current:
+            self.text_lbl.setText(current + "\n\n" + text)
+        else:
+            self.text_lbl.setText(text)
+
     def setText(self, text):
         self.text_lbl.setText(text)
 
@@ -736,7 +744,7 @@ class FramelessInputDialog(FramelessDialog):
             self.input_field = StyledLineEdit()
             self.input_field.setText(text)
             self.input_field.setMinimumHeight(35)
-            self.input_field.setFocus()
+            self.input_field.returnPressed.connect(self.accept)
             layout.addWidget(self.input_field)
 
         btn_layout = QHBoxLayout()
@@ -756,6 +764,14 @@ class FramelessInputDialog(FramelessDialog):
         layout.addLayout(btn_layout)
 
         self.set_content_widget(content)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Ensure we focus the input field after window is shown
+        if hasattr(self, 'input_field'):
+            self.input_field.setFocus()
+            if isinstance(self.input_field, QLineEdit):
+                self.input_field.selectAll()
 
     def value(self):
         if self._items:

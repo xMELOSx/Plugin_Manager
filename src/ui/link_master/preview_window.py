@@ -16,6 +16,7 @@ from PyQt6.QtGui import QPixmap, QMouseEvent, QIcon
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from src.ui.flow_layout import FlowLayout
+from src.ui.frameless_window import FramelessDialog
 from src.ui.link_master.compact_dial import CompactDial
 from src.core.lang_manager import _
 import shutil
@@ -40,7 +41,7 @@ class JumpSlider(QSlider):
         super().mousePressEvent(event)
 
 
-class PreviewWindow(QWidget):
+class PreviewWindow(FramelessDialog):
     """複数プレビューファイルを表示するウィンドウ + プロパティパネル。"""
     
     IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
@@ -71,7 +72,7 @@ class PreviewWindow(QWidget):
         self.target_dir = target_dir
         
         self.setWindowTitle("Preview")
-        self.setWindowFlags(Qt.WindowType.Window)
+        self.set_default_icon()
         self.setMinimumSize(600, 400)
         
         # Set window title with folder name
@@ -96,7 +97,8 @@ class PreviewWindow(QWidget):
         self.filename_label.setText("")
     
     def _init_ui(self):
-        main_layout = QHBoxLayout(self)
+        content = QWidget()
+        main_layout = QHBoxLayout(content)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
@@ -308,9 +310,12 @@ class PreviewWindow(QWidget):
         self.video_widget.mousePressEvent = self._on_image_click
         # self.video_widget.mouseDoubleClickEvent = self._on_image_double_click
         
+        
         # Context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+        
+        self.set_content_widget(content)
     
     def _create_properties_panel(self):
         """プロパティパネルを作成。"""

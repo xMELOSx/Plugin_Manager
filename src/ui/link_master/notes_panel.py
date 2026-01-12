@@ -1,5 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QListWidgetItem, 
-                             QPushButton, QHBoxLayout, QTextEdit, QLabel, QMenu, QMessageBox, QSplitter)
+                             QPushButton, QHBoxLayout, QTextEdit, QLabel, QMenu, QSplitter)
+from PyQt6.QtGui import QKeySequence, QShortcut
+from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
 from PyQt6.QtCore import pyqtSignal, Qt
 from src.core.lang_manager import _
 import os
@@ -114,6 +116,12 @@ class NotesPanel(QWidget):
         # Initial Heights: Give list more space
         self.splitter.setSizes([300, 500])
         self.editor_container.hide()
+        
+        # Shortcut for Alt+Enter Save
+        self.save_shortcut = QShortcut(QKeySequence("Alt+Return"), self)
+        self.save_shortcut.activated.connect(self._save_current_note)
+        self.save_shortcut_win = QShortcut(QKeySequence("Alt+Enter"), self)
+        self.save_shortcut_win.activated.connect(self._save_current_note)
 
     def retranslate_ui(self):
         """Update strings for current language."""
@@ -219,8 +227,7 @@ class NotesPanel(QWidget):
 
     def _add_note(self):
         if not self.storage_path: return
-        from PyQt6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self, _("New Note"), _("Note Name:"))
+        name, ok = FramelessInputDialog.getText(self, _("New Note"), _("Note Name:"))
         if ok and name:
             if not name.endswith(".txt"): name += ".txt"
             path = os.path.join(self.storage_path, name)
@@ -238,15 +245,14 @@ class NotesPanel(QWidget):
     def _rename_note(self, item):
         if not self.storage_path: return
         old_name = item.text()
-        from PyQt6.QtWidgets import QInputDialog
-        new_name, ok = QInputDialog.getText(self, _("Rename Note"), _("New Name:"), text=old_name)
+        new_name, ok = FramelessInputDialog.getText(self, _("Rename Note"), _("New Name:"), text=old_name)
         if ok and new_name and new_name != old_name:
             if not new_name.endswith(".txt"): new_name += ".txt"
             old_path = os.path.join(self.storage_path, old_name)
             new_path = os.path.join(self.storage_path, new_name)
             
             if os.path.exists(new_path):
-                QMessageBox.warning(self, _("Rename"), _("A note with that name already exists."))
+                FramelessMessageBox.warning(self, _("Rename"), _("A note with that name already exists."))
                 return
                 
             try:
@@ -259,7 +265,7 @@ class NotesPanel(QWidget):
                         self._on_item_clicked(self.list_widget.item(i))
                         break
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to rename note: {e}").format(e=e))
+                FramelessMessageBox.critical(self, _("Error"), _("Failed to rename note: {e}").format(e=e))
 
     def _on_item_clicked(self, item):
         if not item: return
@@ -287,7 +293,7 @@ class NotesPanel(QWidget):
             # Save last selected note
             self._save_last_note(self.current_note)
         except Exception as e:
-            QMessageBox.critical(self, _("Error"), _("Failed to read note: {e}").format(e=e))
+            FramelessMessageBox.critical(self, _("Error"), _("Failed to read note: {e}").format(e=e))
 
     def _save_current_note(self):
         if not hasattr(self, 'current_note') or not self.current_note: return False
@@ -303,7 +309,7 @@ class NotesPanel(QWidget):
             Toast.show_toast(self, _("Note Saved!"), preset="success")
             return True
         except Exception as e:
-            QMessageBox.critical(self, _("Error"), _("Failed to save note: {e}").format(e=e))
+            FramelessMessageBox.critical(self, _("Error"), _("Failed to save note: {e}").format(e=e))
             return False
 
     def _open_external(self):
@@ -336,7 +342,7 @@ class NotesPanel(QWidget):
         elif action == act_rename:
             self._rename_note(item)
         elif action == act_del:
-            if QMessageBox.question(self, _("Delete"), _("Delete '{item.text()}'?").format(item=item)) == QMessageBox.StandardButton.Yes:
+            if FramelessMessageBox.question(self, _("Delete"), _("Delete '{item.text()}'?").format(item=item)) == FramelessMessageBox.StandardButton.Ok:
                 os.remove(path)
                 self.refresh()
         elif action == act_top:
