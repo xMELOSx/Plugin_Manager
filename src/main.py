@@ -48,14 +48,11 @@ def main():
         icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
         if not os.path.exists(icon_path):
             icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
+            
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
         
         window = LinkMasterWindow()
-        
-        if os.path.exists(icon_path):
-            app_icon = QIcon(icon_path)
-            app.setWindowIcon(app_icon)
-            window.setWindowIcon(app_icon)
-        
         window.show()
         from src.core.version import VERSION_STRING
         logging.info(f"Launched {VERSION_STRING} Window.")

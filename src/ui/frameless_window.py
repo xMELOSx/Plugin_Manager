@@ -647,33 +647,22 @@ class FramelessDialog(QDialog, Win32Mixin):
         try:
             if not os.path.exists(path): return False
             
-            # Use standard QIcon for the window itself to maintain multi-size quality for taskbar
+            # High DPI Support: Use QIcon.pixmap for best size selection from .ico
             full_icon = QIcon(path)
             self.setWindowIcon(full_icon)
             
-            from PyQt6.QtGui import QPainter, QBrush
-            image = QImage(path)
-            
-            # If QImage fails (e.g. format issue), try standard QIcon
-            if image.isNull(): 
-                icon = QIcon(path)
-                if not icon.isNull():
-                    if hasattr(self, 'icon_label'):
-                        self.icon_label.setPixmap(icon.pixmap(24, 24))
-                        self.icon_label.setVisible(True)
-                    self.setWindowIcon(icon)
-                    return True
-                return False
-
-            # High DPI Support
             dpr = self.devicePixelRatioF()
             base_size = 24
             target_size = int(base_size * dpr)
             
-            # Scale to target pixel size directly
-            pixmap = QPixmap.fromImage(image)
-            scaled = pixmap.scaled(target_size, target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # Use QIcon.pixmap to get the sharpest version for the target size
+            # This handles multi-size .ico files correctly (QImage only gets one size)
+            scaled = full_icon.pixmap(target_size, target_size)
             
+            if scaled.isNull():
+                return False
+
+            from PyQt6.QtGui import QPainter, QBrush
             # 1. Create Mask (White rounded rect on transparent)
             mask = QPixmap(target_size, target_size)
             mask.fill(Qt.GlobalColor.transparent)

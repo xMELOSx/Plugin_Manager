@@ -56,6 +56,8 @@ class CardSettingsWindow(FramelessDialog):
         """)
         
         self._setup_ui()
+        # Ensure 'closed' is emitted even on simple hide/reject
+        self.finished.connect(lambda _: self.closed.emit())
 
     def _setup_ui(self):
         content_widget = QWidget()

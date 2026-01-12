@@ -134,6 +134,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
             
         if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
             self.set_window_icon_from_path(icon_path)
             self.icon_label.mousePressEvent = self._icon_mouse_press
         self.logger.debug(f"[Profile] Icon setup took {time.perf_counter()-t_icon:.3f}s")
