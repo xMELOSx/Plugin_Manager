@@ -521,7 +521,6 @@ class AppRegistrationDialog(FramelessDialog):
             QMessageBox.warning(self, _("Validation Error"), _("Primary target install path is required."))
             return
         self.accept()
-        Toast.show_toast(self.window().parent() or self.window(), _("Application saved successfully"), level="success")
 
     def get_data(self):
         import json
@@ -552,7 +551,7 @@ class AppRegistrationDialog(FramelessDialog):
             "target_root_3": self.target_edit_3.text(),
             "default_subpath": "",
             "managed_folder_name": "_LinkMaster_Assets",
-            "conflict_policy": self.conflict_combo.currentText(),
+            "conflict_policy": self.conflict_combo.currentData(),
             "deployment_rule": self.deploy_rule_combo.currentData(),
             "deployment_rule_b": self.deploy_rule_combo_b.currentData(),
             "deployment_rule_c": self.deploy_rule_combo_c.currentData(),
@@ -561,8 +560,8 @@ class AppRegistrationDialog(FramelessDialog):
             "cover_image": cover_path if cover_path and cover_path not in [" [ Clipboard Image ] ", "[Cropped from Clipboard]"] else None,
             "is_favorite": 1 if self.favorite_btn.isChecked() else 0,
             "score": self.score_dial.value(),
-            "default_category_style": self.cat_style_combo.currentText(),
-            "default_package_style": self.pkg_style_combo.currentText(),
+            "default_category_style": self.cat_style_combo.currentData(),
+            "default_package_style": self.pkg_style_combo.currentData(),
             "default_skip_levels": self.default_skip_levels_spin.value(),
             "executables": json.dumps(self.executables) if self.executables else "[]",
             "url_list": getattr(self, "url_list_json", "[]")

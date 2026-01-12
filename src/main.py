@@ -45,12 +45,16 @@ def main():
         app.setStyleSheet(TooltipStyles.DARK)
         
         # アイコンの読み込み (EXE対応)
-        icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
+        icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
+        if not os.path.exists(icon_path):
+            icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
         
         window = LinkMasterWindow()
         
         if os.path.exists(icon_path):
-            window.setWindowIcon(QIcon(icon_path))
+            app_icon = QIcon(icon_path)
+            app.setWindowIcon(app_icon)
+            window.setWindowIcon(app_icon)
         
         window.show()
         from src.core.version import VERSION_STRING

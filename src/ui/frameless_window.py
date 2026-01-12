@@ -647,6 +647,10 @@ class FramelessDialog(QDialog, Win32Mixin):
         try:
             if not os.path.exists(path): return False
             
+            # Use standard QIcon for the window itself to maintain multi-size quality for taskbar
+            full_icon = QIcon(path)
+            self.setWindowIcon(full_icon)
+            
             from PyQt6.QtGui import QPainter, QBrush
             image = QImage(path)
             
@@ -699,7 +703,6 @@ class FramelessDialog(QDialog, Win32Mixin):
             if hasattr(self, 'icon_label'):
                 self.icon_label.setPixmap(rounded)
                 self.icon_label.setVisible(True)
-            self.setWindowIcon(QIcon(rounded)) 
             return True
         except: return False
             

@@ -129,7 +129,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         t_icon = time.perf_counter()
         
         # Icon Setup (User Request)
-        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
+        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.ico"))
+        if not os.path.exists(icon_path):
+            icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
+            
         if os.path.exists(icon_path):
             self.set_window_icon_from_path(icon_path)
             self.icon_label.mousePressEvent = self._icon_mouse_press
@@ -410,8 +413,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         try:
             import json
             blob = self.registry.get_setting('link_master_card_config')
+            self.logger.debug(f"[Settings] Raw blob from registry: {blob}")
             if blob:
                 self.card_settings = json.loads(blob)
+                self.logger.debug(f"[Settings] Parsed card_settings: {self.card_settings}")
             else:
                 self.card_settings = {}
         except Exception as e:
@@ -468,6 +473,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         # This allows self.cat_scale etc to still work while being backed by card_settings
         for k, v in self.card_settings.items():
             setattr(self, k, v)
+            if 'scale' in k:
+                self.logger.debug(f"[Settings] Attribute set: self.{k} = {v}")
 
 
     
@@ -2074,6 +2081,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             base_h = getattr(self, f'{prefix}_{active_mode}_card_h', 220)
             base_img_w = getattr(self, f'{prefix}_{active_mode}_img_w', 140)
             base_img_h = getattr(self, f'{prefix}_{active_mode}_img_h', 140)
+            self.logger.debug(f"[Visuals] Refreshing {prefix} with mode={active_mode}, scale={scale}, size={base_w}x{base_h}")
 
             for i in range(layout.count()):
                 widget = layout.itemAt(i).widget()
@@ -2535,7 +2543,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         self.app_combo.setCurrentIndex(i)
                         break
                 
-                QMessageBox.information(self, "Success", f"Registered {data['name']}")
+                # QMessageBox.information(self, "Success", f"Registered {data['name']}")
+                Toast.show_toast(self, _("Application registered successfully"), preset="success")
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 
@@ -2810,7 +2819,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         self.app_combo.setCurrentIndex(i)
                         break
                         
-                QMessageBox.information(self, "Success", f"Updated {data['name']}")
+                # QMessageBox.information(self, "Success", f"Updated {data['name']}")
+                Toast.show_toast(self, _("Application saved successfully"), preset="success")
                 self._manual_rebuild()
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))

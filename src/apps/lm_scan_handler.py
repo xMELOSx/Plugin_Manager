@@ -125,7 +125,7 @@ class LMScanHandlerMixin:
         # User requested: Root folder should respect App Settings.
         # We enforce this by ignoring display keys in view_config for Root ("").
         view_config = folder_configs.get(view_rel, {}).copy() # Copy to avoid mutating global cache if reused
-        if view_rel == "":
+        if view_rel == "" and False: # DISABLED: Allow root folder overrides from folder properties
             view_config.pop('display_style', None)
             view_config.pop('display_style_package', None)
         
