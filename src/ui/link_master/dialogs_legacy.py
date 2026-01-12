@@ -1615,19 +1615,10 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
     def _on_target_choice_changed(self):
         """Handle target selection changes - update custom path visibility and deployment defaults."""
-        # Phase 40: Save current state to cache before switching
-        current_rule = self.deploy_rule_override_combo.currentData()
-        if hasattr(self, 'prev_target_data') and self.prev_target_data is not None:
-           self.deploy_rules[self.prev_target_data] = current_rule
-
-        data = self.target_combo.currentData()
-        self.prev_target_data = data # Update for next switch
+        # FIX: Removed automatic state caching/restoration as per user request.
+        # The dropdown should NOT change automatically when switching targets.
         
-        # Restore rule from cache for the newly selected target
-        new_rule = self.deploy_rules.get(data, "inherit")
-        idx = self.deploy_rule_override_combo.findData(new_rule)
-        if idx >= 0:
-            self.deploy_rule_override_combo.setCurrentIndex(idx)
+        data = self.target_combo.currentData()
         
         # Show/hide custom path editor
         is_custom = (data == 4)

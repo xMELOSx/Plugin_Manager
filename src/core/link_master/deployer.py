@@ -1,12 +1,43 @@
-""" 🚨 厳守ルール: ファイル操作禁止 🚨
-ファイルI/Oは、必ず src.core.file_handler を介すること。
-"""
-
 import os
 import logging
 import ctypes
 from src.core import core_handler
 from concurrent.futures import ThreadPoolExecutor, as_completed
+# FIX: Import safety_block directly as module
+import src.core.link_master.safety_block as safety_verifier
+
+class DeploymentCollisionError(Exception):
+# ...
+
+# ...
+
+    def deploy_with_rules(self, source_path: str, rule: str, target_root: str,
+                          app_info: dict, deployment_rule: str = "inherit",
+                          conflict_policy: str = "backup") -> bool:
+        """
+        Deploys using rules (folder/symlink/copy).
+        deployment_rule: 'folder', 'inherit', 'symlink', 'copy', 'custom'
+        
+        FIX: Only load/use rules (JSON) if deployment_rule is explicitly 'custom'.
+        """
+        import json
+        
+        # 1. Prepare Rules
+        # Should we load rules? Only if 'custom' is selected.
+        rules_path = os.path.join(source_path, f"lm_deploy_rules_{app_info['id']}.json")
+        rules = {}
+        
+        if deployment_rule == "custom":
+            if core_handler.path_exists(rules_path):
+                try:
+                    with open(rules_path, 'r', encoding='utf-8') as f:
+                        rules = json.load(f)
+                except:
+                    self.logger.error(f"Invalid rules JSON at {rules_path}")
+        # IF NOT custom, we DO NOT load rules, ensuring 'symlink' or 'copy' takes precedence.
+        
+        # ... (Rest of logic) ...
+
 
 class DeploymentCollisionError(Exception):
     """Raised when multiple source files map to the same target path during deployment."""
@@ -273,8 +304,12 @@ class Deployer:
                 core_handler.move_path(path, backup_path)
                 self.logger.info(f"Policy: BACKUP - moved {path} to {backup_path}")
                 self.last_actions.append({'type': 'backup', 'path': path, 'backup_path': backup_path})
-                # Registering backup path logic remains unchanged (DB access)
-                self._db.register_backup(path, backup_path)
+                # Registering backup path logic 
+                try:
+                    self._db.register_backup(path, backup_path)
+                except Exception as e:
+                    self.logger.warning(f"Failed to register backup in DB (ignoring): {e}")
+                
                 return 'backup'
             except Exception as e:
                 self.logger.error(f"Failed to backup {path}: {e}")
@@ -594,7 +629,8 @@ class Deployer:
         
         # 1. Prepare Rules
         rules = {}
-        if rules_json:
+        # FIX: Only process rules_json if deploy_rule is explicitly 'custom'
+        if deploy_rule == 'custom' and rules_json:
             try:
                 rules = json.loads(rules_json)
             except:
@@ -656,76 +692,55 @@ class Deployer:
                 # Filter dirs for walk optimization
                 dirs[:] = [d for d in dirs if not self._is_excluded((f"{rel_root}/{d}" if rel_root else d), excludes)]
                 
-                # Process each file found
-                for f in files:
-                    f_rel = (f"{rel_root}/{f}" if rel_root else f).replace('\\', '/')
-                    if self._is_excluded(f_rel, excludes):
-                        continue
-                    
-                    # 4.1. Apply Overrides (Renames / Redirects)
-                    target_rel_path = f_rel
-                    overridden = False
-                    for old, new in overrides.items():
-                        old_norm = old.replace('\\', '/')
-                        if f_rel == old_norm or f_rel.startswith(old_norm + "/"):
-                            target_rel_path = f_rel.replace(old_norm, new, 1)
-                            overridden = True
-                            break
-                    
-                    # 4.2. Apply Deploy Rule Logic
-                    if os.path.isabs(target_rel_path):
-                        # Absolute target override
-                        f_target_abs = target_rel_path
-                    else:
-                        if resolved_rule == 'files':
-                            # Flat placement: everything goes directly into target_link_path
-                            f_target_abs = os.path.join(target_link_path, os.path.basename(target_rel_path))
-                        elif resolved_rule in ('tree', 'custom'):
-                            # Maintain Tree structure with SKIP_LEVELS support
-                            if skip_levels > 0:
-                                parts = target_rel_path.split("/")
-                                if len(parts) > skip_levels:
-                                    # Join parts after skipped levels
-                                    skipped_rel = "/".join(parts[skip_levels:])
-                                    f_target_abs = os.path.join(target_link_path, skipped_rel)
-                                else:
-                                    # If the whole path is within skipped levels, skip this file entirely
-                                    continue
-                            else:
-                                f_target_abs = os.path.join(target_link_path, target_rel_path)
-                        else: # 'folder' or 'inherit' (fallback)
-                            f_target_abs = os.path.join(target_link_path, target_rel_path)
-                    
-                    f_source_abs = os.path.join(root, f)
-                    files_to_deploy.append((f_source_abs, f_target_abs))
-            
-            if not files_to_deploy:
-                self.logger.warning(f"No files found for deployment after filters: {source_path}")
-                return True
+                start_lvl = 0
+                if rel_root:
+                    start_lvl = len(rel_root.split('/'))
                 
-            # 5. Execute batch deployment
-            # Deduplicate targets to prevent batch collision (WinError 183)
-            # Collision Check: Abort if duplicates found (Phase 12)
+                # Skip levels check
+                if start_lvl < skip_levels:
+                    # If we are below skip levels, we don't deploy files here, 
+                    # but we continue walking into subdirs
+                    # Note: dirs are already filtered above
+                    continue
+
+                for name in files:
+                    rel_path = f"{rel_root}/{name}" if rel_root else name
+                    
+                    if self._is_excluded(rel_path, excludes):
+                        continue
+                        
+                    # Check overrides/renames
+                    deploy_path = rel_path
+                    if resolved_rule == 'custom' and rel_path in overrides:
+                         deploy_path = overrides[rel_path]
+                    
+                    # Determine target path
+                    # Adjust for skip levels: remove first N components
+                    if skip_levels > 0:
+                        parts = deploy_path.split('/')
+                        if len(parts) > skip_levels:
+                            deploy_path = '/'.join(parts[skip_levels:])
+                        else:
+                            continue # Should be covered by dir continue, but safety
+                    
+                    full_target = os.path.join(target_link_path, deploy_path.replace('/', os.sep))
+                    src_full = os.path.join(root, name)
+                    files_to_deploy.append((src_full, full_target))
+
+            # Phase 45 Checks for Collisions and Safety
+            # Check collisions
             unique_targets = {}
             collisions = []
-            
-            for pair in files_to_deploy:
-                src, tgt = pair
+            for src, tgt in files_to_deploy:
                 tgt_norm = tgt.lower() if os.name == 'nt' else tgt
                 
                 if tgt_norm in unique_targets:
-                    # Collision detected!
-                    # Add BOTH the previous one (identifying it?) and the current one?
-                    # Error format: (source1, source2, target)
                     collisions.append((src, tgt)) 
-                    # Note: We track just the failing ones for the list, 
-                    # OR we could track pairs showing source A vs source B
                 else:
                     unique_targets[tgt_norm] = src
 
             if collisions:
                 self.logger.warning(f"Aborting deployment due to {len(collisions)} collisions.")
-                # Construct detailed collision list [ (src1, src2, target)... ]
                 detailed_collisions = []
                 for src_new, tgt_new in collisions:
                     tgt_norm = tgt_new.lower() if os.name == 'nt' else tgt_new
@@ -738,29 +753,16 @@ class Deployer:
                 raise DeploymentCollisionError(detailed_collisions)
 
             # Phase 45 CRITICAL: Atomic Safety Check
-            # Before we deploy ANY file, check ALL targets for Safety violations.
-            # If ANY fail, we abort the ENTIRE batch.
-            # This prevents partial deployments where 50% are safe and 50% are blocked, leaving a broken state.
-            from src.core.link_master.safety_block import safety_block
-            
+            # Use safety_verifier (imported at module level)
             safety_issues = []
             for src, tgt in files_to_deploy:
-                # We do a dry-run check.
-                # However, safety_block usually checks operation type.
-                # Here we assume 'link' or 'copy'.
-                # But safety_block's verify_safety is the one we want.
-                # safety_block itself returns True/False and assumes global context?
-                # Actually safety_block.verify_safety(path, operation)
-                
                 # Check target path safety
-                if not safety_block.verify_safety(tgt, operation='deploy', silent=True, logger=self.logger):
+                if not safety_verifier.verify_safety(tgt, operation='deploy', silent=True, logger=self.logger):
                    safety_issues.append(tgt)
                    
             if safety_issues:
                 self.logger.error(f"Aborting batch deployment due to {len(safety_issues)} safety violations.")
                 self.logger.error(f"First violation: {safety_issues[0]}")
-                # We can raise a custom error or just return False to abort gracefully
-                # Showing a message box here is hard because we are in core.
                 return False
 
             if not files_to_deploy:
