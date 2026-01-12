@@ -411,7 +411,10 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             target_size = int(base_size * dpr)
             
             if path.lower().endswith('.ico'):
+                # For ICO, we extract the pixmap at target (physical) size
                 scaled = multi_icon.pixmap(target_size, target_size)
+                # CRITICAL: setDevicePixelRatio MUST be set so Qt treats physical 48px as logical 24px (at 2x)
+                # If dpr=2, target_size=48. Setting dpr=2 makes it a 24x24 logical pixmap.
                 scaled.setDevicePixelRatio(dpr)
                 if hasattr(self, 'icon_label'):
                     self.icon_label.setPixmap(scaled)
@@ -476,7 +479,8 @@ class FramelessWindow(QMainWindow, Win32Mixin):
 class FramelessDialog(QDialog, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        # Change flag to Dialog to prevent separate taskbar icon
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._native_styles_applied = False
         self.border_radius = 8

@@ -515,10 +515,11 @@ class FramelessMessageBox(FramelessDialog):
     class StandardButton:
         NoButton = 0
         Ok = 1024
+        Save = 2048
         Cancel = 4194304
+        Discard = 8388608
         Yes = 16384
         No = 65536
-        # Add others as needed
 
     def __init__(self, parent=None):
         super().__init__(parent)

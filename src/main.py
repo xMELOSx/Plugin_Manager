@@ -35,9 +35,10 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def main():
+    # Windows Taskbar Icon Fix: Set AppUserModelID BEFORE QApplication creation
     set_app_user_model_id()
+    
     try:
-        
         app = QApplication(sys.argv)
         # Set application name for the OS to see
         from src.core.version import APP_NAME
