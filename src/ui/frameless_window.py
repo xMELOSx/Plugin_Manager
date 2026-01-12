@@ -113,6 +113,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         self.icon_label.setObjectName("titlebar_icon")
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter) 
         self.icon_label.setVisible(False)
+        self.icon_label.installEventFilter(self)  # Phase 42: Alt+Click for Debug Console
         self.title_bar_layout.addWidget(self.icon_label)
         from src.core.version import VERSION_STRING
         self.title_label = QLabel(VERSION_STRING, self.title_bar)
@@ -456,6 +457,28 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         geo = self.geometry()
         screen_geo = screen.availableGeometry()
         self.move(screen_geo.x() + (screen_geo.width() - geo.width()) // 2, screen_geo.y() + (screen_geo.height() - geo.height()) // 2)
+
+    def eventFilter(self, obj, event):
+        """General event filter for FramelessWindow."""
+        # Reserved for future use - Alt+Click debug console moved to DebugWindow button
+        return super().eventFilter(obj, event)
+    
+    def keyPressEvent(self, event):
+        """Phase 42: F12 opens Debug Console."""
+        if event.key() == Qt.Key.Key_F12:
+            self._open_debug_console()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+    
+    def _open_debug_console(self):
+        """Open the Debug Console Dialog."""
+        try:
+            from src.ui.link_master.dialogs.debug_console import DebugConsoleDialog
+            DebugConsoleDialog.show_console(self)
+        except Exception as e:
+            print(f"Failed to open debug console: {e}")
+
 
 class FramelessDialog(QDialog, Win32Mixin):
     def __init__(self, parent=None):

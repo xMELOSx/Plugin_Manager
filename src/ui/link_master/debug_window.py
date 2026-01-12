@@ -200,6 +200,12 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.btn_window_count.clicked.connect(self._show_window_count)
         layout.addWidget(self.btn_window_count)
         
+        # Debug Console Button (EXE logging viewer)
+        self.btn_debug_console = QPushButton(_("📋 Open Log Console"))
+        self.btn_debug_console.setToolTip(_("Open live log console for EXE debugging"))
+        self.btn_debug_console.clicked.connect(self._open_debug_console)
+        layout.addWidget(self.btn_debug_console)
+        
         # Language Settings Section
         layout.addSpacing(20)
         self.lang_header_lbl = QLabel(_("<b>Language Settings / 言語設定</b>"))
@@ -380,6 +386,14 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.logger.debug(f"=== TOP LEVEL WIDGETS: {len(widgets)} ===")
         for d in details:
             self.logger.debug(f"  {d}")
+
+    def _open_debug_console(self):
+        """Open the Debug Console Dialog for EXE log viewing."""
+        try:
+            from src.ui.link_master.dialogs.debug_console import DebugConsoleDialog
+            DebugConsoleDialog.show_console(self)
+        except Exception as e:
+            self.logger.error(f"Failed to open debug console: {e}")
 
     def _on_language_changed(self, index):
         """Handle language selection change."""

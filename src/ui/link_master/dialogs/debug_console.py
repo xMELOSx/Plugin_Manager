@@ -134,12 +134,13 @@ class DebugConsoleDialog(FramelessDialog):
         self.status_label.setText(f"{_('Last')}: {datetime.now().strftime('%H:%M:%S')}")
         
     def _insert_marker(self):
-        """可視マーカーを挿入して動作追跡を支援"""
+        """可視マーカーを挿入して動作追跡を支援（ロギングとUIの両方に出力）"""
         self._marker_count += 1
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        marker_line = f"\n{'='*60}\n=== MARKER #{self._marker_count} === {timestamp} ===\n{'='*60}\n"
+        marker_line = f"{'='*60}\n=== MARKER #{self._marker_count} === {timestamp} ===\n{'='*60}"
         
-        self.log_text.appendPlainText(marker_line)
+        # Output to Python logging (rich console) as well
+        logging.info(f"\n{marker_line}")
         
         if self._autoscroll:
             self.log_text.moveCursor(QTextCursor.MoveOperation.End)
@@ -165,9 +166,19 @@ class DebugConsoleDialog(FramelessDialog):
         
     @classmethod
     def show_console(cls, parent=None):
-        """シングルトンインスタンスを表示"""
-        if cls._instance is None or not cls._instance.isVisible():
+        """シングルトンインスタンスを表示（二重インスタンス防止）"""
+        # Check if instance exists and is not destroyed
+        try:
+            if cls._instance is not None:
+                # Try to access the instance to ensure it's not deleted
+                _ = cls._instance.isVisible()
+        except RuntimeError:
+            # Instance was deleted (C++ object destroyed)
+            cls._instance = None
+        
+        if cls._instance is None:
             cls._instance = DebugConsoleDialog(parent)
+        
         cls._instance.show()
         cls._instance.raise_()
         cls._instance.activateWindow()
