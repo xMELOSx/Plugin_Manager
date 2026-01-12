@@ -180,22 +180,6 @@ class ItemCard(QFrame):
         self.deploy_btn = DeployOverlay(self)
         self.deploy_btn.clicked.connect(self.toggle_deployment)
 
-    def toggle_deployment(self, path=None, is_package=None):
-        """Phase 30: Direct deployment trigger from card button or public API."""
-        if not self.deployer: return
-        
-        # If this is a category (folder) but we are in Package View, 
-        # it might be allowed to deploy as a package via debug flag.
-        is_acting_as_package = is_package if is_package is not None else self.is_package
-        if not is_acting_as_package:
-             if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
-                  is_acting_as_package = True
-        
-        # Emit signal to parent with path and type. 
-        # Window's LMDeploymentOpsMixin should catch this and run unified logic.
-        target_path = path if path else self.path
-        self.request_deployment_toggle.emit(target_path, is_acting_as_package)
-
         # Phase 28: Enable drag-drop for thumbnail images
         self.setAcceptDrops(True)
 
@@ -212,6 +196,22 @@ class ItemCard(QFrame):
         self._update_name_label()
         self._update_style()
         self._update_icon_overlays()  # Initialize icon visibility
+
+    def toggle_deployment(self, path=None, is_package=None):
+        """Phase 30: Direct deployment trigger from card button or public API."""
+        if not self.deployer: return
+        
+        # If this is a category (folder) but we are in Package View, 
+        # it might be allowed to deploy as a package via debug flag.
+        is_acting_as_package = is_package if is_package is not None else self.is_package
+        if not is_acting_as_package:
+             if getattr(ItemCard, 'ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW', False):
+                  is_acting_as_package = True
+        
+        # Emit signal to parent with path and type. 
+        # Window's LMDeploymentOpsMixin should catch this and run unified logic.
+        target_path = path if path else self.path
+        self.request_deployment_toggle.emit(target_path, is_acting_as_package)
 
 
     def _calculate_has_urls(self, url_list_raw):
@@ -437,11 +437,6 @@ class ItemCard(QFrame):
         self._update_style()
         self._update_icon_overlays()
 
-    def update_link_status(self, status):
-        """Directly update link status and refresh style."""
-        self.link_status = status
-        self._update_style()
-        self._update_icon_overlays()
 
     def _check_link_status(self):
         if not self.deployer: return

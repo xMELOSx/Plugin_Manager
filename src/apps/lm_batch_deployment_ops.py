@@ -1079,10 +1079,16 @@ class LMDeploymentOpsMixin:
         
         if current_status == 'linked':
             self.logger.info(f"[DirectAction] Unlinking {rel}")
-            self._unlink_single(rel)
+            if hasattr(self, '_handle_unlink_single'):
+                self._handle_unlink_single(rel)
+            else:
+                self._unlink_single(rel)
         else:
             self.logger.info(f"[DirectAction] Deploying {rel}")
-            self._deploy_single(rel)
+            if hasattr(self, '_handle_deploy_single'):
+                self._handle_deploy_single(rel)
+            else:
+                self._deploy_single(rel)
 
     # =========================================================================
     # Category Deploy: Deploy the category itself using its own properties
