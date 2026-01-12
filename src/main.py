@@ -16,9 +16,8 @@ def set_app_user_model_id():
     """Ensure the process name and taskbar icon are correctly identified as Dionys Control."""
     if sys.platform == 'win32':
         import ctypes
-        from src.core.version import VERSION
-        # Consistent AppUserModelID for taskbar grouping
-        myappid = f'xMELOSx.DionysControl.LinkMaster.{VERSION}'
+        # Use a simple, stable ID to ensure Windows grouping and icon recognition
+        myappid = 'DionysControl' 
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             logging.info(f"Set AppUserModelID: {myappid}")
@@ -35,7 +34,8 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def main():
-    # Windows Taskbar Icon Fix: Set AppUserModelID BEFORE QApplication creation
+    # Windows Taskbar Icon Fix: Set AppUserModelID BEFORE any windows are created.
+    # We rely on Qt 6's native DPI awareness (PER_MONITOR_AWARE_V2) which is the modern standard.
     set_app_user_model_id()
     
     try:

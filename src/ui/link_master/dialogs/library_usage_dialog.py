@@ -1,12 +1,13 @@
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QTreeWidget, QTreeWidgetItem, QComboBox,
-                             QMessageBox, QHeaderView)
+from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, 
+                             QPushButton, QTreeWidget, QTreeWidgetItem,
+                             QMessageBox, QHeaderView, QWidget)
 from PyQt6.QtCore import Qt
 from src.core.lang_manager import _
 from src.ui.common_widgets import StyledComboBox
+from src.ui.frameless_window import FramelessDialog
 import json
 
-class LibraryUsageDialog(QDialog):
+class LibraryUsageDialog(FramelessDialog):
     """
     パッケージが使用するライブラリを設定するダイアログ。
     利用可能なライブラリ一覧を表示し、依存関係を定義します。
@@ -15,7 +16,8 @@ class LibraryUsageDialog(QDialog):
         super().__init__(parent)
         self.db = db
         self.setWindowTitle(_("Library Settings"))
-        self.resize(600, 500)
+        self.setMinimumSize(600, 500)
+        self.set_default_icon()
         
         # Parse current dependencies
         # format: [{"name": "LibName", "version_mode": "latest"|"priority"|"specific", "version": "v1.0"}, ...]
@@ -29,10 +31,14 @@ class LibraryUsageDialog(QDialog):
         self._load_libraries()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
-        layout.addWidget(QLabel("<b>📦 Library Dependencies</b>"))
-        layout.addWidget(QLabel(_("Select libraries this package uses.")))
+        header_label = QLabel("<b>📦 Library Dependencies</b>")
+        layout.addWidget(header_label)
+        
+        info_label = QLabel(_("Select libraries this package uses."))
+        layout.addWidget(info_label)
         
         # Tree: Library Name | Included? | Version Mode | Specific Version
         self.tree = QTreeWidget()
@@ -56,14 +62,7 @@ class LibraryUsageDialog(QDialog):
         btns.addWidget(btn_save)
         
         layout.addLayout(btns)
-        
-        # Style
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #ddd; }
-            QTreeWidget { background-color: #222; border: 1px solid #444; color: #eee; }
-            QHeaderView::section { background-color: #333; color: #eee; border: none; padding: 4px; }
-            QComboBox { background-color: #333; color: #eee; border: 1px solid #555; }
-        """)
+        self.set_content_widget(content_widget)
 
     def _load_libraries(self):
         all_configs = self.db.get_all_folder_configs()

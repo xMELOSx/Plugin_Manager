@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLa
                              QApplication, QAbstractItemView, QAbstractScrollArea, QAbstractSpinBox, QStyle,
                              QTabWidget, QSplitter, QStackedWidget, QToolBox)
 from PyQt6.QtCore import Qt, QPoint, QSize, QEvent, QTimer
-from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter, QBrush, QPen
+from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QPalette, QPainter, QBrush, QPen, QPainterPath
 from src.ui.title_bar_button import TitleBarButton
 from src.ui.window_mixins import Win32Mixin
 from src.ui.toast import Toast
@@ -33,6 +33,12 @@ def force_dark_mode(window):
                 hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(state), ctypes.sizeof(state)
             )
         except: pass
+
+# Standardized Layout Constants
+TITLEBAR_HEIGHT = 40     # Unified height for all windows
+TITLEBAR_ICON_SIZE = 24  # Standard icon size
+TITLEBAR_SPACING = 8     # Layout spacing
+ICON_CONTENT_SIZE = 24   # Use full area
 
 def get_icon_path() -> str:
     """Robustly resolve the application icon path across dev and bundle."""
@@ -96,20 +102,22 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         self.main_layout.setSpacing(0)
         self.title_bar = QWidget(self.container)
         self.title_bar.setObjectName("TitleBar")
-        self.title_bar.setFixedHeight(40)
+        self.title_bar.setFixedHeight(TITLEBAR_HEIGHT)
         self.title_bar.setMouseTracking(True)
         self.title_bar_layout = QHBoxLayout(self.title_bar)
-        self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
-        self.title_bar_layout.setSpacing(2)
+        self.title_bar_layout.setContentsMargins(10, 0, 10, 0) # 10px safe margin on right too
+        self.title_bar_layout.setSpacing(TITLEBAR_SPACING)
+        self.title_bar_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.icon_label = QLabel(self.title_bar)
+        self.icon_label.setFixedSize(TITLEBAR_ICON_SIZE, TITLEBAR_ICON_SIZE)
         self.icon_label.setObjectName("titlebar_icon")
-        self.icon_label.setFixedSize(24, 24)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter) 
         self.icon_label.setVisible(False)
         self.title_bar_layout.addWidget(self.icon_label)
         from src.core.version import VERSION_STRING
         self.title_label = QLabel(VERSION_STRING, self.title_bar)
         self.title_label.setObjectName("titlebar_title")
-        self.title_label.setStyleSheet("padding-left: 5px;")
+        self.title_label.setStyleSheet("padding-left: 0px;") # Spacing handled by layout
         self.title_bar_layout.addWidget(self.title_label)
         self.title_bar_layout.addStretch()
         self.title_bar_center = QWidget(self.title_bar)
@@ -387,71 +395,44 @@ class FramelessWindow(QMainWindow, Win32Mixin):
 
     def set_window_icon_from_path(self, path: str):
         """High-resolution, DPI-aware icon loader (Shared logic)."""
+        if not path or not os.path.exists(path):
+            return False
+            
         try:
-            if not os.path.exists(path): return False
-            
-            # 1. Prepare/Set QIcon - ICO files have multiple sizes
-            if path.lower().endswith('.ico'):
-                multi_icon = QIcon(path)
-            else:
-                original_image = QImage(path)
-                if original_image.isNull(): return False
-                multi_icon = QIcon()
-                for size in [256, 128, 64, 48, 32, 16]:
-                    scaled_pix = QPixmap.fromImage(original_image).scaled(
-                        size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-                    )
-                    multi_icon.addPixmap(scaled_pix)
-            
+            # 1. Load Icon for Taskbar
+            multi_icon = QIcon(path)
+            if multi_icon.isNull():
+                return False
             self.setWindowIcon(multi_icon)
             
-            # 2. Set Title Bar Label (Rounded, DPI aware)
+            # 2. Render optimized title bar pixmap (Sharp, Square, DPI aware)
             dpr = self.devicePixelRatioF()
-            base_size = 24
-            target_size = int(base_size * dpr)
+            base_size = ICON_CONTENT_SIZE 
+            physical_size = int(base_size * dpr)
             
-            if path.lower().endswith('.ico'):
-                # For ICO, we extract the pixmap at target (physical) size
-                scaled = multi_icon.pixmap(target_size, target_size)
-                # CRITICAL: setDevicePixelRatio MUST be set so Qt treats physical 48px as logical 24px (at 2x)
-                # If dpr=2, target_size=48. Setting dpr=2 makes it a 24x24 logical pixmap.
-                scaled.setDevicePixelRatio(dpr)
-                if hasattr(self, 'icon_label'):
-                    self.icon_label.setPixmap(scaled)
-                    self.icon_label.setVisible(True)
-                return True
-
-            # Manual rounding for standard images
-            original_image = QImage(path)
-            scaled = QPixmap.fromImage(original_image).scaled(
-                target_size, target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-            )
-            if scaled.isNull(): return False
-
-            # Create Mask
-            mask = QPixmap(target_size, target_size)
-            mask.fill(Qt.GlobalColor.transparent)
-            mask_p = QPainter(mask)
-            mask_p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            mask_p.setBrush(QBrush(Qt.GlobalColor.white))
-            mask_p.setPen(Qt.PenStyle.NoPen)
-            radius = 6 * dpr
-            mask_p.drawRoundedRect(0, 0, target_size, target_size, radius, radius)
-            mask_p.end()
+            # Create a high-quality transparent pixmap
+            pixmap = QPixmap(physical_size, physical_size)
+            pixmap.fill(Qt.GlobalColor.transparent)
             
-            # Composition
-            rounded = QPixmap(target_size, target_size)
-            rounded.fill(Qt.GlobalColor.transparent)
-            p = QPainter(rounded)
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.drawPixmap(0, 0, mask)
-            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            p.drawPixmap(0, 0, scaled)
-            p.end()
-            rounded.setDevicePixelRatio(dpr)
+            painter = QPainter(pixmap)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+                
+                # Apply a rounded mask (4px logical radius)
+                path_obj = QPainterPath()
+                path_obj.addRoundedRect(0, 0, physical_size, physical_size, 4 * dpr, 4 * dpr)
+                painter.setClipPath(path_obj)
+                
+                multi_icon.paint(painter, 0, 0, physical_size, physical_size)
+            finally:
+                painter.end()
+            
+            pixmap.setDevicePixelRatio(dpr)
             
             if hasattr(self, 'icon_label'):
-                self.icon_label.setPixmap(rounded)
+                self.icon_label.setPixmap(pixmap)
+                self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.icon_label.setVisible(True)
             return True
         except Exception as e:
@@ -479,8 +460,8 @@ class FramelessWindow(QMainWindow, Win32Mixin):
 class FramelessDialog(QDialog, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Change flag to Dialog to prevent separate taskbar icon
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        # Revert to Window flag as requested by user's preference for taskbar independence
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._native_styles_applied = False
         self.border_radius = 8
@@ -504,18 +485,24 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.main_layout.setSpacing(0)
         self.title_bar = QWidget(self.container)
         self.title_bar.setObjectName("TitleBar")
-        self.title_bar.setFixedHeight(32)
+        self.title_bar.setFixedHeight(TITLEBAR_HEIGHT) 
         tb_layout = QHBoxLayout(self.title_bar)
-        tb_layout.setContentsMargins(10, 0, 5, 0)
+        tb_layout.setContentsMargins(10, 0, 10, 0)
+        tb_layout.setSpacing(TITLEBAR_SPACING)
+        tb_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.icon_label = QLabel(self.title_bar)
-        self.icon_label.setFixedSize(24, 24)
+        self.icon_label.setFixedSize(TITLEBAR_ICON_SIZE, TITLEBAR_ICON_SIZE)
+        self.icon_label.setObjectName("titlebar_icon")
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setVisible(False)
         tb_layout.addWidget(self.icon_label)
         self.title_label = QLabel("Dialog", self.title_bar)
-        self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; padding-left: 5px;")
+        self.title_label.setObjectName("titlebar_title")
+        self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; padding-left: 0px;")
         tb_layout.addWidget(self.title_label)
         tb_layout.addStretch()
         self.close_btn = TitleBarButton("✕")
+        self.close_btn.setObjectName("titlebar_close")
         self.close_btn.clicked.connect(self.reject)
         tb_layout.addWidget(self.close_btn)
         self.main_layout.addWidget(self.title_bar)

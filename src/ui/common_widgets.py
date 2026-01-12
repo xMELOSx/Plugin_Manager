@@ -528,6 +528,7 @@ class FramelessMessageBox(FramelessDialog):
         self._setup_ui()
         self.set_title_bar_icon_visible(True)
         self.set_default_icon()
+        
         self._result = self.StandardButton.NoButton
         self._clicked_button = None
         

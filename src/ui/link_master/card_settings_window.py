@@ -32,8 +32,8 @@ class CardSettingsWindow(FramelessDialog):
         self.locked = display_mode_locked
         
         # Explicit Title Bar Styling
-        self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #3d3d3d;")
-        self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
+        # self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #3d3d3d;")
+        # self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
         
         # Apply dark theme style
         self.setStyleSheet("""
