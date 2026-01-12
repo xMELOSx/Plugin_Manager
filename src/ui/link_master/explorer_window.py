@@ -360,8 +360,10 @@ class ExplorerPanel(QWidget):
 
     def _on_open_root_clicked(self):
         """Click handler for the 📁 icon next to the root label."""
-        if self.storage_root and os.path.exists(self.storage_root):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(self.storage_root))
+        # Use currently viewed root path (either source or target P/S/T)
+        path = self.fs_model.rootPath()
+        if path and os.path.exists(path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _on_tree_clicked(self, index):
         """Handle selection (Single Click)."""

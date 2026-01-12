@@ -61,7 +61,7 @@ class SelectionAwareDelegate(QStyledItemDelegate):
 
 class CheckableFileModel(QFileSystemModel):
     """ファイルシステムモデルにチェックボックス、転送モード切替、ターゲット編集機能を追加したもの。"""
-    def __init__(self, folder_path, storage_root, rules, primary_target="", secondary_target="", tertiary_target="", app_name="", deploy_rule="folder"):
+    def __init__(self, folder_path, storage_root, rules, primary_target="", secondary_target="", tertiary_target="", app_name="", deploy_rule="folder", app_primary_root=None):
         super().__init__()
         self.folder_path = folder_path
         self.storage_root = storage_root
@@ -71,6 +71,7 @@ class CheckableFileModel(QFileSystemModel):
         self.tertiary_target = tertiary_target
         self.app_name = app_name
         self.deploy_rule = deploy_rule
+        self.app_primary_root = app_primary_root
 
     def flags(self, index):
         flags = super().flags(index)
@@ -161,20 +162,22 @@ class CheckableFileModel(QFileSystemModel):
                             return rel_from_folder.replace(old, new, 1)
                     
                     # Mode-Aware Default Calculation
-                    if not self.primary_target:
+                    # Phase 2.5: Use App Primary Root as baseline if available, fallback to item's current primary
+                    base_root = self.app_primary_root if self.app_primary_root else self.primary_target
+                    if not base_root:
                         return ""
 
                     # Current target calculation (Primary/Presets)
                     if self.deploy_rule == 'files':
                         # All files go directly into target root
-                        return os.path.join(self.primary_target, os.path.basename(rel_from_folder)).replace('\\', '/')
+                        return os.path.join(base_root, os.path.basename(rel_from_folder)).replace('\\', '/')
                     elif self.deploy_rule == 'tree':
                         # Mirrored structure (skip_levels logic is handled by caller/registry, but here we assume direct mirror from folder_path)
-                        return os.path.join(self.primary_target, rel_from_folder).replace('\\', '/')
+                        return os.path.join(base_root, rel_from_folder).replace('\\', '/')
                     else:
                         # Standard folder mode: target_root / folder_name / rel_path
                         folder_name = os.path.basename(self.folder_path)
-                        return os.path.join(self.primary_target, folder_name, rel_from_folder).replace('\\', '/')
+                        return os.path.join(base_root, folder_name, rel_from_folder).replace('\\', '/')
                 return ""
             
             if index.column() == 4: # Size
@@ -262,7 +265,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
     ファイル単位の高度な構成（ターゲットパス編集、シンボリック切替、バックアップ）を行うダイアログ。
     """
-    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root="", deploy_rule="folder"):
+    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root="", deploy_rule="folder", app_primary_root=None):
         super().__init__(parent)
         # Tool flag: Don't show in taskbar, stay above main window (like DebugWindow/OptionsWindow)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
@@ -277,6 +280,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.tertiary_target = tertiary_target
         self.app_name = app_name
         self.deploy_rule = deploy_rule
+        self.app_primary_root = app_primary_root
         self.logger = logging.getLogger("FileManagementDialog")
         
         # Rules Parsing
@@ -343,7 +347,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         title_h = QHBoxLayout(title_container)
         title_h.setContentsMargins(0,0,0,0)
         
-        icon_btn = QPushButton("📂")
+        icon_btn = QPushButton("📁")
         icon_btn.setFixedSize(44, 44)
         icon_btn.setStyleSheet("""
             QPushButton { 
@@ -353,8 +357,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             }
             QPushButton:hover { background-color: rgba(255, 255, 255, 0.15); border-radius: 4px; }
         """)
-        icon_btn.setToolTip(_("ソースフォルダを開く"))
-        icon_btn.clicked.connect(lambda: os.startfile(os.path.normpath(self.folder_path)))
+        icon_btn.setToolTip(_("スマートジャンプ (選択あり: ターゲット / なし: ソース)"))
+        icon_btn.clicked.connect(self._on_smart_jump_clicked)
         title_h.addWidget(icon_btn)
         
         title = QLabel(f"<span style='font-size: 16pt; color: #ffffff; font-weight: bold;'>{os.path.basename(self.folder_path)}</span>")
@@ -380,7 +384,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         # Main Tree
         self.model = CheckableFileModel(self.folder_path, self.storage_root, self.rules, 
                                         self.primary_target, self.secondary_target, self.tertiary_target, self.app_name, 
-                                        deploy_rule=self.deploy_rule)
+                                        deploy_rule=self.deploy_rule, app_primary_root=self.app_primary_root)
         self.model.setRootPath(self.folder_path)
         
         self.proxy = BackupFilterProxyModel()
@@ -570,11 +574,6 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         target_row.addWidget(create_aligned_label(_("ターゲット:")))
         
         # Target buttons: Unified 110px
-        target_configs = [
-            (_("プライマリ"), self.primary_target, "#555", "#666"),
-            (_("セカンダリ"), self.secondary_target, "#2980b9", "#2980b9"),
-            (_("ターシャリ"), self.tertiary_target, "#8e44ad", "#8e44ad"),
-        ]
         for t_lbl, t_val, t_bg, t_border in target_configs:
             btn = QPushButton(t_lbl)
             btn.setStyleSheet(f"""
@@ -588,6 +587,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             """)
             btn.setToolTip(t_val or _("未設定"))
             if not t_val: btn.setEnabled(False)
+            
             btn.clicked.connect(lambda _, v=t_val: self._apply_target_batch(v))
             target_row.addWidget(btn)
         
@@ -954,10 +954,15 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         if count > 0:
             QMessageBox.information(self, _("完了"), _("{n} 件の復元が完了しました。").format(n=count))
 
-    def _refresh_row(self, s_idx):
-        if not s_idx.isValid(): return
-        self.model.dataChanged.emit(self.model.index(s_idx.row(), 0, s_idx.parent()),
-                                    self.model.index(s_idx.row(), self.model.columnCount()-1, s_idx.parent()))
+    def _on_smart_jump_clicked(self):
+        """Context-aware jump: opens target if row is selected, otherwise source."""
+        selected = self.tree.selectionModel().selectedRows()
+        if selected:
+            # Open Target of first selected row
+            self._open_in_explorer(selected[0], mode='target')
+        else:
+            # Open Source Folder
+            os.startfile(os.path.normpath(self.folder_path))
 
     def _on_tree_double_clicked(self, p_idx):
         if QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier:

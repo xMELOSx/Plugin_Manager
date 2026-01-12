@@ -44,7 +44,8 @@ class LMFileManagementMixin:
         # Pass None as parent to prevent OS compositor alpha failure with transparent windows
         diag = FileManagementDialog(None, abs_path, config.get('deployment_rules'), 
                                    primary_target=mod_primary_base, secondary_target=mod_secondary_base, tertiary_target=mod_tertiary_base,
-                                   app_name=app_data.get('name', ''), storage_root=self.storage_root, deploy_rule=deploy_rule)
+                                   app_name=app_data.get('name', ''), storage_root=self.storage_root, deploy_rule=deploy_rule,
+                                   app_primary_root=primary_root)
         
         # Non-modal: Use show() instead of exec() to allow main window interaction
         # Store reference to prevent garbage collection

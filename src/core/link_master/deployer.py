@@ -419,23 +419,11 @@ class Deployer:
         If protected_roots is None, automatically fetches ALL target roots from ALL apps using LinkMasterRegistry.
         Returns the path of the protected root that stopped the pruning, or None if it reached root or stopped as expected.
         """
-        # 🚨 AUTO-FETCH ALL TARGET ROOTS FROM GLOBAL REGISTRY
+        # Use only explicitly provided protected roots
         if protected_roots is None:
             protected_roots = set()
-            try:
-                from src.core.link_master.database import LinkMasterRegistry
-                registry = LinkMasterRegistry()
-                all_apps = registry.get_apps()
-                for app in all_apps:
-                    for key in ['target_root', 'target_root_2', 'target_root_3']:
-                        val = app.get(key)
-                        if val:
-                            protected_roots.add(val)
-                self.logger.info(f"[Prune Safety] Protected roots from Registry: {protected_roots}")
-            except Exception as e:
-                self.logger.warning(f"Failed to auto-fetch protected roots: {e}")
         
-        norm_protected = {os.path.normpath(p).lower() for p in protected_roots if p}
+        norm_protected = {os.path.normpath(p).replace('\\', '/').lower() for p in protected_roots if p}
         
         while path:
             try:
@@ -449,13 +437,13 @@ class Deployer:
             # Safety: Never remove if this path IS a protected root
             if norm_path in norm_protected:
                 self.logger.debug(f"[Prune Safety] Stopping at protected root: {path}")
-                return path # Return the protected root path
+                break # Silently stop
             
             # Safety: Never remove if this path is a PARENT of any protected root
             is_parent_of_protected = any(p.startswith(norm_path + os.sep) or p.startswith(norm_path + '/') for p in norm_protected)
             if is_parent_of_protected:
                 self.logger.debug(f"[Prune Safety] Stopping at parent of protected root: {path}")
-                return path # Treat as protected boundary
+                break # Silently stop
             
             try:
                 if core_handler.is_dir(path) and not os.listdir(path):

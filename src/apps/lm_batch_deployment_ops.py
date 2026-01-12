@@ -761,12 +761,7 @@ class LMDeploymentOpsMixin:
                         prune_entry = os.path.join(search_root, folder_name)
 
                     parent_dir = os.path.dirname(prune_entry)
-                    hit_root = self.deployer._cleanup_empty_parents(parent_dir)
-                    
-                    if hit_root:
-                        # Notify user if it stopped unexpectedly (though safety is priority)
-                        # We only notify if it stopped at a root that likely contains other things
-                        self.logger.info(f"Cleanup stopped at protected root: {hit_root}")
+                    self.deployer._cleanup_empty_parents(parent_dir, protected_roots=set(search_roots))
                 except Exception as e:
                     self.logger.warning(f"Failed to prune parents for {search_root}: {e}")
 
@@ -859,16 +854,17 @@ class LMDeploymentOpsMixin:
             else:
                  target_dir = os.path.join(target_root, rel_root)
             
-            # Delete files
+            # Delete files (including symlinks)
             for f in files:
                 target_file = os.path.join(target_dir, f)
-                if os.path.exists(target_file) and not os.path.islink(target_file):
+                # Phase 32: Remove items regardless of link status to ensure clean undeploy
+                if os.path.lexists(target_file):
                     try:
                         os.remove(target_file)
                         deleted_count += 1
-                        self.logger.debug(f"Deleted file: {target_file}")
+                        self.logger.debug(f"Deleted item: {target_file}")
                     except Exception as e:
-                        self.logger.warning(f"Failed to delete file {target_file}: {e}")
+                        self.logger.warning(f"Failed to delete item {target_file}: {e}")
             
             # Mark directories for potential pruning (handle later)
             for d in dirs:

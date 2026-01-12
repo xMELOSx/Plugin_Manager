@@ -597,17 +597,21 @@ class ScannerWorker(QObject):
 
         # Partial Deployment Check (Feature 6)
         # Determine if this item has file-level exclusions or overrides
-        rules_json = item_config.get('deployment_rules')
         is_partial = False
-        if rules_json:
-            try:
-                rules = json.loads(rules_json)
-                if rules.get('exclude'):
-                    is_partial = True
-                if rules.get('rename'):
-                    # Check if any rename is internal (within the folder)
-                    is_partial = True
-            except: pass
+        if deploy_rule == 'tree':
+            # Phase 2.5: Tree mode always assumes a full mirror and IGNORES custom rules for 'partial' status.
+            is_partial = False
+        else:
+            rules_json = item_config.get('deployment_rules')
+            if rules_json:
+                try:
+                    rules = json.loads(rules_json)
+                    if rules.get('exclude'):
+                        is_partial = True
+                    if rules.get('rename'):
+                        # Check if any rename is internal (within the folder)
+                        is_partial = True
+                except: pass
 
         # Phase 28: Use persistent conflict flags from DB/Config
         # These are calculated by TagConflictWorker and persisted in the DB.
