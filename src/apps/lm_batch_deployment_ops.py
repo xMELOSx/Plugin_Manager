@@ -7,7 +7,7 @@ import logging
 import time
 from src.ui.common_widgets import FramelessMessageBox
 from PyQt6.QtCore import QThread, QTimer
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 
 from src.core.lang_manager import _
 from src.core.link_master.deployer import DeploymentCollisionError
@@ -395,22 +395,38 @@ class LMDeploymentOpsMixin:
                     break
             
             if matched_root_key:
-                # Phase 28: Reverted to Critical Block per User Request (Strict Safety)
-                from PyQt6.QtWidgets import QMessageBox
-                msg = QMessageBox(self.window() if hasattr(self, 'window') else self)
-                msg.setIcon(QMessageBox.Icon.Critical)
-                msg.setWindowTitle(_("Safety Block"))
-                msg.setText(_("Deployment blocked: Destination matches a configured Target Root!\n\n"
+                # Use FramelessMessageBox for unified UI
+                msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Critical)
+                msg_box.setWindowTitle(_("Safety Block"))
+                msg_box.setText(_("Deployment blocked: Destination matches a configured Target Root!\n\n"
                               "Target: {target}\n"
                               "Matched Root: {root_key}\n\n"
                               "Deploying here in 'folder' mode would replace the target root directory itself.\n"
                               "Please use 'files' (Flatten) mode or check your path settings.").format(
                                   target=target_link, root_key=matched_root_key
                               ))
-                apply_common_dialog_style(msg)
-                msg.exec()
+                msg_box.exec()
                 self.logger.error(f"Safety Block: Prevented 'folder' mode deployment targeting search root: {target_link} (Matches {matched_root_key})")
                 return False
+
+        # --- PROACTIVE LINK CHECK (Fix: Infinite .bak generation) ---
+        # If already linked correctly, we don't need to deploy again.
+        status_info = self.deployer.get_link_status(target_link, full_src, transfer_mode)
+        if status_info['status'] == 'linked':
+            self.logger.info(f"[Skip] Already linked correctly: {rel_path} -> {target_link}")
+            if config.get('last_known_status') != 'linked':
+                self.db.update_folder_config(rel_path, {'last_known_status': 'linked'})
+            
+            # Still process dependencies if any
+            if config.get('lib_deps'):
+                deps_to_deploy = self._resolve_dependencies([rel_path])
+                if deps_to_deploy:
+                    for lib_rel in deps_to_deploy:
+                        if lib_rel != rel_path:
+                            self._deploy_single(lib_rel, update_ui=True)
+            return True
+        # -------------------------------------------------------------
 
         rules = config.get('deployment_rules')
 
@@ -436,14 +452,13 @@ class LMDeploymentOpsMixin:
                                     name=lib_name, old_ver=old_ver, new_ver=new_ver
                                 )
                         
-                        msg_box = QMessageBox(self)
-                        msg_box.setIcon(QMessageBox.Icon.Question)
+                        msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+                        msg_box.setIcon(FramelessMessageBox.Icon.Question)
                         msg_box.setWindowTitle(_("Library Switch"))
                         msg_box.setText(msg)
-                        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                        apply_common_dialog_style(msg_box)
+                        msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
                         reply = msg_box.exec()
-                        if reply == QMessageBox.StandardButton.Yes:
+                        if reply == FramelessMessageBox.StandardButton.Yes:
                             self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
                         else:
@@ -470,15 +485,14 @@ class LMDeploymentOpsMixin:
                        scope=conflict_data['scope'], new_name=folder_name
                    )
             
-            msg_box = QMessageBox(self)
-            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+            msg_box.setIcon(FramelessMessageBox.Icon.Warning)
             msg_box.setWindowTitle(_("Conflict Swap"))
             msg_box.setText(msg)
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            apply_common_dialog_style(msg_box)
+            msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
             reply = msg_box.exec()
             
-            if reply == QMessageBox.StandardButton.Yes:
+            if reply == FramelessMessageBox.StandardButton.Yes:
                 self.logger.info(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
                 self._unlink_single(conflict_data['path'], update_ui=True)
                 self._refresh_tag_visuals(target_tag=conflict_data.get('tag'))
