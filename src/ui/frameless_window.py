@@ -310,7 +310,8 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                     "Table", "Tree", "List", "View", "Header", "TabWidget", "TabBar", 
                     "Splitter", "Browser", "Web", "Stacked", 
                     "Check", "Radio", "Menu", "Indicator", "Icon", "Status",
-                    "ScrollBar", "ItemCard", "ClickableLabel"
+                    "ScrollBar", "ItemCard", "ClickableLabel",
+                    "TagBar", "TagWidget", "TagFlowPreview", "TagChipInput"
                 ]):
                     return False, 1 # HTCLIENT
                 
@@ -582,7 +583,7 @@ class FramelessDialog(QDialog, Win32Mixin):
                     "Table", "Tree", "List", "View", "Header", "Tab", "Splitter", 
                     "Browser", "Web", "Stacked", "ToolBox", 
                     "Check", "Radio", "Group", "Menu", "Indicator", "Icon",
-                    "ScrollBar", "ItemCard"
+                    "ScrollBar", "ItemCard", "TagBar", "TagWidget", "TagFlowPreview", "TagChipInput"
                 ]) or "Clickable" in cname or oname in ["titlebar_icon", "titlebar_close", "titlebar_maximize", "titlebar_minimize"]:
                      return False, 1 # HTCLIENT
                 

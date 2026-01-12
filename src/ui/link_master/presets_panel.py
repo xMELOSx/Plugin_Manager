@@ -106,9 +106,28 @@ class PresetsPanel(QWidget):
         
         layout.addWidget(self.tree_widget)
 
+        # Buttons Cluster (Bottom)
         
-        # Buttons Row 1: Save / Folder / Delete
+        # Buttons Row 1: Deploy / Unlink (Upper row of the set)
+        btn_layout2 = QHBoxLayout()
+        btn_layout2.setContentsMargins(0, 5, 0, 0)
+        
+        self.btn_load = QPushButton(_("🚀 Deploy"), self)
+        self.btn_load.clicked.connect(self._on_load_clicked)
+        self.btn_load.setStyleSheet(ButtonStyles.SUCCESS)
+        btn_layout2.addWidget(self.btn_load, 1) # Set stretch to 1
+        
+        self.btn_unload = QPushButton(_("🔓 Unlink"), self)
+        self.btn_unload.clicked.connect(lambda: self.unload_request_signal.emit())
+        self.btn_unload.setStyleSheet(ButtonStyles.PRIMARY)
+        self.btn_unload.setToolTip(_("Remove all active links for this app"))
+        btn_layout2.addWidget(self.btn_unload, 1)
+        
+        layout.addLayout(btn_layout2)
+        
+        # Buttons Row 2: Create / Folder / Delete (Lower row of the set)
         btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 5, 0, 5)
         
         # Create Preset Button (Restored)
         self.btn_add = QPushButton(_("💾 Create"), self)
@@ -128,22 +147,6 @@ class PresetsPanel(QWidget):
         btn_layout.addWidget(self.btn_del)
         
         layout.addLayout(btn_layout)
-        
-        # Buttons Row 2: Deploy / Unlink
-        btn_layout2 = QHBoxLayout()
-        
-        self.btn_load = QPushButton(_("🚀 Deploy"), self)
-        self.btn_load.clicked.connect(self._on_load_clicked)
-        self.btn_load.setStyleSheet(ButtonStyles.SUCCESS)
-        btn_layout2.addWidget(self.btn_load)
-        
-        self.btn_unload = QPushButton(_("🔓 Unlink"), self)
-        self.btn_unload.clicked.connect(lambda: self.unload_request_signal.emit())
-        self.btn_unload.setStyleSheet(ButtonStyles.PRIMARY)
-        self.btn_unload.setToolTip(_("Remove all active links for this app"))
-        btn_layout2.addWidget(self.btn_unload)
-        
-        layout.addLayout(btn_layout2)
 
         # Clear Filter Button (shown when filter is active)
         self.clear_filter_btn = QPushButton(_("🔓 Clear Filter"), self)
@@ -289,17 +292,25 @@ class PresetsPanel(QWidget):
         item_id = item.data(0, Qt.ItemDataRole.UserRole)
         
         if item_type == ITEM_TYPE_FOLDER:
-            confirm = QMessageBox.question(self, _("Delete Folder"), 
-                                         _("Delete folder '{folder_name}'?\n(Presets inside will be moved to root)").format(folder_name=item.text(0)),
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if confirm == QMessageBox.StandardButton.Yes:
+            from src.ui.common_widgets import FramelessMessageBox
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Delete Folder"))
+            msg.setText(_("Delete folder '{folder_name}'?\n(Presets inside will be moved to root)").format(folder_name=item.text(0)))
+            msg.setIcon(FramelessMessageBox.Icon.Question)
+            msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+            
+            if msg.exec() == FramelessMessageBox.StandardButton.Yes:
                 self.db.delete_preset_folder(item_id)
                 self.refresh(preserve_selection=False)
         elif item_type == ITEM_TYPE_PRESET:
-            confirm = QMessageBox.question(self, _("Delete Preset"), 
-                                         _("Delete '{preset_name}'?").format(preset_name=item.text(0)),
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if confirm == QMessageBox.StandardButton.Yes:
+            from src.ui.common_widgets import FramelessMessageBox
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Delete Preset"))
+            msg.setText(_("Delete '{preset_name}'?").format(preset_name=item.text(0)))
+            msg.setIcon(FramelessMessageBox.Icon.Question)
+            msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+            
+            if msg.exec() == FramelessMessageBox.StandardButton.Yes:
                 self.delete_preset.emit(item_id)
 
 

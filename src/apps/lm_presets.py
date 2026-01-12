@@ -3,7 +3,7 @@ Link Master: Preset Management Mixin
 Extracted from LinkMasterWindow for modularity.
 """
 import os
-from PyQt6.QtWidgets import QMessageBox, QInputDialog
+from src.ui.common_widgets import FramelessMessageBox
 from src.core.lang_manager import _
 
 
@@ -86,22 +86,25 @@ class LMPresetsMixin:
         storage_root = app_data.get('storage_root')
         if not target_root: return
         
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Load Preset")
-        msg_box.setText("How would you like to load this preset?")
-        msg_box.setInformativeText("Replace: Removes ALL existing links for this app first.\nAppend: Adds to existing links (conflicts skipped).")
+        # Phase 1.1.400: Unified Dialog
+        msg_box = FramelessMessageBox(self)
+        msg_box.setWindowTitle(_("Load Preset"))
+        msg_box.setText(_("How would you like to load this preset?"))
+        msg_box.setIcon(FramelessMessageBox.Icon.Question)
         
-        btn_replace = msg_box.addButton("Replace All", QMessageBox.ButtonRole.DestructiveRole)
-        btn_append = msg_box.addButton("Append / Add", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = msg_box.addButton(QMessageBox.StandardButton.Cancel)
+        # Informative text via custom layout or text extension
+        msg_box.text_lbl.setText(_("<b>{title}</b><br><br>Replace: Removes ALL existing links for this app first.<br>Append: Adds to existing links (conflicts skipped).").format(title=_("Load Preset")))
         
-        msg_box.exec()
+        btn_replace = msg_box.addButton(_("Replace All"), FramelessMessageBox.StandardButton.Yes)
+        btn_append = msg_box.addButton(_("Append / Add"), FramelessMessageBox.StandardButton.Ok)
+        btn_cancel = msg_box.addButton(_("Cancel"), FramelessMessageBox.StandardButton.Cancel)
         
-        clicked = msg_box.clickedButton()
-        if clicked == btn_cancel:
+        ret = msg_box.exec()
+        
+        if ret == FramelessMessageBox.StandardButton.Cancel:
             return
             
-        if clicked == btn_replace:
+        if ret == FramelessMessageBox.StandardButton.Yes: # Replace
             self.deployer.cleanup_links_in_target(target_root, storage_root)
         
         success_count = 0
@@ -110,17 +113,30 @@ class LMPresetsMixin:
         preset_categories = set()
         
         links_to_create = []
-        is_append_mode = (clicked == btn_append)
+        is_append_mode = (ret == FramelessMessageBox.StandardButton.Ok) # Append
         
         for item in items:
             rel_path = item['storage_rel_path']
             source = os.path.join(storage_root, rel_path)
             target = os.path.join(target_root, item['name']) 
             
-            # In append mode, skip if target already exists (don't create .bak)
-            if is_append_mode and os.path.exists(target):
-                skipped_count += 1
-                continue
+            # Phase 1.1.410: Accurate Link Detection
+            # Check if current target is already correct using the deployer's logic
+            current_status = self.deployer.get_link_status(source, target)
+            
+            if is_append_mode:
+                if current_status == 'linked':
+                    skipped_count += 1
+                    continue
+                if os.path.exists(target): # Exists but not correctly linked
+                     skipped_count += 1
+                     continue
+            else:
+                # In replace mode, if already correctly linked, we can skip creating but count as success
+                if current_status == 'linked':
+                    success_count += 1
+                    preset_paths.add(rel_path)
+                    continue
             
             links_to_create.append((source, target))
             
@@ -132,19 +148,35 @@ class LMPresetsMixin:
         if links_to_create:
             self.logger.info(f"Loading preset in parallel ({len(links_to_create)} items)...")
             results = self.deployer.deploy_links_batch(links_to_create, 'backup' if not is_append_mode else 'skip')
-            success_count = sum(1 for r in results if r['status'] == 'success')
+            success_count += sum(1 for r in results if r['status'] == 'success')
             error_count = sum(1 for r in results if r['status'] == 'error')
             if error_count > 0:
                 self.logger.error(f"Preset load had {error_count} errors.")
                 
-        QMessageBox.information(self, "Deployed", f"Deployed {success_count}/{len(items)} items from preset.")
+        # Targeted UI Refresh (Avoid full on_app_changed)
+        # 1. Update card statuses for all items in the preset
+        for item in items:
+            rel_path = item['storage_rel_path']
+            abs_src = os.path.join(storage_root, rel_path)
+            if hasattr(self, '_update_card_by_path'):
+                 self._update_card_by_path(abs_src)
+        
+        # 2. Update stats and tags
+        if hasattr(self, '_update_total_link_count'): self._update_total_link_count()
+        if hasattr(self, '_refresh_tag_visuals'): self._refresh_tag_visuals()
+        
+        from src.ui.toast import Toast
+        Toast.show_toast(self, _("Deployed {0}/{1} items from preset.").format(success_count, len(items)), preset="success")
         
         self.preset_filter_mode = True
         self.preset_filter_paths = preset_paths
         self.preset_filter_categories = preset_categories
         self.presets_panel.clear_filter_btn.show()
         
-        self._on_app_changed(self.app_combo.currentIndex())
+        # self._on_app_changed() removed to prevent jitter. 
+        # Re-build indicator visually if filtering.
+        if hasattr(self, '_rebuild_current_view'):
+            self._rebuild_current_view()
 
     def _preview_preset(self, preset_id):
         """Preview items in a preset before loading them."""
@@ -216,19 +248,17 @@ class LMPresetsMixin:
         storage_root = app_data.get('storage_root')
         if not target_root or not storage_root: return
         
-        from src.ui.styles import apply_common_dialog_style
         from src.ui.toast import Toast
         
-        msg_box = QMessageBox(self)
+        msg_box = FramelessMessageBox(self)
         msg_box.setWindowTitle(_("Unload Links"))
         msg_box.setText(_("Are you sure you want to remove ALL active symlinks for this app?"))
-        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
-        apply_common_dialog_style(msg_box)
+        msg_box.setIcon(FramelessMessageBox.Icon.Question)
+        msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
         
         reply = msg_box.exec()
         
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply == FramelessMessageBox.StandardButton.Yes:
             try:
                 self.deployer.cleanup_links_in_target(target_root, storage_root)
                 Toast.show_toast(self, _("All links unloaded."), preset="success")
@@ -238,6 +268,9 @@ class LMPresetsMixin:
                 if hasattr(self, '_refresh_tag_visuals'):
                     self._refresh_tag_visuals()
             except Exception as e:
-                err_box = QMessageBox.critical(self, _("Error"), f"{_('Unload failed')}: {e}")
-                apply_common_dialog_style(err_box)
+                err_box = FramelessMessageBox(self)
+                err_box.setWindowTitle(_("Error"))
+                err_box.setText(f"{_('Unload failed')}: {e}")
+                err_box.setIcon(FramelessMessageBox.Icon.Critical)
+                err_box.exec()
 

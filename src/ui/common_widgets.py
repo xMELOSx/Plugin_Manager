@@ -627,11 +627,23 @@ class FramelessMessageBox(FramelessDialog):
         if buttons & self.StandardButton.Cancel:
             self._add_btn(_("Cancel"), self.StandardButton.Cancel, "Gray")
 
-    def _add_btn(self, text, code, style="Gray"):
+    def addButton(self, text, code, style="Gray"):
+        """Mimic QMessageBox.addButton to support custom buttons."""
+        # Auto-detect style based on code if not provided
+        if style == "Gray":
+            if code in [self.StandardButton.Ok, self.StandardButton.Yes]:
+                style = "Blue"
+            elif code == self.StandardButton.NoButton: # Default to success if it's a primary action
+                style = "Green"
+        
         btn = StyledButton(text, style_type=style)
-        btn.setMinimumWidth(80)
+        btn.setMinimumWidth(100)
         btn.clicked.connect(lambda: self._done(code))
         self.pixel_btn_layout.addWidget(btn)
+        return btn
+
+    def _add_btn(self, text, code, style="Gray"):
+        self.addButton(text, code, style)
         
     def setDefaultButton(self, code):
         # Optional: Set focus

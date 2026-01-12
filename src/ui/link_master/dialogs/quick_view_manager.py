@@ -1086,38 +1086,24 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             has_changes = True
             
         if has_changes:
-            from src.core.lang_manager import _
-            msg_box = QMessageBox(self)
+            from src.ui.common_widgets import FramelessMessageBox
+            msg_box = FramelessMessageBox(self)
             msg_box.setWindowTitle(_("Save Changes"))
             msg_box.setText(_("You have unsaved changes. Do you want to save them before closing?"))
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Save | 
-                                       QMessageBox.StandardButton.Discard | 
-                                       QMessageBox.StandardButton.Cancel)
-            msg_box.setDefaultButton(QMessageBox.StandardButton.Save)
+            msg_box.setIcon(FramelessMessageBox.Icon.Question)
             
-            # Apply dark theme styling directly
-            msg_box.setStyleSheet("""
-                QMessageBox { background-color: #2b2b2b; }
-                QMessageBox QLabel { color: #eeeeee; }
-                QMessageBox QPushButton { 
-                    background-color: #444; 
-                    color: #eeeeee; 
-                    border: 1px solid #555; 
-                    padding: 6px 12px; 
-                    border-radius: 4px;
-                    min-width: 60px;
-                }
-                QMessageBox QPushButton:hover { background-color: #555; }
-            """)
+            btn_save = msg_box.addButton(_("Save"), FramelessMessageBox.StandardButton.Ok)
+            btn_discard = msg_box.addButton(_("Discard"), FramelessMessageBox.StandardButton.Yes)
+            btn_cancel = msg_box.addButton(_("Cancel"), FramelessMessageBox.StandardButton.Cancel)
             
             ret = msg_box.exec()
             
-            if ret == QMessageBox.StandardButton.Save:
+            if ret == FramelessMessageBox.StandardButton.Ok: # Save
                 self._on_save_clicked() # This calls _perform_save and accept()
                 return True
-            elif ret == QMessageBox.StandardButton.Cancel:
+            elif ret == FramelessMessageBox.StandardButton.Cancel:
                 return False # Stay in dialog
-            # If Discard, proceed to restore data and close
+            # If Discard (Yes), proceed to restore data and close
             
         return True
 
@@ -1830,13 +1816,27 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                         self._update_window_title() # Remove "Unsaved" marker
                         return True, len(update_list)
                     else:
-                        QMessageBox.critical(self, _("Error"), _("Failed to update items."))
+                        from src.ui.common_widgets import FramelessMessageBox
+                        err = FramelessMessageBox(self)
+                        err.setWindowTitle(_("Error"))
+                        err.setText(_("Failed to update items."))
+                        err.setIcon(FramelessMessageBox.Icon.Critical)
+                        err.exec()
                         return False, 0
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", _("Failed to save changes: {e}").format(e=str(e)))
+                    from src.ui.common_widgets import FramelessMessageBox
+                    err = FramelessMessageBox(self)
+                    err.setWindowTitle(_("Error"))
+                    err.setText(_("Failed to save changes: {e}").format(e=str(e)))
+                    err.setIcon(FramelessMessageBox.Icon.Critical)
+                    err.exec()
                     return False, 0
             else:
-                 QMessageBox.information(self, "Demo", f"Would update {len(update_list)} items:\n{update_list}")
+                 from src.ui.common_widgets import FramelessMessageBox
+                 msg = FramelessMessageBox(self)
+                 msg.setWindowTitle("Demo")
+                 msg.setText(f"Would update {len(update_list)} items:\n{update_list}")
+                 msg.exec()
                  return True, len(update_list)
         else:
             return True, 0
