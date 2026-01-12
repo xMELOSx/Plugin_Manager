@@ -28,6 +28,7 @@ from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDia
 from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
 from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
 from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
+from src.ui.link_master.dialogs.debug_console import DebugConsoleDialog
 
 __all__ = [
     'AppRegistrationDialog',
@@ -49,5 +50,6 @@ __all__ = [
     'PreviewItemWidget',
     'FrequentTagEditDialog',
     'TestStyleDialog',
+    'DebugConsoleDialog',
 ]
 

@@ -1031,13 +1031,19 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.type_combo.addItem(_("Category"), "category")
         self.type_combo.addItem(_("Package"), "package")
         
-        # Default to Auto
-        current_type = self.current_config.get('folder_type', 'auto')
+        # Default to Auto - use explicit string check since 'auto' is the expected value
+        current_type = self.current_config.get('folder_type') or 'auto'
 
-        idx = self.type_combo.findData(current_type)
-        if idx >= 0 and not self.batch_mode:
-            self.type_combo.setCurrentIndex(idx)
-        elif self.batch_mode:
+        # Ensure Auto is selected when type is not set or explicitly 'auto'
+        if current_type and current_type != 'auto':
+            idx = self.type_combo.findData(current_type)
+            if idx >= 0 and not self.batch_mode:
+                self.type_combo.setCurrentIndex(idx)
+        elif not self.batch_mode:
+            # Select Auto (index 0 in non-batch mode)
+            self.type_combo.setCurrentIndex(0)
+        
+        if self.batch_mode:
             self.type_combo.setCurrentIndex(0) # No Change
             
         attr_form.addRow(_("Folder Type:"), self.type_combo)
@@ -1060,10 +1066,18 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         
         current_style = self.current_config.get('display_style') # None = App Default
 
-        idx = self.style_combo.findData(current_style)
-        if idx >= 0 and not self.batch_mode:
-            self.style_combo.setCurrentIndex(idx)
-        elif self.batch_mode:
+        # Ensure App Default is selected when style is not set
+        if current_style:
+            idx = self.style_combo.findData(current_style)
+            if idx >= 0 and not self.batch_mode:
+                self.style_combo.setCurrentIndex(idx)
+        elif not self.batch_mode:
+            # Select App Default (which has None as data)
+            idx = self.style_combo.findData(None)
+            if idx >= 0:
+                self.style_combo.setCurrentIndex(idx)
+        
+        if self.batch_mode:
             self.style_combo.setCurrentIndex(0)
 
         attr_form.addRow(_("Category Style:"), self.style_combo)
@@ -1080,10 +1094,18 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         
         current_style_pkg = self.current_config.get('display_style_package') # None = App Default
 
-        idx_pkg = self.style_combo_pkg.findData(current_style_pkg)
-        if idx_pkg >= 0 and not self.batch_mode:
-            self.style_combo_pkg.setCurrentIndex(idx_pkg)
-        elif self.batch_mode:
+        # Ensure App Default is selected when style is not set
+        if current_style_pkg:
+            idx_pkg = self.style_combo_pkg.findData(current_style_pkg)
+            if idx_pkg >= 0 and not self.batch_mode:
+                self.style_combo_pkg.setCurrentIndex(idx_pkg)
+        elif not self.batch_mode:
+            # Select App Default (which has None as data)
+            idx_pkg = self.style_combo_pkg.findData(None)
+            if idx_pkg >= 0:
+                self.style_combo_pkg.setCurrentIndex(idx_pkg)
+        
+        if self.batch_mode:
             self.style_combo_pkg.setCurrentIndex(0)
 
         attr_form.addRow(_("Package Style:"), self.style_combo_pkg)
@@ -1117,13 +1139,13 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             curr = self.parent()
             window = None
             while curr:
-                if hasattr(curr, '_load_frequent_tags'):
+                if hasattr(curr, '_load_quick_tags'):
                     window = curr
                     break
                 curr = curr.parent()
             
             if window:
-                frequent_tags = window._load_frequent_tags()
+                frequent_tags = window._load_quick_tags()
                 for t in frequent_tags:
                     if t.get('is_sep'): continue
                     name = t.get('name')

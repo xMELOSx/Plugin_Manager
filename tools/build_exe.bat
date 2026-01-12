@@ -42,6 +42,7 @@ pyinstaller --noconsole ^
             --onefile ^
             --icon "src\resource\icon\icon.ico" ^
             --add-data "src/resource/icon;src/resource/icon" ^
+            --add-data "src/resource/se;src/resource/se" ^
             --add-data "config/locale;config/locale" ^
             --name "Dionys Control" ^
             src\main.py
