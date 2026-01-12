@@ -1079,10 +1079,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._toast_instance.show_message(msg, preset="warning")
             return
 
-        # Get frequent tags
-        frequent_tags = []
-        if hasattr(self, '_load_frequent_tags'):
-            frequent_tags = self._load_frequent_tags()
+        # Get quick tags
+        quick_tags = []
+        if hasattr(self, '_load_quick_tags'):
+            quick_tags = self._load_quick_tags()
 
         # Determine target cache attribute
         dialog_attr = "cat_quick_view_dialog" if scope == "category" else "pkg_quick_view_dialog"
@@ -1106,11 +1106,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if dialog:
             # Reuse existing: Reload data
             if hasattr(dialog, 'reload_data'):
-                dialog.reload_data(items_data, frequent_tags, context_id=current_context, scope=scope)
+                dialog.reload_data(items_data, quick_tags, context_id=current_context, scope=scope)
             dialog.show()
         else:
             # Create new
-            self._open_quick_view_manager_internal(items_data, frequent_tags, mode="cached", context_id=current_context, scope=scope)
+            self._open_quick_view_manager_internal(items_data, quick_tags, mode="cached", context_id=current_context, scope=scope)
 
     def _open_quick_view_delegate(self, scope="category"):
         """Mode 2: Delegate QuickView (New Class). scope=('category'|'package')"""
@@ -1124,10 +1124,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._toast_instance.show_message(_("No visible items to manage."), preset="warning")
             return
 
-        # Get frequent tags
-        frequent_tags = []
-        if hasattr(self, '_load_frequent_tags'):
-            frequent_tags = self._load_frequent_tags()
+        # Get quick tags
+        quick_tags = []
+        if hasattr(self, '_load_quick_tags'):
+            quick_tags = self._load_quick_tags()
         
         # Phase 1.1.80: Reuse existing delegate dialog to prevent infinite windows
         dialog_attr = f'quick_view_delegate_{scope}'
@@ -1142,7 +1142,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         dialog = QuickViewDelegateDialog(
             self, 
             items_data=items_data, 
-            frequent_tags=frequent_tags,
+            frequent_tags=quick_tags,
             db=self.db, 
             storage_root=self.storage_root,
             show_hidden=getattr(self, 'show_hidden', True),

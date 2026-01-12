@@ -640,17 +640,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
 
     def _init_ui(self):
         # UI Setup (Apply styles before layout)
+        # Avoid radical QDialog/QWidget overrides that break FramelessDialog title bar
         self.setStyleSheet("""
-            /* Root - transparent for frameless effect */
-            QDialog { background: transparent; }
-            
-            /* Main Content Area - Match Main Window visual appearance */
-            QWidget {
-                color: #ffffff;
-            }
-            
-            /* Table styling */
-            QTableWidget { 
+            /* Scoped to this dialog's content specifically */
+            #QuickViewManagerDialog QTableWidget { 
                 background-color: transparent;
                 alternate-background-color: rgba(255, 255, 255, 0.05);
                 color: #ffffff; 
@@ -659,61 +652,41 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 selection-background-color: #3498db;
             }
             
-            /* Horizontal Header */
-            QHeaderView::section {
+            #QuickViewManagerDialog QHeaderView::section {
                 background-color: #333;
                 color: #ffffff;
                 border: none;
-                border-right: none; /* Explicitly remove vertical lines */
                 border-bottom: 1px solid #444; 
                 font-weight: bold;
                 height: 18px; 
                 padding: 0px 4px;
             }
-            QHeaderView { border: none; background-color: #333; }
             
-            /* Vertical Header - Remove all borders */
-            QHeaderView::section:vertical {
-                background-color: #333;
-                color: #ffffff;
-                border: none;
-                padding: 4px 8px;
-            }
-            
-            QTableCornerButton::section { background-color: #333; border: none; }
-            
-            QLineEdit { 
+            #QuickViewManagerDialog QLineEdit { 
                 background-color: #3a3a3a; 
                 color: #ffffff; 
                 border: 1px solid #555; 
                 padding: 4px; 
                 border-radius: 4px; 
             }
-            QLineEdit:focus { border: 1px solid #3498db; background-color: #444; }
+            #QuickViewManagerDialog QLineEdit:focus { border: 1px solid #3498db; background-color: #444; }
             
-            QLabel { color: #ffffff; background: transparent; border: none; } 
-            
-            QPushButton {
+            #QuickViewManagerDialog QPushButton {
                 background-color: #3a3a3a;
                 color: #ffffff;
                 border: 1px solid #555;
                 padding: 6px 12px;
                 border-radius: 4px;
             }
-            QPushButton:hover { background-color: #4a4a4a; }
-            QPushButton#save_btn { background-color: #3498db; border-color: #2980b9; }
-            
-            QScrollBar:vertical {
-                background-color: #353535;
-                width: 12px;
-                border: none;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #555;
-                min-height: 20px;
-                border-radius: 4px;
-            }
+            #QuickViewManagerDialog QPushButton:hover { background-color: #4a4a4a; }
+            #QuickViewManagerDialog QPushButton#save_btn { background-color: #3498db; border-color: #2980b9; }
         """)
+        
+        # Ensure Title Bar looks correct via explicit props if base class is overridden
+        if hasattr(self, 'title_label'):
+             self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; padding-left: 5px;")
+        if hasattr(self, 'title_bar'):
+             self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #444;")
         
         # Phase 1.1.210: Set window icon (moved from styling method to avoid redundancy)
         icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))

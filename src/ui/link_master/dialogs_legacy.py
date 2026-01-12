@@ -2367,23 +2367,28 @@ class TagManagerDialog(QDialog):
         left_layout.addWidget(hint_label)
         
         self.tag_table = QTableWidget()
+        self.tag_table.setFrameShape(QFrame.Shape.NoFrame) # Physically remove table frame
         self.tag_table.setColumnCount(5)
         self.tag_table.setHorizontalHeaderLabels([
-            _("Icon"), _("Symbol"), _("Tag Name"), _("Inherit"), _("Display Mode")
+            _("Icon"), _("Sym"), _("Tag Name"), _("Inherit"), _("Display")
         ])
         
         self.tag_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tag_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tag_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
-        # Embedded Header Pattern: Hide built-in headers
-        # Custom styling for Horizontal Header (Premium Frameless look)
-        self.tag_table.horizontalHeader().setVisible(True)
-        self.tag_table.horizontalHeader().setStretchLastSection(True)
-        self.tag_table.verticalHeader().setVisible(False)
-        self.tag_table.verticalHeader().setDefaultSectionSize(26)  # Denser rows
+        # Standard Header Style (Premium Frameless look)
+        hh = self.tag_table.horizontalHeader()
+        hh.setVisible(True)
+        hh.setStretchLastSection(True)
+        hh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hh.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         
-        self.tag_table.setShowGrid(True)
+        vh = self.tag_table.verticalHeader()
+        vh.setVisible(False)
+        vh.setDefaultSectionSize(26) # Consistent 26px height
+        
+        self.tag_table.setShowGrid(False) # Clean look
         # Refined style: brighter selection, no dotted outline, consistent grid, dark header
         self.tag_table.setStyleSheet("""
             QTableWidget { 
@@ -2556,12 +2561,8 @@ class TagManagerDialog(QDialog):
         finally:
             self._loading = False
         
-        if self.tag_table.rowCount() > 0:
-            self.tag_table.selectRow(0)
-            self._on_table_clicked(self.tag_table.item(0, 0))
-        else:
-            self.edit_container.setVisible(False)
-            self.empty_placeholder.setVisible(True)
+        self.tag_table.clearSelection()
+        self._on_table_clicked(None)
         
     def _refresh_list(self):
         self._refresh_table()
@@ -2571,22 +2572,10 @@ class TagManagerDialog(QDialog):
         from PyQt6.QtGui import QIcon, QColor
         import os
         
-        # Row 0: Embedded Header
-        self.tag_table.insertRow(0)
-        self.tag_table.setRowHeight(0, 30)
-        header_labels = [_("Icon"), _("Sym"), _("Tag Name"), _("Inherit"), _("Display")]
-        for col, text in enumerate(header_labels):
-            item = QTableWidgetItem(text)
-            item.setFlags(Qt.ItemFlag.ItemIsEnabled) # Non-selectable, non-drag
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item.setBackground(QColor("#444"))
-            item.setForeground(QColor("#fff"))
-            self.tag_table.setItem(0, col, item)
-
         for idx, tag in enumerate(self.tags):
-            row = idx + 1
+            row = idx
             self.tag_table.insertRow(row)
-            self.tag_table.setRowHeight(row, 36)
+            self.tag_table.setRowHeight(row, 26) # Consistent with user preference
             is_sep = tag.get('name') == '|' or tag.get('is_sep')
             if is_sep:
                 # Store data in Column 0 even for separators to ensure sync/saving works
@@ -2601,26 +2590,45 @@ class TagManagerDialog(QDialog):
                 for col in [1, 3, 4]:
                     self.tag_table.setItem(row, col, QTableWidgetItem(""))
             else:
-                icon_path = tag.get('icon')
-                icon_item = QTableWidgetItem()
+                # Icon
+                icon_path = tag.get('icon', '')
                 if icon_path and os.path.exists(icon_path):
-                     icon_item.setIcon(QIcon(icon_path))
-                icon_item.setData(Qt.ItemDataRole.UserRole, tag)
+                    pix = QPixmap(icon_path).scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    icon_item = QTableWidgetItem(QIcon(pix), "")
+                else:
+                    icon_item = QTableWidgetItem("❓")
+                icon_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                icon_item.setData(Qt.ItemDataRole.UserRole, tag) # Store full data in col 0
                 self.tag_table.setItem(row, 0, icon_item)
-                self.tag_table.setItem(row, 1, QTableWidgetItem(tag.get('emoji', '')))
-                self.tag_table.setItem(row, 2, QTableWidgetItem(tag.get('name', '???')))
-                inherit = "Yes" if tag.get('is_inheritable', True) else "No"
-                self.tag_table.setItem(row, 3, QTableWidgetItem(_(inherit)))
-                mode_map = {
-                    'text': _("Text"),
-                    'symbol': _("Symbol"),
+                
+                # Symbol
+                sym_item = QTableWidgetItem(tag.get('emoji', ''))
+                sym_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 1, sym_item)
+                
+                # Tag Name
+                name_item = QTableWidgetItem(tag.get('name', ''))
+                self.tag_table.setItem(row, 2, name_item)
+                
+                # Inherit
+                inherit = tag.get('is_inheritable', True)
+                inh_item = QTableWidgetItem("Yes" if inherit else "No")
+                inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 3, inh_item)
+                
+                # Display Mode
+                mode = tag.get('display_mode', 'text')
+                mode_labels = {
+                    'text': _("表示"),
+                    'symbol': _("Sym"),
                     'text_symbol': _("Sym+Text"),
                     'image': _("Img"),
                     'image_text': _("Img+Text")
                 }
-                mode_label = mode_map.get(tag.get('display_mode', 'text'), tag.get('display_mode', 'text'))
-                self.tag_table.setItem(row, 4, QTableWidgetItem(mode_label))
-            
+                mode_item = QTableWidgetItem(mode_labels.get(mode, mode))
+                mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 4, mode_item)
+
             for col in range(5):
                 item = self.tag_table.item(row, col)
                 if item:
@@ -2698,12 +2706,6 @@ class TagManagerDialog(QDialog):
         self.icon_edit.setText(tag.get('icon', ''))
         self.inheritable_check.setChecked(bool(tag.get('is_inheritable', True)))
         self._loading = False
-        is_sep = tag.get('name') == '|' or tag.get('is_sep')
-        self.name_edit.setEnabled(not is_sep)
-        self.emoji_edit.setEnabled(not is_sep)
-        self.display_mode_combo.setEnabled(not is_sep)
-        self.icon_edit.setEnabled(not is_sep)
-        self.inheritable_check.setEnabled(not is_sep)
             
     def _on_data_changed(self):
         pass
@@ -2719,7 +2721,7 @@ class TagManagerDialog(QDialog):
         """Update self.tags list from the current order of the table."""
         if self._loading: return
         new_tags = []
-        for i in range(1, self.tag_table.rowCount()): # Skip Row 0 (Header)
+        for i in range(self.tag_table.rowCount()):
             item = self.tag_table.item(i, 0)
             if item:
                 tag_data = item.data(Qt.ItemDataRole.UserRole)
@@ -2742,7 +2744,7 @@ class TagManagerDialog(QDialog):
     
     def _save_current_item_data(self):
         row = self.tag_table.currentRow()
-        if row > 0: # Avoid Row 0 (Header)
+        if row >= 0:
             # Get the actual tag dictionary stored in the item (robust to reordering)
             item0 = self.tag_table.item(row, 0)
             if not item0: return
@@ -2768,12 +2770,13 @@ class TagManagerDialog(QDialog):
                 self.tag_table.setItem(row, 2, QTableWidgetItem(tag['name']))
                 inherit = "Yes" if tag['is_inheritable'] else "No"
                 self.tag_table.setItem(row, 3, QTableWidgetItem(_(inherit)))
-                mode_map = {
-                    'text': _("Text"), 'symbol': _("Symbol"), 'text_symbol': _("Sym+Text"),
+                mode_labels = {
+                    'text': _("表示"), 'symbol': _("Sym"), 'text_symbol': _("Sym+Text"),
                     'image': _("Img"), 'image_text': _("Img+Text")
                 }
-                mode_label = mode_map.get(tag['display_mode'], tag['display_mode'])
-                self.tag_table.setItem(row, 4, QTableWidgetItem(mode_label))
+                mode_item = QTableWidgetItem(mode_labels.get(tag['display_mode'], tag['display_mode']))
+                mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 4, mode_item)
                 for col in range(5):
                     it = self.tag_table.item(row, col)
                     if it: it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
@@ -2788,11 +2791,12 @@ class TagManagerDialog(QDialog):
 
     def _remove_tag(self):
         row = self.tag_table.currentRow()
-        if row > 0: # Skip Row 0 (Header)
+        if row >= 0:
             self._loading = True
             self.current_tag_ref = None
-            self.tags.pop(row - 1) # row 1 is tags[0]
-            self._refresh_list()
+            self.tags.pop(row) # Row 0 is tags[0]
+            self._dirty = True
+            self._refresh_table()
             self._loading = False
             self._dirty = True
 
