@@ -1230,6 +1230,13 @@ class LMDeploymentOpsMixin:
         # --- Immediate UI refresh with Overrides ---
         overrides = {category_rel_path.replace('\\', '/'): {'category_deploy_status': None}}
         self._force_refresh_visible_cards(overrides=overrides)
+        
+        # Explicitly refresh the card by path to be absolutely sure overlays items update 
+        # (Since _force_refresh_visible_cards might have subtle logic differences)
+        category_abs = os.path.join(self.storage_root, category_rel_path)
+        if hasattr(self, '_update_card_by_path'):
+            self._update_card_by_path(category_abs)
+            
         if hasattr(self, '_update_total_link_count'):
             self._update_total_link_count()
 

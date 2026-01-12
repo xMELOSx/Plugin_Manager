@@ -22,8 +22,7 @@ class LMFileOpsMixin:
                 if isinstance(w, ItemCard) and w.path in paths:
                     w.update_link_status()
                     
-        # Note: Removed _update_parent_category_status() for performance
-        # self._update_parent_category_status()
+        self._update_parent_category_status()
         self._refresh_tag_visuals()
     
     def _update_cards_hidden_state(self, paths, is_hidden: bool):
@@ -498,6 +497,6 @@ class LMFileOpsMixin:
         if not card_found:
             self.logger.warning(f"[CardUpdate] Card NOT found for: {target_path}")
             
-        # Note: Removed _update_parent_category_status() call here for performance.
-        # Individual card update via QTimer.singleShot now handles overlay updates properly.
+        # Restore hierarchical refresh to ensure category frames are correct
+        self._update_parent_category_status()
 

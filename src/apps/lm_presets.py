@@ -265,9 +265,12 @@ class LMPresetsMixin:
             try:
                 self.deployer.cleanup_links_in_target(target_root, storage_root)
                 Toast.show_toast(self, _("All links unloaded."), preset="success")
-                self._on_app_changed(self.app_combo.currentIndex()) # Refresh view
                 
-                # Phase 28/Debug: Explicitly clear all highlight borders after bulk unlink
+                # Phase 32.5: Targeted UI refresh (Avoid full reload)
+                # cleanup_links_in_target unlinks everything, so we refresh status for all visible cards.
+                if hasattr(self, '_refresh_category_cards'):
+                    self._refresh_category_cards()
+                
                 if hasattr(self, '_refresh_tag_visuals'):
                     self._refresh_tag_visuals()
             except Exception as e:
