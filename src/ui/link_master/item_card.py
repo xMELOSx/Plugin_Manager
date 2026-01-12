@@ -436,6 +436,7 @@ class ItemCard(QFrame):
 
         self._update_style()
         self._update_icon_overlays()
+        self.update() # Phase 4955: Force repaint to prevent update lag in batch operations
 
 
     def _check_link_status(self):
@@ -633,19 +634,14 @@ class ItemCard(QFrame):
         if not getattr(self, 'is_package', True):  # Category card
             cat_deployed = getattr(self, 'category_deploy_status', None) == 'deployed'
             
-            # Phase 35 Fix: Do NOT overwrite physical link_status if it's already 'linked'
-            # (📁 mode). This prevents child-status check from wiping the frame color.
-            current_is_physical = getattr(self, '_link_is_physical', False) # We should track this
-            if self.link_status == 'linked':
-                 # Keep it 'linked' regardless of children
-                 pass
-            elif has_conflict:
+            # Phase 4987 Fix: Prioritize states. 
+            # If the folder itself is physically linked (📁 mode) it is 'linked'.
+            # Otherwise follow hierarchical rules.
+            if has_conflict:
                 self.link_status = 'conflict'
             elif has_partial:
                 self.link_status = 'partial'
-            elif has_linked:
-                self.link_status = 'linked'
-            elif cat_deployed:
+            elif has_linked or cat_deployed:
                 self.link_status = 'linked'
             else:
                 self.link_status = 'none'
@@ -673,15 +669,11 @@ class ItemCard(QFrame):
             getattr(self, '_deploy_btn_opacity', 0.8),
             getattr(self, 'show_link_overlay', True),
             getattr(self, 'show_deploy_btn', True),
-            self.has_category_conflict
+            self.has_category_conflict,
+            getattr(self, 'category_deploy_status', None) # Phase 4987: Track category deploy status change
         )
         if hasattr(self, '_last_icon_overlay_state') and self._last_icon_overlay_state == current_state:
-            # Debug-level logging to avoid overhead
-            # import logging
-            # logging.getLogger("ItemCard").debug(f"[OverlaySkip] {self.folder_name}: status={status}")
             return
-        # import logging
-        # logging.getLogger("ItemCard").debug(f"[OverlayUpdate] {self.folder_name}: status={status}")
         self._last_icon_overlay_state = current_state
 
         # Get actual card dimensions
@@ -1057,10 +1049,6 @@ class ItemCard(QFrame):
         self.update() # Trigger repaint for border
         super().leaveEvent(event)
 
-    def update_hidden(self, is_hidden: bool):
-        """Update the hidden state and refresh visual style."""
-        self.is_hidden = is_hidden
-        self._update_style()
 
     def mousePressEvent(self, event):
         """Pass click event to parent for centralized multi-selection handling."""
