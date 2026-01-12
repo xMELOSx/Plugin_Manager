@@ -27,6 +27,7 @@ from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
 from src.ui.link_master.dialogs.preview_dialogs import PreviewItemWidget, PreviewTableDialog, FullPreviewDialog
 
 from src.ui.styles import apply_common_dialog_style
+from src.ui.frameless_window import FramelessDialog
 from src.ui.toast import Toast
 from src.ui.link_master.tag_chip_input import TagChipInput
 
@@ -87,10 +88,9 @@ class ImageDropLabel(QLabel):
                 self.image_dropped.emit("")  # Empty path signals clipboard image
 
 
-class AppRegistrationDialog(QDialog):
+class AppRegistrationDialog(FramelessDialog):
     def __init__(self, parent=None, app_data=None):
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.app_data = app_data
         self.pending_cover_pixmap = None  # For clipboard paste
         self.executables = []  # List of {name, path, args}
@@ -98,14 +98,15 @@ class AppRegistrationDialog(QDialog):
         mode = _("Edit") if app_data else _("Register New")
         self.setWindowTitle(_("{mode} Application").format(mode=mode))
         self.setMinimumSize(500, 550)
-        # Base styling is handled by apply_common_dialog_style
+        self.set_default_icon()
         
         self._init_ui()
         if self.app_data:
             self._fill_data()
         
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         form = QFormLayout()
         
         # Name
@@ -300,6 +301,7 @@ class AppRegistrationDialog(QDialog):
         btn_layout.addWidget(self.cancel_btn)
         
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
 
     def _on_unregister_clicked(self):
         """Confirm and set flag for deletion."""
@@ -2918,22 +2920,23 @@ class TagManagerDialog(FramelessDialog):
         else: super().keyPressEvent(event)
 
 
-class FrequentTagEditDialog(QDialog):
+class FrequentTagEditDialog(FramelessDialog):
     """
     Restored class to fix 'Quick Tag Edit' stack trace.
     Allows editing multiple frequent tags in a simple list.
     """
     def __init__(self, parent=None, db=None):
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.setWindowTitle(_("Quick Tag Edit"))
         self.setMinimumSize(400, 500)
+        self.set_default_icon()
         self.db = db
         self._init_ui()
         self._load_data()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         self.label = QLabel(_("Edit quick tags (one per line):"))
         self.label.setStyleSheet("background: transparent; color: #ffffff; border: none;")
@@ -2956,6 +2959,8 @@ class FrequentTagEditDialog(QDialog):
         btn_layout.addWidget(self.save_btn)
         btn_layout.addWidget(self.cancel_btn)
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
+        self.set_content_widget(content_widget)
 
     def _load_data(self):
         if not self.db: return
@@ -2988,17 +2993,18 @@ class TestStyleDialog(QDialog):
         layout.addWidget(btn)
 
 
-class TagCreationDialog(QDialog):
-    def __init__(self, parent=None):
+class TagCreationDialog(FramelessDialog):
+    def __init__(self, parent=None, db=None):
         super().__init__(parent)
-        apply_common_dialog_style(self)
-        # Base styling is handled by apply_common_dialog_style
         self.setWindowTitle(_("Create New Tag"))
-        self.setFixedSize(400, 300)
+        self.setMinimumSize(400, 300)
+        self.set_default_icon()
+        self.db = db
         self._init_ui()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         form = QFormLayout()
         
         self.name_edit = QLineEdit()
@@ -3064,6 +3070,7 @@ class TagCreationDialog(QDialog):
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
         
         self.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
@@ -3255,14 +3262,13 @@ class CropLabel(QLabel):
         self.resizing = False
         self.update()
 
-class IconCropDialog(QDialog):
+class IconCropDialog(FramelessDialog):
     def __init__(self, parent=None, image_source=None, allow_free=False):
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.setWindowTitle(_("Select Region"))
         self.setModal(True)
         self.setMinimumSize(800, 600)
-        self.setStyleSheet("background-color: #2b2b2b; color: #fff;")
+        self.set_default_icon()
         self.allow_free = allow_free
         
         # Load image
@@ -3288,7 +3294,8 @@ class IconCropDialog(QDialog):
         self._init_ui()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(0, 0, 0, 10)  # No top margin, text sits right under title
         layout.setSpacing(5)
         
@@ -3327,6 +3334,7 @@ class IconCropDialog(QDialog):
         btns.addWidget(btn_ok)
         btns.addWidget(btn_cancel)
         layout.addLayout(btns)
+        self.set_content_widget(content_widget)
 
     def _toggle_mode(self):
         self.allow_free = self.mode_btn.isChecked()
@@ -3364,11 +3372,11 @@ class IconCropDialog(QDialog):
         # Scale to match standard icon size (256x256)
         return cropped.scaled(256, 256, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
-class ImportTypeDialog(QDialog):
-    """Standardized dark-themed dialog for selecting import type."""
+class ImportTypeDialog(FramelessDialog):
     def __init__(self, parent=None, target_type="item"):
         super().__init__(parent)
-        apply_common_dialog_style(self)
+        self.setWindowTitle(_("Select Import Type"))
+        self.set_default_icon()
         self.target_type = target_type
         self.result_type = None
         self._init_ui()
@@ -3377,7 +3385,8 @@ class ImportTypeDialog(QDialog):
         from src.ui.common_widgets import StyledButton
         from src.ui.styles import ButtonStyles, TooltipStyles
         
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
@@ -3433,6 +3442,7 @@ class ImportTypeDialog(QDialog):
         layout.addWidget(btn_cancel)
         
         self.setFixedSize(320, 360)
+        self.set_content_widget(content_widget)
 
     def _set_result(self, rtype):
         self.result_type = rtype
@@ -3441,16 +3451,15 @@ class ImportTypeDialog(QDialog):
     def get_result(self):
         return self.result_type
 
-class PresetPropertiesDialog(QDialog):
-    """Dialog to edit preset metadata like name and description."""
+class PresetPropertiesDialog(FramelessDialog):
     def __init__(self, parent=None, name="", description=""):
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.setWindowTitle(_("Preset Properties"))
         self.setFixedWidth(400)
-        # Common style applied via apply_common_dialog_style
+        self.set_default_icon()
         
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         form = QFormLayout()
         
         self.name_edit = QLineEdit(name)
@@ -3475,6 +3484,7 @@ class PresetPropertiesDialog(QDialog):
         btns.addWidget(ok_btn)
         btns.addWidget(cancel_btn)
         layout.addLayout(btns)
+        self.set_content_widget(content_widget)
 
     def get_data(self):
         return {

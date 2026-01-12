@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QWidget, QFileDialog, QMessageBox, QLabel
 )
+from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from src.ui.common_widgets import StyledLineEdit
@@ -15,26 +16,21 @@ from src.core.lang_manager import _
 import os
 
 
-class ExecutablesManagerDialog(QDialog):
+class ExecutablesManagerDialog(FramelessDialog):
     """Dialog to manage executable links for an app with styling and reordering."""
     def __init__(self, parent=None, executables: list = None):
         super().__init__(parent)
         self.setWindowTitle(_("Manage Executables"))
         self.setMinimumSize(600, 500)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QTableWidget { background-color: #2d2d2d; color: #e0e0e0; gridline-color: #3d3d3d; }
-            QHeaderView::section { background-color: #3d3d3d; color: #ffffff; padding: 4px; border: none; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.set_default_icon()
         
         self.executables = list(executables) if executables else []
         self._init_ui()
         self._load_table()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         # Form for adding/editing
         form_group = QGroupBox(_("Add / Edit Executable"))
@@ -116,6 +112,7 @@ class ExecutablesManagerDialog(QDialog):
         bottom_layout.addWidget(save_btn)
         
         layout.addLayout(bottom_layout)
+        self.set_content_widget(content_widget)
 
     def _pick_btn_color(self):
         from PyQt6.QtWidgets import QColorDialog

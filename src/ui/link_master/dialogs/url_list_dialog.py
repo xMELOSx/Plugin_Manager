@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QTableWidget, QTableWidgetItem, QCheckBox, QMenu,
     QAbstractItemView, QMessageBox, QApplication, QHeaderView, QStyledItemDelegate
 )
+from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
 from src.core.lang_manager import _
@@ -34,7 +35,7 @@ class ElidedItemDelegate(QStyledItemDelegate):
         return value
 
 
-class URLListDialog(QDialog):
+class URLListDialog(FramelessDialog):
     """Dialog to manage multiple URLs with connectivity testing using QTableWidget."""
     changed = pyqtSignal()  # Emitted when URLs change
     
@@ -43,33 +44,7 @@ class URLListDialog(QDialog):
         self.caller_id = caller_id
         self.setWindowTitle(_("Manage URLs"))
         self.resize(850, 400)  # Wider to show more URL
-        self.setStyleSheet(f"""
-            QDialog {{ background-color: #1e1e1e; color: #e0e0e0; }}
-            QTableWidget {{ 
-                background-color: #2d2d2d; color: #e0e0e0; 
-                border: none; gridline-color: #3d3d3d;
-                outline: none;
-            }}
-            QTableWidget::item {{ padding: 4px; }}
-            QTableWidget::item:selected {{ background-color: #3d5a80; }}
-            QHeaderView {{ 
-                border: none; background-color: #2a2a2a; 
-                border-radius: 0px; outline: none;
-            }}
-            QHeaderView::section {{ 
-                background-color: #2a2a2a; color: #aaa; 
-                padding: 6px 4px; border: none; margin: 0px;
-                border-radius: 0px; outline: none;
-                font-size: 11px;
-            }}
-            QHeaderView::section:first {{ padding-left: 4px; }}
-            QHeaderView::section:last {{ padding-right: 4px; }}
-            QPushButton {{ background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; min-width: 0px; }}
-            QPushButton:hover {{ background-color: #5d5d5d; }}
-            QLabel {{ color: #e0e0e0; }}
-            QCheckBox {{ color: #e0e0e0; }}
-            {TooltipStyles.DARK}
-        """)
+        self.set_default_icon()
         
         self.url_data = []
         self.marked_url = marked_url
@@ -114,7 +89,8 @@ class URLListDialog(QDialog):
         settings.setValue(f"geometry_{self.caller_id}", self.saveGeometry())
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         # URL Input
         input_layout = QHBoxLayout()
@@ -202,6 +178,7 @@ class URLListDialog(QDialog):
         btns.addWidget(ok_btn)
         
         layout.addLayout(btns)
+        self.set_content_widget(content_widget)
 
     def _load_urls(self):
         """Load URLs into the table. Preserves header row (Row 0)."""

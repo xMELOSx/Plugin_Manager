@@ -13,6 +13,7 @@ import subprocess
 from PyQt6.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, 
                               QLabel, QPushButton, QListWidget, QListWidgetItem,
                               QAbstractItemView, QMenu, QMessageBox, QFileDialog)
+from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap
 from src.core.lang_manager import _
@@ -121,12 +122,13 @@ class PreviewItemWidget(QWidget):
         self.removed.emit(self.path)
 
 
-class PreviewTableDialog(QDialog):
+class PreviewTableDialog(FramelessDialog):
     """Dialog to manage multiple preview files with drag-and-drop reordering."""
     def __init__(self, parent=None, paths: list = None):
         super().__init__(parent)
         self.setWindowTitle(_("Manage Full Previews"))
         self.resize(700, 400)
+        self.set_default_icon()
         self.paths = paths or []
         self._init_ui()
         self._load_paths()
@@ -143,17 +145,10 @@ class PreviewTableDialog(QDialog):
         super().closeEvent(event)
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
-        # Dark theme
-        self.setStyleSheet("""
-            QDialog { background-color: #2b2b2b; color: #e0e0e0; }
-            QListWidget { background-color: #333333; color: #e0e0e0; border: 1px solid #444444; }
-            QListWidget::item { padding: 2px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        # Dark theme styling handled by FramelessDialog
         
         # List Widget with Drag-Drop
         self.list_widget = QListWidget()
@@ -189,6 +184,7 @@ class PreviewTableDialog(QDialog):
         btns.addWidget(ok_btn)
         
         layout.addLayout(btns)
+        self.set_content_widget(content_widget)
 
     def _load_paths(self):
         self.list_widget.clear()
@@ -342,12 +338,13 @@ class PreviewTableDialog(QDialog):
         QMessageBox.information(self, _("Empty Clipboard"), _("No image or file found in clipboard."))
 
 
-class FullPreviewDialog(QDialog):
+class FullPreviewDialog(FramelessDialog):
     """Gallery-style dialog to display large previews of selected images."""
     def __init__(self, parent=None, paths: list = None, name: str = "Preview"):
         super().__init__(parent)
         self.setWindowTitle(_("Preview: {name}").format(name=name))
         self.resize(800, 600)
+        self.set_default_icon()
         self.paths = paths or []
         self.current_index = 0
         self._init_ui()
@@ -365,8 +362,8 @@ class FullPreviewDialog(QDialog):
         super().closeEvent(event)
 
     def _init_ui(self):
-        self.setStyleSheet("QDialog { background-color: #2b2b2b; }")
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         # Image Display Area
         self.image_label = QLabel(_("Loading..."))
@@ -412,6 +409,7 @@ class FullPreviewDialog(QDialog):
         nav_layout.addWidget(self.open_btn)
         
         layout.addLayout(nav_layout)
+        self.set_content_widget(content_widget)
 
     def _update_display(self):
         if not self.paths:

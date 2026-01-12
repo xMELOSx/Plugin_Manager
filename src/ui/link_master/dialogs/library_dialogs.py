@@ -6,8 +6,9 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
 from PyQt6.QtCore import pyqtSignal, Qt, QSize, QByteArray
 from src.core.lang_manager import _
 from src.ui.common_widgets import StyledComboBox, ProtectedLineEdit
+from src.ui.frameless_window import FramelessDialog
 
-class LibrarySettingsDialog(QDialog):
+class LibrarySettingsDialog(FramelessDialog):
     """ライブラリの詳細設定ダイアログ"""
     request_view_properties = pyqtSignal(str)
     request_edit_properties = pyqtSignal(str)
@@ -20,15 +21,7 @@ class LibrarySettingsDialog(QDialog):
         self.app_id = app_id
         self.setWindowTitle(_("Library Settings: {name}").format(name=lib_name))
         self.setMinimumSize(550, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QLineEdit, QTextEdit { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; padding: 4px; }
-            QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QTreeWidget::item { padding: 0px; margin: 0px; min-height: 32px; }
-            QHeaderView::section { background-color: #333; color: white; border: none; padding: 6px; font-weight: bold; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 2px 4px; margin: 0px; min-height: 20px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.set_default_icon()
         self._init_ui()
 
     def save_state(self, tree_header):
@@ -51,7 +44,8 @@ class LibrarySettingsDialog(QDialog):
             print(f"Error restoring lib state: {e}")
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         form = QFormLayout()
         
@@ -197,6 +191,7 @@ class LibrarySettingsDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
     
     def _on_ver_header_clicked(self, logicalIndex):
         """Ensure sorting defaults to Ascending when a new column is clicked."""
@@ -273,7 +268,7 @@ class LibrarySettingsDialog(QDialog):
             )
         self.accept()
 
-class DependentPackagesDialog(QDialog):
+class DependentPackagesDialog(FramelessDialog):
     """依存パッケージ確認ダイアログ"""
     request_view_properties = pyqtSignal(str)
     request_edit_properties = pyqtSignal(str)
@@ -287,20 +282,13 @@ class DependentPackagesDialog(QDialog):
         self.versions = versions
         self.setWindowTitle(_("Dependent Packages: {name}").format(name=lib_name))
         self.setMinimumSize(650, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QTreeWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QTreeWidget::item { padding: 4px; }
-            QHeaderView::section { background-color: #333; color: #eee; border: 1px solid #444; padding: 4px; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-            QComboBox { background-color: #333; color: #eee; border: 1px solid #555; }
-        """)
+        self.set_default_icon()
         self._init_ui()
         self._load_deps()
     
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.addWidget(QLabel(_("Packages using '{name}':").format(name=self.lib_name)))
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([_("Package"), _("Status"), _("Usage"), _("Link"), _("View"), _("Edit"), _("Remove")])
@@ -337,6 +325,7 @@ class DependentPackagesDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
     
     def _on_header_clicked(self, logicalIndex):
         """Ensure sorting defaults to Ascending when a new column is clicked."""
@@ -544,20 +533,13 @@ class DependentPackagesDialog(QDialog):
         self._load_deps()
 
 
-class LibraryDependencyDialog(QDialog):
+class LibraryDependencyDialog(FramelessDialog):
     """Dialog to manage library dependencies for a package."""
     def __init__(self, parent=None, lib_deps_json: str = "[]"):
         super().__init__(parent)
         self.setWindowTitle(_("Library Dependency Settings"))
         self.setMinimumSize(450, 350)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QListWidget { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #3d3d3d; }
-            QListWidget::item { padding: 4px; }
-            QListWidget::item:selected { background-color: #3d5a80; }
-            QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.set_default_icon()
         
         try:
             self.lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
@@ -568,7 +550,8 @@ class LibraryDependencyDialog(QDialog):
         self._load_list()
     
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.addWidget(QLabel(_("Add or remove libraries to use.")))
         
         add_form = QHBoxLayout()
@@ -605,6 +588,7 @@ class LibraryDependencyDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
     
     def _load_available_libraries(self):
         self.lib_combo.clear()
@@ -684,25 +668,19 @@ class LibraryDependencyDialog(QDialog):
         return json.dumps(self.lib_deps)
 
 
-class LibraryRegistrationDialog(QDialog):
+class LibraryRegistrationDialog(FramelessDialog):
     """Library Registration Dialog - Select existing library or register version."""
     def __init__(self, parent=None, db=None):
         super().__init__(parent)
         self.db = db
         self.setWindowTitle(_("Library Registration"))
         self.setMinimumSize(400, 200)
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #ffffff; }
-            QLabel { color: #ffffff; }
-            QLineEdit, QComboBox { background-color: #444444; color: #ffffff; border: 1px solid #555555; padding: 6px; }
-            QComboBox QAbstractItemView { background-color: #444444; color: #ffffff; selection-background-color: #3498db; }
-            QPushButton { background-color: #3d3d3d; color: #ffffff; padding: 6px 12px; }
-            QPushButton:hover { background-color: #5d5d5d; }
-        """)
+        self.set_default_icon()
         self._init_ui()
     
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         layout.addWidget(QLabel(_("Register selected package as a library")))
         form = QFormLayout()
         
@@ -736,6 +714,7 @@ class LibraryRegistrationDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
+        self.set_content_widget(content_widget)
     
     def _load_existing_libraries(self):
         self.lib_combo.clear()

@@ -116,7 +116,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         radius = 0 if self.isMaximized() else self.border_radius
         border = "" if self.isMaximized() else "border: 1px solid #444;"
         text_alpha = self._content_opacity
-        text_color_rgba = "rgba(221, 221, 221, {})".format(text_alpha)
+        text_color_rgba = "rgba(255, 255, 255, {})".format(text_alpha)
         
         from src.ui.styles import TooltipStyles
         self.container.setStyleSheet("""
@@ -126,9 +126,12 @@ class FramelessWindow(QMainWindow, Win32Mixin):
                 {border}
             }}
             {tooltip_style}
-            QLabel {{ color: {text_color}; background: transparent; }}
-            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
-                color: #e0e0e0;
+            QLabel, QCheckBox, QRadioButton, QGroupBox {{ color: {text_color}; background: transparent; }}
+            QGroupBox {{ font-weight: bold; border: 1px solid #444; margin-top: 10px; padding-top: 10px; }}
+            QGroupBox::title {{ subcontrol-origin: margin; left: 10px; color: #aaa; }}
+            
+            QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+                color: #ffffff;
                 background-color: #252525;
                 border: 1px solid #555;
                 border-radius: 4px;
@@ -147,6 +150,24 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             
             QScrollBar:vertical {{ background: #2b2b2b; width: 12px; margin: 0px; }}
             QScrollBar::handle:vertical {{ background: #555; min-height: 20px; border-radius: 6px; }}
+            
+            QTableWidget, QListWidget, QTreeWidget {{
+                background-color: #252525;
+                color: #ffffff;
+                gridline-color: #3d3d3d;
+                border: 1px solid #444;
+                border-radius: 4px;
+                outline: none;
+            }}
+            QHeaderView::section {{
+                background-color: #333;
+                color: #ffffff;
+                padding: 4px;
+                border: none;
+                border-bottom: 1px solid #444;
+            }}
+            QTableWidget QTableCornerButton::section {{ background: #333; border: none; }}
+            
             QPushButton {{ color: {text_color}; background-color: #444; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }}
             QPushButton:hover {{ background-color: #555; }}
             QPushButton:pressed {{ background-color: #333; }}
@@ -485,14 +506,17 @@ class FramelessDialog(QDialog, Win32Mixin):
 
     def _update_stylesheet(self):
         self.setStyleSheet("background: transparent;")
-        text_color_rgba = "rgba(221, 221, 221, 1.0)"
+        text_color_rgba = "rgba(255, 255, 255, {})".format(self._content_opacity)
         from src.ui.styles import TooltipStyles
         self.container.setStyleSheet("""
             QWidget#FramelessContainer {{ background-color: transparent; border: none; border-radius: {radius}px; }}
             {tooltip_style}
-            QLabel {{ color: {text_color}; background: transparent; }}
-            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
-                color: #e0e0e0; background-color: #252525; border: 1px solid #555; border-radius: 4px; padding: 4px;
+            QLabel, QCheckBox, QRadioButton, QGroupBox {{ color: {text_color}; background: transparent; }}
+            QGroupBox {{ font-weight: bold; border: 1px solid #444; margin-top: 10px; padding-top: 12px; }}
+            QGroupBox::title {{ subcontrol-origin: margin; left: 10px; color: #aaa; }}
+            
+            QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
+                color: #ffffff; background-color: #252525; border: 1px solid #555; border-radius: 4px; padding: 4px;
             }}
             QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button {{
                 background-color: #333; border-left: 1px solid #555; width: 16px;
@@ -500,6 +524,24 @@ class FramelessDialog(QDialog, Win32Mixin):
             QSpinBox::up-button {{ border-top-right-radius: 4px; }}
             QSpinBox::down-button {{ border-bottom-right-radius: 4px; border-top: 1px solid #555; }}
             QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{ background-color: #444; }}
+            
+            QTableWidget, QListWidget, QTreeWidget {{
+                background-color: #252525;
+                color: #ffffff;
+                gridline-color: #3d3d3d;
+                border: 1px solid #444;
+                border-radius: 4px;
+                outline: none;
+            }}
+            QHeaderView::section {{
+                background-color: #333;
+                color: #ffffff;
+                padding: 4px;
+                border: none;
+                border-bottom: 1px solid #444;
+            }}
+            QTableWidget QTableCornerButton::section {{ background: #333; border: none; }}
+            
             QPushButton {{ color: {text_color}; background-color: #444; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }}
             QPushButton:hover {{ background-color: #555; }}
             QPushButton:pressed {{ background-color: #333; }}
