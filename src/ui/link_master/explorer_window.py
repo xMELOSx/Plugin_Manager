@@ -1,12 +1,30 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTreeView, QPushButton, 
                              QLabel, QHBoxLayout, QMenu, QFrame, QSizeGrip, QApplication)
-from PyQt6.QtCore import Qt, pyqtSignal, QDir
-from PyQt6.QtGui import QFileSystemModel, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QDir, QUrl
+from PyQt6.QtGui import QFileSystemModel, QAction, QDesktopServices
 from src.core.lang_manager import _
 import os
+import logging
 
 from src.ui.link_master.single_folder_proxy import SingleFolderProxyModel
 from src.core.link_master.database import get_lm_db
+from src.ui.styles import TooltipStyles, MenuStyles
+
+class SidebarButton(QPushButton):
+    """Component for sidebar buttons (Sources/Targets) with consistent tooltip handling."""
+    def __init__(self, text, parent=None, is_toggle=True, font_size=10):
+        super().__init__(text, parent)
+        self.setCheckable(is_toggle)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(f"""
+            QPushButton {{ 
+                background-color: #333; color: #ccc; border: 1px solid #555; border-radius: 2px;
+                padding: 1px 4px; font-size: {font_size}px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #555; color: #fff; border: 1px solid #888; }}
+            QPushButton:checked {{ background-color: #27ae60; color: #fff; border: 1px solid #2ecc71; }}
+            QPushButton:disabled {{ background-color: #222; color: #555; border: 1px solid #333; }}
+        """)
 
 class ExplorerPanel(QWidget):
     path_selected = pyqtSignal(str) # Navigation (Double Click)
@@ -17,6 +35,8 @@ class ExplorerPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground) # Correctly apply stylesheet background
+        self.logger = logging.getLogger("ExplorerPanel")
         # No Window settings (Title, Resize) needed for Panel
         
         # Data
@@ -35,36 +55,40 @@ class ExplorerPanel(QWidget):
         layout = QVBoxLayout(self)
         # Phase X: Move 5pt right and set background
         layout.setContentsMargins(5, 0, 0, 0)
-        self.setStyleSheet("background-color: #2b2b2b;")
+        layout.setSpacing(0) # Remove gaps that create transparency
+        # Rely on global app stylesheet for tooltips.
+        self.setStyleSheet("""
+            ExplorerPanel { background-color: #2b2b2b; border: none; }
+        """)
         
         # Header (Root Info)
         self.header_frame = QFrame(self)
-        self.header_frame.setWindowFlags(Qt.WindowType.Widget)
         self.header_frame.setFixedHeight(30)
         self.header_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        self.header_frame.setStyleSheet("QFrame { background-color: transparent; border: 1px solid #444; border-radius: 4px; } QLabel { color: #eee; font-weight: bold; }")
+        # Phase X: Ensure solid background and no transparency gaps
+        self.header_frame.setStyleSheet("""
+            QFrame { background-color: #2b2b2b; border: 1px solid #444; border-radius: 4px; }
+            QLabel { color: #eee; font-weight: bold; background: transparent; }
+        """)
         
         header_layout = QHBoxLayout(self.header_frame)
         header_layout.setContentsMargins(4, 2, 4, 2)
-        header_layout.setSpacing(4)
+        header_layout.setSpacing(2)
+        
+        # Folder Icon to open in Explorer
+        self.btn_open_root = SidebarButton("📁", self.header_frame, is_toggle=False, font_size=14)
+        self.btn_open_root.setFixedSize(24, 24)
+        self.btn_open_root.setToolTip(_("Open Root in Explorer"))
+        self.btn_open_root.clicked.connect(self._on_open_root_clicked)
+        header_layout.addWidget(self.btn_open_root)
         
         self.lbl_info = QLabel(_("Root: Not Selected"), self.header_frame)
         self.lbl_info.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_info.mousePressEvent = self._on_root_label_clicked
-        self.lbl_info.setStyleSheet("padding: 2px;")
+        self.lbl_info.setStyleSheet("padding: 2px; border: none; background: transparent; color: #eee; font-weight: bold;")
         header_layout.addWidget(self.lbl_info)
         
         header_layout.addStretch()
-        
-        # Smart context button / refresh
-        self.btn_refresh = QPushButton("🔄", self.header_frame)
-        self.btn_refresh.setFixedSize(24, 24)
-        self.btn_refresh.setFlat(True)
-        self.btn_refresh.setToolTip(_("Refresh Tree"))
-        self.btn_refresh.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; background-color: #444; border-radius: 4px; }")
-        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
-        header_layout.addWidget(self.btn_refresh)
-        # self.btn_refresh.hide()  # Use refresh btn as the "Src" button? No, let's add dedicated buttons.
         
         # Enable Context Menu on Header for Root Config
         self.header_frame.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -76,31 +100,35 @@ class ExplorerPanel(QWidget):
         
         btn_style = """
             QPushButton { 
-                background-color: #333; color: #ccc; border: 1px solid #444; border-radius: 2px;
+                background-color: #333; color: #ccc; border: 1px solid #555; border-radius: 2px;
                 padding: 1px 4px; font-size: 10px; font-weight: bold;
             }
-            QPushButton:hover { background-color: #444; color: #fff; }
+            QPushButton:hover { background-color: #555; color: #fff; border: 1px solid #888; }
             QPushButton:checked { background-color: #4CAF50; color: #fff; border: 1px solid #2E7D32; }
+            QPushButton:disabled { background-color: #222; color: #555; border: 1px solid #333; }
         """
         
-        self.btn_src = QPushButton("Src")
-        self.btn_src.setCheckable(True)
+        self.btn_src = SidebarButton(_("Source"))
         self.btn_src.setChecked(True)
-        self.btn_src.setStyleSheet(btn_style)
         self.btn_src.clicked.connect(lambda: self._switch_view('Src'))
         self.btn_bar.addWidget(self.btn_src)
         
         self.target_buttons = {}
-        for key in ['P', 'S', 'T']:
-            btn = QPushButton(key)
-            btn.setCheckable(True)
-            btn.setStyleSheet(btn_style)
+        # Localized mapping for buttons
+        self.btn_keys = {
+            'P': _("Primary"),
+            'S': _("Secondary"),
+            'T': _("Tertiary")
+        }
+        for key, label in self.btn_keys.items():
+            btn = SidebarButton(label)
             btn.clicked.connect(lambda checked, k=key: self._switch_view(k))
             self.btn_bar.addWidget(btn)
             self.target_buttons[key] = btn
             
         layout.addLayout(self.btn_bar)
         layout.addWidget(self.header_frame)
+        layout.addSpacing(4) # Slight separation before tree
         
         # Tree View
         self.fs_model = QFileSystemModel()
@@ -188,7 +216,15 @@ class ExplorerPanel(QWidget):
             self.lbl_info.setText(_("Root: Not Selected"))
         else:
             self.lbl_info.setText(_("Root: {name}").format(name=os.path.basename(self.storage_root)))
-        self.btn_refresh.setToolTip(_("Refresh Tree"))
+        
+        self.btn_open_root.setToolTip(_("Open Root in Explorer"))
+        self.btn_src.setText(_("Source"))
+        self.btn_src.setToolTip(_("View Source Root"))
+        
+        for k, btn in self.target_buttons.items():
+            btn.setText(self.btn_keys.get(k, k))
+            # Tooltip is usually updated in set_storage_root or _switch_view, 
+            # but let's ensure basic text is right.
 
 
     
@@ -231,6 +267,15 @@ class ExplorerPanel(QWidget):
                             'S': app_data.get('target_root_2'),
                             'T': app_data.get('target_root_3')
                         }
+                        # Disable buttons if path is missing or invalid
+                        for k, btn in self.target_buttons.items():
+                            t_path = self.target_roots.get(k)
+                            is_valid = bool(t_path and os.path.exists(t_path))
+                            btn.setEnabled(is_valid)
+                            if not is_valid:
+                                btn.setToolTip(_("Target root {k} not configured").format(k=k))
+                            else:
+                                btn.setToolTip(t_path)
                 except: pass
 
         self.storage_root = path
@@ -290,14 +335,11 @@ class ExplorerPanel(QWidget):
             self.is_checking_target = True
             # Temporarily point storage_root to target for QFileSystemModel
             self._set_tree_root_path(target_path)
-            self.lbl_info.setText(f"CHECKING: {key}")
-            self.lbl_info.setStyleSheet("color: #FF9800; font-weight: bold;")
-
-    def _on_refresh_clicked(self):
-        """Standard refresh logic."""
-        if self.storage_root:
-            self.fs_model.setRootPath(self.storage_root)
-            self.tree.setRootIndex(self.proxy_model.mapFromSource(self.fs_model.index(self.storage_root)))
+            
+            # Localized status
+            label = self.btn_keys.get(key, key)
+            self.lbl_info.setText(_("{label}をプレビュー中").format(label=label))
+            self.lbl_info.setStyleSheet("color: #FF9800; font-weight: bold; background: transparent;")
 
     def _set_tree_root_path(self, path: str):
         """Internal helper to point tree to a specific path without full set_storage_root overhead."""
@@ -315,6 +357,11 @@ class ExplorerPanel(QWidget):
         
         self.fs_model.directoryLoaded.connect(_on_loaded)
         _on_loaded(path)
+
+    def _on_open_root_clicked(self):
+        """Click handler for the 📁 icon next to the root label."""
+        if self.storage_root and os.path.exists(self.storage_root):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.storage_root))
 
     def _on_tree_clicked(self, index):
         """Handle selection (Single Click)."""
@@ -356,6 +403,17 @@ class ExplorerPanel(QWidget):
         
         if not rel_paths: return
         
+        # Phase X: Restrict menu if checking target
+        if self.is_checking_target:
+            menu = QMenu(self)
+            menu.setStyleSheet(MenuStyles.CONTEXT) # Properly style the restricted menu
+            # Find the path in target root
+            path = os.path.join(self.storage_root, rel_paths[0])
+            act_exp = menu.addAction(_("📁 エクスプローラーで開く"))
+            act_exp.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+            menu.exec(self.tree.viewport().mapToGlobal(position))
+            return
+
         if len(rel_paths) == 1:
             # Single selection - use centralized menu if available
             if self.context_menu_provider:
@@ -374,6 +432,17 @@ class ExplorerPanel(QWidget):
     def _show_root_context_menu(self, position):
         if not self.storage_root or not self.current_app_id: return
         
+        # Phase X: If checking target, only show "Open in Explorer"
+        if self.is_checking_target:
+            menu = QMenu(self)
+            menu.setStyleSheet(MenuStyles.CONTEXT)
+            # Ensure proper palette for native fallback readability
+            # (Though MenuStyles.CONTEXT should handle it)
+            act_exp = menu.addAction(_("📁 エクスプローラーで開く"))
+            act_exp.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.storage_root)))
+            menu.exec(self.header_frame.mapToGlobal(position))
+            return
+
         # Phase 22: Unify root menu with centralized provider
         if self.context_menu_provider:
             menu = self.context_menu_provider("")

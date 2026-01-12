@@ -41,8 +41,8 @@ def main():
         from src.core.version import APP_NAME
         app.setApplicationName(APP_NAME)
         
-        # Use Fusion style as a workaround for background transparency issues on Windows context menus
-        app.setStyle("Fusion")
+        from src.ui.styles import TooltipStyles
+        app.setStyleSheet(TooltipStyles.DARK)
         
         # アイコンの読み込み (EXE対応)
         icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))

@@ -25,7 +25,6 @@ def setup_ui(window):
     main_widget.setObjectName("MainContent")
     main_widget.setStyleSheet("""
         QWidget { background-color: transparent; }
-        QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
         QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 25px 4px 8px; border-radius: 4px; }
         QComboBox:hover { border-color: #3498db; background-color: #444; }
         QComboBox::drop-down { 
