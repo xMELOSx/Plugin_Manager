@@ -2668,3 +2668,62 @@ msgstr "タグ名:"
 
 msgid "Symbol:"
 msgstr "シンボル:"
+
+# Path Validation & Dialogs (Phase 42)
+msgid "Path Error"
+msgstr "パスエラー"
+
+msgid "Storage path does not exist:\n{path}"
+msgstr "ストレージパスが存在しません:\n{path}"
+
+msgid "Primary target path does not exist:\n{path}"
+msgstr "プライマリターゲットパスが存在しません:\n{path}"
+
+msgid "Secondary target path does not exist:\n{path}"
+msgstr "セカンダリターゲットパスが存在しません:\n{path}"
+
+msgid "Tertiary target path does not exist:\n{path}"
+msgstr "ターシャリターゲットパスが存在しません:\n{path}"
+
+msgid "Validation Error"
+msgstr "入力エラー"
+
+msgid "Application name is required."
+msgstr "アプリケーション名は必須です。"
+
+msgid "Storage path is required."
+msgstr "ストレージパスは必須です。"
+
+msgid "Primary target install path is required."
+msgstr "プライマリターゲットパスは必須です。"
+
+msgid "Confirm Unregister"
+msgstr "登録解除の確認"
+
+msgid "Are you sure you want to completely remove this application registration?\nThis will NOT delete physical folders, but will delete all custom names, tags, and settings."
+msgstr "このアプリケーションの登録を完全に削除しますか？\n物理フォルダは削除されませんが、すべてのカスタム名、タグ、設定が削除されます。"
+
+msgid "Final Confirmation"
+msgstr "最終確認"
+
+msgid "This will permanently delete the database for '{name}'.\nAre you absolutely sure?"
+msgstr "'{name}' のデータベースが完全に削除されます。\n本当によろしいですか？"
+
+msgid "Error"
+msgstr "エラー"
+
+msgid "Name and Storage Root are required."
+msgstr "名前とストレージルートは必須です。"
+
+# Labels (Phase 42 - Removed redundant 'Default' prefix)
+msgid "Tree Skip:"
+msgstr "ツリースキップ:"
+
+msgid "Transfer Mode:"
+msgstr "転送モード:"
+
+msgid "Conflict Policy:"
+msgstr "競合ポリシー:"
+
+msgid "Other Default Settings"
+msgstr "その他のデフォルト設定"

@@ -182,8 +182,9 @@ class LinkMasterDB:
             self.db_path = db_path
         elif app_name:
             # Standard path: resource/app/<name>/dyonis.db
-            # This points to the Plugin_Manager root. We need to go up from src/core/link_master/
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            # Use FileHandler for EXE compatibility (handles sys.frozen)
+            from src.core.file_handler import FileHandler
+            project_root = FileHandler().project_root
             app_dir = os.path.join(project_root, "resource", "app", app_name)
             os.makedirs(app_dir, exist_ok=True)
             self.db_path = os.path.join(app_dir, "dyonis.db")
@@ -242,7 +243,6 @@ class LinkMasterDB:
                 conflict_tag TEXT,         -- Phase 28: Tag to check for conflicts
                 conflict_scope TEXT,       -- Phase 28: Scope for conflict check (disabled/category/global)
                 description TEXT,          -- Phase 28: User description
-                inherit_tags INTEGER DEFAULT 1, -- Phase 18 (Allow blocking inheritance)
                 inherit_tags INTEGER DEFAULT 1, -- Phase 18 (Allow blocking inheritance)
                 trash_origin TEXT, -- Phase 18.11: Store original path for restore
                 transfer_mode TEXT, -- Phase 34: Copy vs Symlink override

@@ -1988,7 +1988,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Determine app folder name
         app_name = app_data.get('name', 'Unknown')
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Use FileHandler for EXE compatibility
+        from src.core.file_handler import FileHandler
+        project_root = FileHandler().project_root
         # Notes are in the root resource/app/ dir
         notes_path = os.path.join(project_root, "resource", "app", app_name, "notes")
         if self.notes_panel:
@@ -2523,7 +2525,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if dialog.exec():
             data = dialog.get_data()
             if not data['name'] or not data['storage_root']:
-                QMessageBox.warning(self, "Error", "Name and Storage Root are required.")
+                from src.ui.common_widgets import FramelessMessageBox
+                FramelessMessageBox.warning(self, _("Error"), _("Name and Storage Root are required."))
                 return
             
             try:
@@ -2708,11 +2711,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             
             # Phase 32: Handle Unregister/Delete Request
             if data.get('is_unregister'):
-                reply = QMessageBox.warning(self, _("Final Confirmation"),
-                                          _("This will permanently delete the database for '{name}'.\n"
-                                            "Are you absolutely sure?").format(name=app_data['name']),
-                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.Yes:
+                from src.ui.common_widgets import FramelessMessageBox
+                dlg = FramelessMessageBox(self)
+                dlg.setWindowTitle(_("Final Confirmation"))
+                dlg.setText(_("This will permanently delete the database for '{name}'.\n"
+                              "Are you absolutely sure?").format(name=app_data['name']))
+                dlg.setIcon(FramelessMessageBox.Icon.Warning)
+                dlg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+                if dlg.exec() == FramelessMessageBox.StandardButton.Yes:
                     # 1. Remove from Registry
                     self.registry.delete_app(self.current_app_id)
                     
@@ -2721,9 +2727,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         import os
                         import shutil
                         # Logic from database.py: resource/app/<app_name>/dyonis.db
-                        # We are at src/apps/link_master_window.py, need to find project root.
-                        # src/core/file_handler already has some path logic, but let's be robust.
-                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        # Use FileHandler for EXE compatibility
+                        from src.core.file_handler import FileHandler
+                        project_root = FileHandler().project_root
                         app_dir = os.path.join(project_root, "resource", "app", app_data['name'])
                         
                         if os.path.exists(app_dir):
@@ -2751,7 +2757,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                     return # Cancelled deletion
 
             if not data['name'] or not data['storage_root']:
-                QMessageBox.warning(self, "Error", "Name and Storage Root are required.")
+                from src.ui.common_widgets import FramelessMessageBox
+                FramelessMessageBox.warning(self, _("Error"), _("Name and Storage Root are required."))
                 return
             
             try:

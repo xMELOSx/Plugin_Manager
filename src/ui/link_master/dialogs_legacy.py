@@ -160,23 +160,23 @@ class AppRegistrationDialog(FramelessDialog):
         # Inherit styling from DialogStyles.COMMON via parent
         defaults_form = QFormLayout()
         
-        # Default Tree Skip (Relocated to top of group)
+        # Tree Skip (Relocated to top of group)
         self.default_skip_levels_spin = StyledSpinBox()
         self.default_skip_levels_spin.setRange(0, 5)
         self.default_skip_levels_spin.setSuffix(_(" levels"))
-        defaults_form.addRow(_("Default Tree Skip:"), self.default_skip_levels_spin)
+        defaults_form.addRow(_("Tree Skip:"), self.default_skip_levels_spin)
 
         # Transfer Mode
         self.transfer_mode_combo = StyledComboBox()
         self.transfer_mode_combo.addItem(_("Symbolic Link (recommended)"), "symlink")
         self.transfer_mode_combo.addItem(_("Physical Copy (slower)"), "copy")
-        defaults_form.addRow(_("Default Transfer Mode:"), self.transfer_mode_combo)
+        defaults_form.addRow(_("Transfer Mode:"), self.transfer_mode_combo)
 
         # Conflict Policy
         self.conflict_combo = StyledComboBox()
         for p, label in [("backup", _("Backup")), ("skip", _("Skip")), ("overwrite", _("Overwrite"))]:
             self.conflict_combo.addItem(label, p)
-        defaults_form.addRow(_("Default Conflict Policy:"), self.conflict_combo)
+        defaults_form.addRow(_("Conflict Policy:"), self.conflict_combo)
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
@@ -305,12 +305,14 @@ class AppRegistrationDialog(FramelessDialog):
 
     def _on_unregister_clicked(self):
         """Confirm and set flag for deletion."""
-        from PyQt6.QtWidgets import QMessageBox
-        reply = QMessageBox.question(self, _("Confirm Unregister"),
-                                   _("Are you sure you want to completely remove this application registration?\n"
-                                     "This will NOT delete physical folders, but will delete all custom names, tags, and settings."),
-                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
+        from src.ui.common_widgets import FramelessMessageBox
+        dlg = FramelessMessageBox(self)
+        dlg.setWindowTitle(_("Confirm Unregister"))
+        dlg.setText(_("Are you sure you want to completely remove this application registration?\n"
+                      "This will NOT delete physical folders, but will delete all custom names, tags, and settings."))
+        dlg.setIcon(FramelessMessageBox.Icon.Question)
+        dlg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+        if dlg.exec() == FramelessMessageBox.StandardButton.Yes:
             self.is_unregister_request = True
             self.accept()
 
@@ -340,8 +342,21 @@ class AppRegistrationDialog(FramelessDialog):
         t_mode = self.app_data.get('transfer_mode', 'symlink')
         idx = self.transfer_mode_combo.findData(t_mode)
         if idx >= 0: self.transfer_mode_combo.setCurrentIndex(idx)
-        self.cat_style_combo.setCurrentText(self.app_data.get('default_category_style', 'image'))
-        self.pkg_style_combo.setCurrentText(self.app_data.get('default_package_style', 'image'))
+        
+        # Style combos - use findData for correct matching
+        cat_style = self.app_data.get('default_category_style', 'image')
+        idx = self.cat_style_combo.findData(cat_style)
+        if idx >= 0: self.cat_style_combo.setCurrentIndex(idx)
+        
+        pkg_style = self.app_data.get('default_package_style', 'image')
+        idx = self.pkg_style_combo.findData(pkg_style)
+        if idx >= 0: self.pkg_style_combo.setCurrentIndex(idx)
+        
+        # Conflict policy - use findData
+        conflict = self.app_data.get('conflict_policy', 'backup')
+        idx = self.conflict_combo.findData(conflict)
+        if idx >= 0: self.conflict_combo.setCurrentIndex(idx)
+        
         self.default_skip_levels_spin.setValue(int(self.app_data.get('default_skip_levels', 0) or 0))
 
         # Cover image
@@ -511,15 +526,42 @@ class AppRegistrationDialog(FramelessDialog):
 
     def _on_save_clicked(self):
         """Validate and accept."""
+        import os
+        from src.ui.common_widgets import FramelessMessageBox
+        
+        # Required field checks
         if not self.name_edit.text().strip():
-            QMessageBox.warning(self, _("Validation Error"), _("Application name is required."))
+            FramelessMessageBox.warning(self, _("Validation Error"), _("Application name is required."))
             return
         if not self.storage_edit.text().strip():
-            QMessageBox.warning(self, _("Validation Error"), _("Storage path is required."))
+            FramelessMessageBox.warning(self, _("Validation Error"), _("Storage path is required."))
             return
         if not self.target_edit.text().strip():
-            QMessageBox.warning(self, _("Validation Error"), _("Primary target install path is required."))
+            FramelessMessageBox.warning(self, _("Validation Error"), _("Primary target install path is required."))
             return
+        
+        # Path existence checks
+        storage_path = self.storage_edit.text().strip()
+        if not os.path.exists(storage_path):
+            FramelessMessageBox.warning(self, _("Path Error"), _("Storage path does not exist:\n{path}").format(path=storage_path))
+            return
+        
+        target_path = self.target_edit.text().strip()
+        if not os.path.exists(target_path):
+            FramelessMessageBox.warning(self, _("Path Error"), _("Primary target path does not exist:\n{path}").format(path=target_path))
+            return
+        
+        # Optional target paths - only check if specified
+        target_path_2 = self.target_edit_2.text().strip()
+        if target_path_2 and not os.path.exists(target_path_2):
+            FramelessMessageBox.warning(self, _("Path Error"), _("Secondary target path does not exist:\n{path}").format(path=target_path_2))
+            return
+            
+        target_path_3 = self.target_edit_3.text().strip()
+        if target_path_3 and not os.path.exists(target_path_3):
+            FramelessMessageBox.warning(self, _("Path Error"), _("Tertiary target path does not exist:\n{path}").format(path=target_path_3))
+            return
+        
         self.accept()
 
     def get_data(self):
@@ -620,10 +662,10 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             self.detected_folder_type = self._detect_folder_type_internal(self.folder_path)
 
 
-        # Sizing / Constraints to fix "narrowing" bug
+        # Sizing / Constraints - use saved size or reasonable default
         self.setMinimumWidth(480)
         self.setMinimumHeight(550)
-        self.resize(500, 600)
+        self.resize(560, 720)  # Default size matching typical usage
         
         # Improved folder name detection
         self.original_name = os.path.basename(folder_path.rstrip('\\/'))

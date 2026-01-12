@@ -573,8 +573,9 @@ class AboutWindow(FramelessWindow):
         icon_layout.addStretch()
         
         icon_lbl = QLabel()
-        # Use application icon from resource
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Use application icon from resource (EXE compatible via FileHandler)
+        from src.core.file_handler import FileHandler
+        project_root = FileHandler().project_root
         icon_path = os.path.join(project_root, "resource", "app_icon.png")
         
         if os.path.exists(icon_path):
