@@ -183,24 +183,22 @@ class NotesPanel(QWidget):
         """
         if not self.is_dirty(): return True
         
-        from src.core.lang_manager import _
-        from src.ui.styles import apply_common_dialog_style
+        from src.ui.common_widgets import FramelessMessageBox
         
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Question)
+        msg = FramelessMessageBox(self)
+        msg.setIcon(FramelessMessageBox.Icon.Question)
         msg.setWindowTitle(_("Unsaved Changes"))
         msg.setText(_("Note '{name}' has unsaved changes.").format(name=getattr(self, 'current_note', '')))
-        msg.setInformativeText(_("Do you want to save your changes?"))
-        msg.setStandardButtons(QMessageBox.StandardButton.Save | 
-                               QMessageBox.StandardButton.Discard | 
-                               QMessageBox.StandardButton.Cancel)
-        msg.setDefaultButton(QMessageBox.StandardButton.Save)
-        apply_common_dialog_style(msg)
+        msg.text_lbl.setText(_("<b>{title}</b><br><br>Do you want to save your changes?").format(title=_("Unsaved Changes")))
+        
+        msg.addButton(_("Save"), FramelessMessageBox.StandardButton.Save, style="Blue")
+        msg.addButton(_("Discard"), FramelessMessageBox.StandardButton.Discard, style="Gray")
+        msg.addButton(_("Cancel"), FramelessMessageBox.StandardButton.Cancel, style="Gray")
         
         ret = msg.exec()
-        if ret == QMessageBox.StandardButton.Save:
+        if ret == FramelessMessageBox.StandardButton.Save:
             return self._save_current_note()
-        elif ret == QMessageBox.StandardButton.Discard:
+        elif ret == FramelessMessageBox.StandardButton.Discard:
             return True
         else: # Cancel
             return False
@@ -310,6 +308,11 @@ class NotesPanel(QWidget):
 
     def _open_external(self):
         if not hasattr(self, 'current_note') or not self.current_note: return
+        
+        # Phase 32.5: Ensure changes are saved before opening externally
+        if not self.maybe_save():
+            return
+            
         path = os.path.join(self.storage_path, self.current_note)
         self.request_external_edit.emit(path)
 

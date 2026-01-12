@@ -173,10 +173,8 @@ class LMPresetsMixin:
         self.preset_filter_categories = preset_categories
         self.presets_panel.clear_filter_btn.show()
         
-        # self._on_app_changed() removed to prevent jitter. 
-        # Re-build indicator visually if filtering.
-        if hasattr(self, '_rebuild_current_view'):
-            self._rebuild_current_view()
+        # self._rebuild_current_view() removed to prevent jitter.
+        # Targeted update above handles individual cards.
 
     def _preview_preset(self, preset_id):
         """Preview items in a preset before loading them."""
@@ -186,7 +184,12 @@ class LMPresetsMixin:
             self.preset_filter_paths = set()
             self.preset_filter_categories = set()
             self.presets_panel.clear_filter_btn.hide()
-            self._on_app_changed(self.app_combo.currentIndex())
+            # Targeted UI refresh (Avoid full reload)
+            if hasattr(self, '_update_total_link_count'): self._update_total_link_count()
+            if hasattr(self, '_refresh_tag_visuals'): self._refresh_tag_visuals()
+            
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("No active links found for this app."), preset="info")
             return
             
         preset_paths = set()

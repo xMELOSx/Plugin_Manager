@@ -526,6 +526,10 @@ class LMSearchMixin:
         self.search_bar.clear()
         self.tag_bar.clear_selection()  # Also clear tag selection
         
+        # Phase 32.5: Also clear preset filter if search is cleared via 'X' button
+        if hasattr(self, '_clear_preset_filter'):
+            self._clear_preset_filter()
+        
         self.cat_result_label.setText("")
         self.pkg_result_label.setText("")
         
