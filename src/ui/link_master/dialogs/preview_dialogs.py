@@ -153,7 +153,6 @@ class PreviewTableDialog(QDialog):
             QListWidget::item:selected { background-color: #3d5a80; }
             QPushButton { background-color: #3d3d3d; color: #e0e0e0; padding: 5px 10px; }
             QPushButton:hover { background-color: #5d5d5d; }
-            QToolTip { background-color: #2d2d2d; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         # List Widget with Drag-Drop

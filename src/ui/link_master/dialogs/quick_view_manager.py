@@ -713,7 +713,6 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
                 min-height: 20px;
                 border-radius: 4px;
             }
-            QToolTip { background-color: #333; color: #fff; border: 1px solid #555; padding: 4px; }
         """)
         
         # Phase 1.1.210: Set window icon (moved from styling method to avoid redundancy)

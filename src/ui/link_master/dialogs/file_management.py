@@ -307,15 +307,6 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             QLineEdit { background-color: #2d2d2d; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px; }
             QCheckBox { color: #ccc; font-size: 10pt; }
             
-            /* Tooltip styling for visibility */
-            QToolTip { 
-                background-color: #f0f0f0; 
-                color: #000000; 
-                border: 1px solid #666; 
-                padding: 4px;
-                font-size: 9pt;
-            }
-            
             QMessageBox { background-color: #2b2b2b; }
             QMessageBox QLabel { color: #ffffff !important; font-size: 11pt; min-width: 300px; padding: 10px; }
             QMessageBox QPushButton { background-color: #444; color: #fff; border: 1px solid #666; padding: 8px 20px; min-width: 80px; }

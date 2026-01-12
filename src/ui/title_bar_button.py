@@ -74,11 +74,6 @@ class TitleBarButton(QPushButton):
             QPushButton:pressed {{
                 background-color: {pressed_bg};
             }}
-            QToolTip {{
-                color: #ffffff;
-                background-color: #2b2b2b;
-                border: 1px solid #76797C;
-            }}
         """
         self.setStyleSheet(style)
 
