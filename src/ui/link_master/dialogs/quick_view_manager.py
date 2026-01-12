@@ -637,49 +637,50 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         painter.end()
         return QIcon(pixmap)
 
-
     def _init_ui(self):
         # UI Setup (Apply styles before layout)
-        # Avoid radical QDialog/QWidget overrides that break FramelessDialog title bar
-        self.setStyleSheet("""
-            /* Scoped to this dialog's content specifically */
-            #QuickViewManagerDialog QTableWidget { 
+        # Using a class-based selector selector (no #) applies to subclasses too.
+        # Adding explicit QHeaderView styling to break native/Qt6 defaults.
+        table_qss = """
+            QTableWidget { 
                 background-color: transparent;
                 alternate-background-color: rgba(255, 255, 255, 0.05);
                 color: #ffffff; 
                 gridline-color: #444; 
                 border: none;
                 selection-background-color: #3498db;
+                outline: none;
             }
-            
-            #QuickViewManagerDialog QHeaderView::section {
+            QHeaderView::section {
                 background-color: #333;
                 color: #ffffff;
                 border: none;
                 border-bottom: 1px solid #444; 
+                border-right: 1px solid #444;
                 font-weight: bold;
                 height: 18px; 
-                padding: 0px 4px;
+                padding: 2px 4px;
             }
-            
-            #QuickViewManagerDialog QLineEdit { 
+        """
+        self.setStyleSheet("""
+            QLineEdit { 
                 background-color: #3a3a3a; 
                 color: #ffffff; 
                 border: 1px solid #555; 
                 padding: 4px; 
                 border-radius: 4px; 
             }
-            #QuickViewManagerDialog QLineEdit:focus { border: 1px solid #3498db; background-color: #444; }
+            QLineEdit:focus { border: 1px solid #3498db; background-color: #444; }
             
-            #QuickViewManagerDialog QPushButton {
+            QPushButton {
                 background-color: #3a3a3a;
                 color: #ffffff;
                 border: 1px solid #555;
                 padding: 6px 12px;
                 border-radius: 4px;
             }
-            #QuickViewManagerDialog QPushButton:hover { background-color: #4a4a4a; }
-            #QuickViewManagerDialog QPushButton#save_btn { background-color: #3498db; border-color: #2980b9; }
+            QPushButton:hover { background-color: #4a4a4a; }
+            QPushButton#save_btn { background-color: #3498db; border-color: #2980b9; }
         """)
         
         # Ensure Title Bar looks correct via explicit props if base class is overridden
@@ -720,11 +721,15 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(0, 0, 0, 0) # Flush against the window edges
         
-        # 1. Hide Vertical Header and fix scrollbar flicker
         from PyQt6.QtWidgets import QFrame
         self.table = QTableWidget()
-        self.table.setFrameShape(QFrame.Shape.NoFrame) # Physically remove table frame
+        self.table.setStyleSheet(table_qss + """
+            QTableWidget { padding-left: 0px; margin-left: 0px; }
+        """)
+        self.table.horizontalHeader().setStyleSheet(table_qss + "QHeaderView::section { padding: 0px; }") 
         self.table.verticalHeader().setVisible(False)
+        self.table.setCornerButtonEnabled(False)
+        self.table.setFrameShape(QFrame.Shape.NoFrame if hasattr(QFrame, "Shape") else QFrame.NoFrame)
         self.table.setShowGrid(False)  # Remove grid lines for a cleaner look
         # Phase 1.1.15: Force scrollbar to be always visible to prevent rendering flicker
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                              QGroupBox, QCheckBox, QWidget, QListWidget, QListWidgetItem,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
-                             QRadioButton, QButtonGroup)
+                              QRadioButton, QButtonGroup, QFrame, QSplitter)
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
@@ -2346,7 +2346,7 @@ class TagManagerDialog(QDialog):
     def _init_ui(self):
         from PyQt6.QtWidgets import (QTableWidget, QTableWidgetItem, QAbstractItemView, QLabel, 
                                      QVBoxLayout, QHBoxLayout, QWidget, QHeaderView, QFormLayout, 
-                                     QLineEdit, QComboBox, QCheckBox, QPushButton, QListView, QSplitter)
+                                     QLineEdit, QComboBox, QCheckBox, QPushButton, QListView)
         from PyQt6.QtGui import QIcon, QColor, QPixmap
         from PyQt6.QtCore import Qt, QRect
         
@@ -2367,7 +2367,7 @@ class TagManagerDialog(QDialog):
         left_layout.addWidget(hint_label)
         
         self.tag_table = QTableWidget()
-        self.tag_table.setFrameShape(QFrame.Shape.NoFrame) # Physically remove table frame
+        self.tag_table.setFrameShape(QFrame.Shape.NoFrame if hasattr(QFrame, "Shape") else QFrame.NoFrame)
         self.tag_table.setColumnCount(5)
         self.tag_table.setHorizontalHeaderLabels([
             _("Icon"), _("Sym"), _("Tag Name"), _("Inherit"), _("Display")
@@ -2380,14 +2380,16 @@ class TagManagerDialog(QDialog):
         # Standard Header Style (Premium Frameless look)
         hh = self.tag_table.horizontalHeader()
         hh.setVisible(True)
-        hh.setStretchLastSection(True)
+        hh.setStretchLastSection(False) # Turn off last-stretch to manually stretch column 2
         hh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Tag Name stretches
         hh.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         
         vh = self.tag_table.verticalHeader()
         vh.setVisible(False)
         vh.setDefaultSectionSize(26) # Consistent 26px height
         
+        self.tag_table.setCornerButtonEnabled(False)
         self.tag_table.setShowGrid(False) # Clean look
         # Refined style: brighter selection, no dotted outline, consistent grid, dark header
         self.tag_table.setStyleSheet("""
@@ -2396,11 +2398,13 @@ class TagManagerDialog(QDialog):
                 border: 1px solid #3d3d3d; 
                 outline: none; 
                 background-color: #1e1e1e;
+                padding-left: 0px;
+                margin-left: 0px;
             }
             QHeaderView::section {
                 background-color: #333;
                 color: #aaa;
-                padding: 4px;
+                padding: 0px;
                 border: none;
                 border-right: 1px solid #444;
                 border-bottom: 1px solid #444;
@@ -2612,7 +2616,8 @@ class TagManagerDialog(QDialog):
                 
                 # Inherit
                 inherit = tag.get('is_inheritable', True)
-                inh_item = QTableWidgetItem("Yes" if inherit else "No")
+                inh_text = _("Yes") if inherit else _("No")
+                inh_item = QTableWidgetItem(inh_text)
                 inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tag_table.setItem(row, 3, inh_item)
                 
@@ -2766,10 +2771,21 @@ class TagManagerDialog(QDialog):
                         item0.setIcon(QIcon(tag['icon']))
                     else:
                         item0.setIcon(QIcon())
-                self.tag_table.setItem(row, 1, QTableWidgetItem(tag['emoji']))
+                # Symbol (Col 1)
+                sym_item = QTableWidgetItem(tag['emoji'])
+                sym_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 1, sym_item)
+                
+                # Tag Name (Col 2)
                 self.tag_table.setItem(row, 2, QTableWidgetItem(tag['name']))
-                inherit = "Yes" if tag['is_inheritable'] else "No"
-                self.tag_table.setItem(row, 3, QTableWidgetItem(_(inherit)))
+                
+                # Inherit (Col 3)
+                inherit_text = _("Yes") if tag['is_inheritable'] else _("No")
+                inh_item = QTableWidgetItem(inherit_text)
+                inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tag_table.setItem(row, 3, inh_item)
+                
+                # Mode labels (consistent with refresh_table)
                 mode_labels = {
                     'text': _("表示"), 'symbol': _("Sym"), 'text_symbol': _("Sym+Text"),
                     'image': _("Img"), 'image_text': _("Img+Text")
@@ -2777,6 +2793,7 @@ class TagManagerDialog(QDialog):
                 mode_item = QTableWidgetItem(mode_labels.get(tag['display_mode'], tag['display_mode']))
                 mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tag_table.setItem(row, 4, mode_item)
+                
                 for col in range(5):
                     it = self.tag_table.item(row, col)
                     if it: it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)

@@ -528,6 +528,7 @@ class FramelessMessageBox(FramelessDialog):
         self.set_title_bar_icon_visible(True)
         self.set_default_icon()
         self._result = self.StandardButton.NoButton
+        self._clicked_button = None
         
         # Play confirmation sound
         try:
@@ -638,7 +639,7 @@ class FramelessMessageBox(FramelessDialog):
         
         btn = StyledButton(text, style_type=style)
         btn.setMinimumWidth(100)
-        btn.clicked.connect(lambda: self._done(code))
+        btn.clicked.connect(lambda _, b=btn, c=code: self._done(c, b))
         self.pixel_btn_layout.addWidget(btn)
         return btn
 
@@ -649,12 +650,17 @@ class FramelessMessageBox(FramelessDialog):
         # Optional: Set focus
         pass
 
-    def _done(self, code):
+    def _done(self, code, button=None):
         self._result = code
+        self._clicked_button = button
         if code in [self.StandardButton.Ok, self.StandardButton.Yes]:
             self.accept()
         else:
             self.reject()
+
+    def clickedButton(self):
+        """Standard QMessageBox compatibility."""
+        return self._clicked_button
 
     def exec(self):
         super().exec()
