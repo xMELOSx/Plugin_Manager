@@ -118,12 +118,14 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         text_alpha = self._content_opacity
         text_color_rgba = "rgba(221, 221, 221, {})".format(text_alpha)
         
+        from src.ui.styles import TooltipStyles
         self.container.setStyleSheet("""
             #FramelessContainer {{
                 background-color: transparent;
                 border-radius: {radius}px;
                 {border}
             }}
+            {tooltip_style}
             QLabel {{ color: {text_color}; background: transparent; }}
             QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0;
@@ -148,7 +150,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             QPushButton {{ color: {text_color}; background-color: #444; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }}
             QPushButton:hover {{ background-color: #555; }}
             QPushButton:pressed {{ background-color: #333; }}
-        """.format(radius=radius, border=border, text_color=text_color_rgba))
+        """.format(radius=radius, border=border, text_color=text_color_rgba, tooltip_style=TooltipStyles.DARK))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -484,8 +486,10 @@ class FramelessDialog(QDialog, Win32Mixin):
     def _update_stylesheet(self):
         self.setStyleSheet("background: transparent;")
         text_color_rgba = "rgba(221, 221, 221, 1.0)"
+        from src.ui.styles import TooltipStyles
         self.container.setStyleSheet("""
             QWidget#FramelessContainer {{ background-color: transparent; border: none; border-radius: {radius}px; }}
+            {tooltip_style}
             QLabel {{ color: {text_color}; background: transparent; }}
             QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
                 color: #e0e0e0; background-color: #252525; border: 1px solid #555; border-radius: 4px; padding: 4px;
@@ -499,7 +503,7 @@ class FramelessDialog(QDialog, Win32Mixin):
             QPushButton {{ color: {text_color}; background-color: #444; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }}
             QPushButton:hover {{ background-color: #555; }}
             QPushButton:pressed {{ background-color: #333; }}
-        """.format(radius=self.border_radius, text_color=text_color_rgba))
+        """.format(radius=self.border_radius, text_color=text_color_rgba, tooltip_style=TooltipStyles.DARK))
 
     def set_content_widget(self, widget):
         if self.content_layout.count() > 0:

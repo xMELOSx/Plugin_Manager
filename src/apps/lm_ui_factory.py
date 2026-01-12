@@ -23,31 +23,33 @@ def setup_ui(window):
     t_start = time.perf_counter()
     main_widget = QWidget(window)
     main_widget.setObjectName("MainContent")
-    main_widget.setStyleSheet("""
-        QWidget { background-color: transparent; }
-        QComboBox { background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 25px 4px 8px; border-radius: 4px; }
-        QComboBox:hover { border-color: #3498db; background-color: #444; }
-        QComboBox::drop-down { 
+    from src.ui.styles import TooltipStyles
+    main_widget.setStyleSheet(f"""
+        QWidget {{ background-color: transparent; }}
+        {TooltipStyles.DARK}
+        QComboBox {{ background-color: #3b3b3b; color: #fff; border: 1px solid #555; padding: 4px 25px 4px 8px; border-radius: 4px; }}
+        QComboBox:hover {{ border-color: #3498db; background-color: #444; }}
+        QComboBox::drop-down {{ 
             subcontrol-origin: padding;
             subcontrol-position: top right;
             width: 20px;
             border-left: 1px solid #555;
             border-top-right-radius: 4px;
             border-bottom-right-radius: 4px;
-        }
-        QComboBox::down-arrow {
+        }}
+        QComboBox::down-arrow {{
             image: none;
             border-left: 5px solid transparent;
             border-right: 5px solid transparent;
             border-top: 5px solid #fff;
             margin-right: 2px;
-        }
-        QComboBox QAbstractItemView { background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; border: 1px solid #555; outline: none; }
-        QLineEdit { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }
-        QLineEdit:hover { border-color: #3498db; background-color: #444; }
-        QPushButton#header_btn { background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }
-        QPushButton#header_btn:hover { background-color: #3498db; border-color: #5dade2; }
-        QPushButton#header_btn:pressed { background-color: #21618c; padding-top: 4px; padding-left: 4px; }
+        }}
+        QComboBox QAbstractItemView {{ background-color: #3b3b3b; color: #fff; selection-background-color: #2980b9; border: 1px solid #555; outline: none; }}
+        QLineEdit {{ background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 4px; }}
+        QLineEdit:hover {{ border-color: #3498db; background-color: #444; }}
+        QPushButton#header_btn {{ background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px; }}
+        QPushButton#header_btn:hover {{ background-color: #3498db; border-color: #5dade2; }}
+        QPushButton#header_btn:pressed {{ background-color: #21618c; padding-top: 4px; padding-left: 4px; }}
     """)
     
     main_layout = QVBoxLayout(main_widget)
