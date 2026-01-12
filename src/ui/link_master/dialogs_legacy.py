@@ -568,7 +568,7 @@ class AppRegistrationDialog(FramelessDialog):
             "url_list": getattr(self, "url_list_json", "[]")
         }
 
-class FolderPropertiesDialog(QDialog, OptionsMixin):
+class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
     """Dialog to configure folder-specific display properties."""
     def __init__(self, parent=None, folder_path: str = "", current_config: dict = None, 
                  batch_mode: bool = False, app_name: str = None, storage_root: str = None,
@@ -579,7 +579,6 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
                  app_skip_levels_default: int = 0):
 
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.folder_path = folder_path
         self.current_config = current_config or {}
         self.batch_mode = batch_mode  # For multi-folder editing
@@ -613,6 +612,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
 
         self.pending_icon_pixmap = None  # To be saved on Accept
         self.pending_icon_path = None    # To be saved on Accept
+        
+        self.set_default_icon()
         
         # Heuristic detection of folder type for Auto mode display
         self.detected_folder_type = 'category'  # Default
@@ -729,7 +730,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
         
     def _init_ui(self):
         # Phase 33: Split Layout (Left=Basic, Right=Advanced)
-        self.root_layout = QVBoxLayout(self)
+        content_widget = QWidget()
+        self.root_layout = QVBoxLayout(content_widget)
         
         content_split = QHBoxLayout()
         self.root_layout.addLayout(content_split)
@@ -797,6 +799,8 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             size_text = format_size(size_val)
             if scanned_at:
                 size_text += _(" (Scanned: {date})").format(date=scanned_at[:16].replace('T', ' '))
+            
+            self.set_content_widget(content_widget)
             
             size_label = QLabel(size_text)
             size_label.setStyleSheet("color: #aaa; font-size: 11px;")
@@ -2977,20 +2981,22 @@ class FrequentTagEditDialog(FramelessDialog):
         return self.text_edit.toPlainText().strip()
 
 
-class TestStyleDialog(QDialog):
+class TestStyleDialog(FramelessDialog):
     """Simple verification dialog to check base styles."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        apply_common_dialog_style(self)
         self.setWindowTitle("UI Style Verification")
-        self.setFixedSize(300, 150)
+        self.set_default_icon()
+        self.resize(300, 150)
         
-        layout = QVBoxLayout(self)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.addWidget(QLabel("UI Style Verification - Dialog Base Style"))
         
         btn = QPushButton("OK")
         btn.clicked.connect(self.accept)
         layout.addWidget(btn)
+        self.set_content_widget(content)
 
 
 class TagCreationDialog(FramelessDialog):

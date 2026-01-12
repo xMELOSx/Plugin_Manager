@@ -692,3 +692,96 @@ class FramelessMessageBox(FramelessDialog):
         dlg.setIcon(FramelessMessageBox.Icon.Critical)
         dlg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
         return dlg.exec()
+
+class FramelessInputDialog(FramelessDialog):
+    """
+    Standardized Frameless Input Dialog to replace QInputDialog.
+    Supports text and integer inputs.
+    """
+    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.set_resizable(False)
+        self.set_default_icon()
+        self._is_int = is_int
+        self._items = items
+        self._setup_ui(label, text, value, min_val, max_val)
+        self.resize(350, 200)
+
+    def _setup_ui(self, label, text, value, min_val, max_val):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        self.label = QLabel(label)
+        self.label.setWordWrap(True)
+        self.label.setStyleSheet("color: #eeeeee; font-size: 13px;")
+        layout.addWidget(self.label)
+
+        if self._items:
+            self.input_field = StyledComboBox()
+            for item in self._items:
+                self.input_field.addItem(item)
+            if text in self._items:
+                self.input_field.setCurrentText(text)
+            layout.addWidget(self.input_field)
+        elif self._is_int:
+            self.input_field = StyledSpinBox()
+            self.input_field.setRange(min_val, max_val)
+            self.input_field.setValue(value)
+            self.input_field.setMinimumHeight(35)
+            layout.addWidget(self.input_field)
+        else:
+            self.input_field = StyledLineEdit()
+            self.input_field.setText(text)
+            self.input_field.setMinimumHeight(35)
+            self.input_field.setFocus()
+            layout.addWidget(self.input_field)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch()
+
+        self.ok_btn = StyledButton(_("OK"), style_type="Blue")
+        self.ok_btn.setMinimumWidth(80)
+        self.ok_btn.clicked.connect(self.accept)
+        
+        self.cancel_btn = StyledButton(_("Cancel"), style_type="Gray")
+        self.cancel_btn.setMinimumWidth(80)
+        self.cancel_btn.clicked.connect(self.reject)
+
+        btn_layout.addWidget(self.ok_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        layout.addLayout(btn_layout)
+
+        self.set_content_widget(content)
+
+    def value(self):
+        if self._items:
+            return self.input_field.currentText()
+        if self._is_int:
+            return self.input_field.value()
+        return self.input_field.text()
+
+    @staticmethod
+    def getText(parent, title, label, text=""):
+        dlg = FramelessInputDialog(parent, title, label, text=text)
+        if dlg.exec():
+            return dlg.value(), True
+        return "", False
+
+    @staticmethod
+    def getInt(parent, title, label, value=0, min_val=0, max_val=100, step=1):
+        dlg = FramelessInputDialog(parent, title, label, value=value, min_val=min_val, max_val=max_val, is_int=True)
+        # step and other args can be added as needed
+        if dlg.exec():
+            return dlg.value(), True
+        return value, False
+
+    @staticmethod
+    def getItem(parent, title, label, items, current=0, editable=False):
+        dlg = FramelessInputDialog(parent, title, label, items=items, text=items[current] if items and current < len(items) else "")
+        if dlg.exec():
+            return dlg.value(), True
+        return "", False

@@ -10,7 +10,8 @@ import logging
 import re
 import tempfile
 import zipfile
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+from PyQt6.QtWidgets import QFileDialog
+from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
 from src.core.lang_manager import _
 from src.ui.styles import apply_common_dialog_style
 from src.ui.toast import Toast
@@ -33,15 +34,11 @@ class LMPortabilityMixin:
         if not hasattr(self, 'db') or not self.db: return
         
         # 1. 階層の深さを指定
-        input_dlg = QInputDialog(self)
-        input_dlg.setWindowTitle(_("Export Depth"))
-        input_dlg.setLabelText(_("エクスポートする階層の深さを指定してください:\n(1=選択フォルダのみ, 2=子フェーズまで, ...)"))
-        input_dlg.setIntRange(1, 100)
-        input_dlg.setIntValue(2)
-        apply_common_dialog_style(input_dlg)
-        
-        ok = input_dlg.exec()
-        depth = input_dlg.intValue()
+        depth, ok = FramelessInputDialog.getInt(
+            self, _("Export Depth"), 
+            _("エクスポートする階層の深さを指定してください:\n(1=選択フォルダのみ, 2=子フェーズまで, ...)"),
+            value=2, min_val=1, max_val=100
+        )
         if not ok: return
 
         # 2. 保存先ファイルの選択 (.dioco)
@@ -60,8 +57,7 @@ class LMPortabilityMixin:
         # パスバリデーション
         is_valid, err_msg = self._is_valid_path(dest_file)
         if not is_valid:
-            err_box = QMessageBox.warning(self, _("Export Path Error"), _(err_msg))
-            apply_common_dialog_style(err_box)
+            FramelessMessageBox.warning(self, _("Export Path Error"), _(err_msg))
             return
 
         # 3. 設定の収集
@@ -83,8 +79,7 @@ class LMPortabilityMixin:
                     target_configs[k] = config_copy
         
         if not target_configs:
-            info_box = QMessageBox.information(self, _("Export"), _("範囲内または指定の深さにエクスポート対象の設定が見つかりません。"))
-            apply_common_dialog_style(info_box)
+            FramelessMessageBox.information(self, _("Export"), _("範囲内または指定の深さにエクスポート対象の設定が見つかりません。"))
             return
 
         # 4. 一時ディレクトリに構造を作成
@@ -153,8 +148,7 @@ class LMPortabilityMixin:
                 
                 Toast.show_toast(self, _("エクスポート完了: {0} 件の設定を保存しました。").format(success_count), preset="success")
             except Exception as e:
-                err_box = QMessageBox.critical(self, _("Export Error"), _("ZIPの作成に失敗しました: {0}").format(e))
-                apply_common_dialog_style(err_box)
+                FramelessMessageBox.critical(self, _("Export Error"), _("ZIPの作成に失敗しました: {0}").format(e))
 
     def _import_portability_package(self):
         """エクスポートされた .dioco ファイルから設定とリソースをインポートする。"""
@@ -176,32 +170,27 @@ class LMPortabilityMixin:
                 if os.path.isdir(source_file):
                     temp_dir = source_file # Use directly
                 else:
-                    err_box = QMessageBox.warning(self, _("Import Error"), _("無効なファイル形式です。.diocoファイルを選択してください。"))
-                    apply_common_dialog_style(err_box)
+                    FramelessMessageBox.warning(self, _("Import Error"), _("無効なファイル形式です。.diocoファイルを選択してください。"))
                     return
             except Exception as e:
-                err_box = QMessageBox.critical(self, _("Import Error"), _("ZIPの展開に失敗しました: {0}").format(e))
-                apply_common_dialog_style(err_box)
+                FramelessMessageBox.critical(self, _("Import Error"), _("ZIPの展開に失敗しました: {0}").format(e))
                 return
             
             json_path = os.path.join(temp_dir, "config.json")
             if not os.path.exists(json_path):
-                err_box = QMessageBox.warning(self, _("Import Error"), _("config.json が見つかりません。"))
-                apply_common_dialog_style(err_box)
+                FramelessMessageBox.warning(self, _("Import Error"), _("config.json が見つかりません。"))
                 return
                 
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             except Exception as e:
-                err_box = QMessageBox.critical(self, _("Import Error"), _("JSONの読み込みに失敗しました: {0}").format(e))
-                apply_common_dialog_style(err_box)
+                FramelessMessageBox.critical(self, _("Import Error"), _("JSONの読み込みに失敗しました: {0}").format(e))
                 return
                 
             configs = data.get("configs", {})
             if not configs:
-                err_box = QMessageBox.warning(self, _("Import"), _("インポート可能な設定が見つかりません。"))
-                apply_common_dialog_style(err_box)
+                FramelessMessageBox.warning(self, _("Import"), _("インポート可能な設定が見つかりません。"))
                 return
                 
             # 3. リソースの復元先ディレクトリの準備

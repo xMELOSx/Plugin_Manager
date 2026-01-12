@@ -3,7 +3,7 @@ Link Master: Preset Management Mixin
 Extracted from LinkMasterWindow for modularity.
 """
 import os
-from src.ui.common_widgets import FramelessMessageBox
+from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
 from src.core.lang_manager import _
 
 
@@ -58,11 +58,11 @@ class LMPresetsMixin:
             self.logger.error(f"Failed to scan target for links: {e}")
 
         if count == 0:
-            QMessageBox.warning(self, "Empty", "No active links found to save.")
+            FramelessMessageBox.warning(self, "Empty", "No active links found to save.")
             return
 
         # UI for Name only (Folder and Description skipped for now)
-        name, ok = QInputDialog.getText(self, "プリセット保存", "プリセット名:")
+        name, ok = FramelessInputDialog.getText(self, "プリセット保存", "プリセット名:")
         if not ok or not name: return
         
         item_ids = []
@@ -72,10 +72,10 @@ class LMPresetsMixin:
             
         try:
             self.db.create_preset(name, item_ids)
-            QMessageBox.information(self, "成功", f"プリセット '{name}' を {count} アイテムで作成しました！")
+            FramelessMessageBox.information(self, "成功", f"プリセット '{name}' を {count} アイテムで作成しました！")
             self.presets_panel.refresh()
         except Exception as e:
-            QMessageBox.critical(self, "エラー", str(e))
+            FramelessMessageBox.critical(self, "エラー", str(e))
 
     def _load_preset(self, preset_id):
         items = self.db.get_preset_items(preset_id)
@@ -232,7 +232,7 @@ class LMPresetsMixin:
             self.db.delete_preset(preset_id)
             self.presets_panel.refresh()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+            FramelessMessageBox.critical(self, "Error", f"Failed to delete: {e}")
 
     def _clear_preset_filter(self):
         """Clear preset filter mode and show all items."""

@@ -1,8 +1,8 @@
 """ 🚨 厳守ルール: ファイル操作禁止 🚨
 ファイルI/Oは、必ず src.core.file_handler を経由すること。
 """
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QFrame, QSpinBox, QMessageBox, QSpacerItem, QSizePolicy)
-from src.ui.common_widgets import StyledSpinBox
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QFrame, QSpinBox, QSpacerItem, QSizePolicy)
+from src.ui.common_widgets import StyledSpinBox, FramelessMessageBox
 from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.styles import apply_common_dialog_style
 
@@ -267,8 +267,7 @@ class ToolsPanel(QWidget):
     def _on_reset_clicked(self):
         from src.core.lang_manager import _
         # Confirmation Dialog
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Icon.Warning)
+        msg = FramelessMessageBox(self)
         msg.setWindowTitle(_("Confirm Bulk Reset"))
         msg.setText(_("⚠ Bulk delete all folder attributes for this app?"))
         msg.setInformativeText(
@@ -276,9 +275,8 @@ class ToolsPanel(QWidget):
               "・All display settings and tags will be removed\n"
               "・This action cannot be undone.")
         )
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setDefaultButton(QMessageBox.StandardButton.No)
-        apply_common_dialog_style(msg)
+        msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+        msg.setIcon(FramelessMessageBox.Icon.Warning)
         
-        if msg.exec() == QMessageBox.StandardButton.Yes:
+        if msg.exec() == FramelessMessageBox.StandardButton.Yes:
             self.request_reset_all.emit()

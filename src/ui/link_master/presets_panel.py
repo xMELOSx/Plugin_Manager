@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QPushButton, QHBoxLayout, QMessageBox, QLabel, QMenu,
-                             QInputDialog, QAbstractItemView)
+                             QPushButton, QHBoxLayout, QLabel, QMenu,
+                             QAbstractItemView)
+from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
 from PyQt6.QtCore import pyqtSignal, Qt
 from src.core.lang_manager import _
 from src.core.link_master.database import get_lm_db
@@ -172,7 +173,7 @@ class PresetsPanel(QWidget):
     def _on_create_folder_clicked(self):
         """Create a folder to organize presets."""
         from src.core.lang_manager import _
-        name, ok = QInputDialog.getText(self, _("Create Folder"), _("Folder Name:"))
+        name, ok = FramelessInputDialog.getText(self, _("Create Folder"), _("Folder Name:"))
         if ok and name and self.db:
             self.db.create_preset_folder(name)
             self.refresh()
@@ -371,7 +372,7 @@ class PresetsPanel(QWidget):
             action = menu.exec(self.tree_widget.viewport().mapToGlobal(pos))
             
             if action == act_rename:
-                name, ok = QInputDialog.getText(self, _("Rename Folder"), _("New Name:"), text=item.text(0).replace("📁 ", ""))
+                name, ok = FramelessInputDialog.getText(self, _("Rename Folder"), _("New Name:"), text=item.text(0).replace("📁 ", ""))
                 if ok and name:
                     self.db.update_preset_folder(item_id, name=name)
                     self.refresh()

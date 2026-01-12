@@ -15,7 +15,7 @@ from src.ui.window_mixins import OptionsMixin
 from src.core.lang_manager import _
 from src.ui.frameless_window import FramelessDialog
 from src.core.link_master.core_paths import get_backup_dir, get_backup_path_for_file
-from src.ui.common_widgets import ProtectedLineEdit
+from src.ui.common_widgets import ProtectedLineEdit, FramelessMessageBox
 
 class SelectionAwareDelegate(QStyledItemDelegate):
     """Delegate that brightens background color for selected items, preserving state visibility."""
@@ -253,6 +253,9 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         super().__init__(parent)
         # Tool flag: Don't show in taskbar, stay above main window (like DebugWindow/OptionsWindow)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
+        
+        # Icon for title bar
+        self.set_default_icon()
         
         self.folder_path = folder_path
         self.storage_root = storage_root or folder_path
@@ -753,7 +756,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
             path = self.model.data(s_idx.siblingAtColumn(3), Qt.ItemDataRole.DisplayRole)
         
         if not path:
-            QMessageBox.warning(self, _("エラー"), _("パスが見つかりません。"))
+            FramelessMessageBox.warning(self, _("エラー"), _("パスが見つかりません。"))
             return
             
         norm_path = os.path.normpath(path)
@@ -768,7 +771,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
                 norm_path = parent
             
             if not os.path.exists(norm_path):
-                QMessageBox.warning(self, _("エラー"), 
+                FramelessMessageBox.warning(self, _("エラー"), 
                     _("パスが存在しません: {path}").format(path=original_path))
                 return
         
