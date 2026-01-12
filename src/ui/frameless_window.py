@@ -647,22 +647,37 @@ class FramelessDialog(QDialog, Win32Mixin):
         try:
             if not os.path.exists(path): return False
             
-            # High DPI Support: Use QIcon.pixmap for best size selection from .ico
-            full_icon = QIcon(path)
-            self.setWindowIcon(full_icon)
+            from PyQt6.QtGui import QPainter, QBrush, QImage
             
+            # 1. Prepare a high-quality QIcon with multiple sizes
+            # This ensures taskbar and system dialogs get sharp icons
+            original_image = QImage(path)
+            if original_image.isNull():
+                return False
+                
+            multi_icon = QIcon()
+            # Standard Windows icon sizes
+            for size in [256, 128, 64, 48, 32, 16]:
+                scaled_pix = QPixmap.fromImage(original_image).scaled(
+                    size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                )
+                multi_icon.addPixmap(scaled_pix)
+            
+            self.setWindowIcon(multi_icon)
+            
+            # 2. Prepare Title Bar Label Icon (Rounded, DPI aware)
             dpr = self.devicePixelRatioF()
             base_size = 24
             target_size = int(base_size * dpr)
             
-            # Use QIcon.pixmap to get the sharpest version for the target size
-            # This handles multi-size .ico files correctly (QImage only gets one size)
-            scaled = full_icon.pixmap(target_size, target_size)
+            # Use the high-res image for rounding to avoid pixelation
+            scaled = QPixmap.fromImage(original_image).scaled(
+                target_size, target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
             
             if scaled.isNull():
                 return False
 
-            from PyQt6.QtGui import QPainter, QBrush
             # 1. Create Mask (White rounded rect on transparent)
             mask = QPixmap(target_size, target_size)
             mask.fill(Qt.GlobalColor.transparent)

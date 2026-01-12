@@ -129,9 +129,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         t_icon = time.perf_counter()
         
         # Icon Setup (User Request)
-        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.ico"))
+        # Prioritize 1024x1024 icon.jpg for high quality over 16x16 icon.ico
+        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
         if not os.path.exists(icon_path):
-            icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
+            icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.ico"))
             
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
