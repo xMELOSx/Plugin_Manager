@@ -1912,14 +1912,39 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             try:
                 rel = os.path.relpath(self.folder_path, self.storage_root).replace('\\', '/')
                 if rel == ".": rel = ""
-                # Close this dialog and open file management? 
-                # Better: Open management, and if it changes anything, we might need a refresh.
-                window._open_file_management(rel)
                 
-                # Refresh rules in the current dialog's edit box
-                config = window.db.get_folder_config(rel) or {}
-                new_rules = config.get('deployment_rules', '')
-                self.rules_edit.setText(new_rules)
+                # Phase 5: Pass the current rule in the property dialog to the file management dialog
+                # We need to make sure _open_file_management can handle an optional override rule
+                current_rule = self.deploy_rule_override_combo.currentData()
+                if current_rule == "inherit":
+                    # Determine app default
+                    current_target = self.target_combo.currentData()
+                    if current_target == 2:
+                        current_rule = self.current_app_data.get('deployment_rule_b') or self.app_deploy_default
+                    elif current_target == 3:
+                        current_rule = self.current_app_data.get('deployment_rule_c') or self.app_deploy_default
+                    else:
+                        current_rule = self.app_deploy_default
+                
+                # Check if window._open_file_management supports the override
+                import inspect
+                sig = inspect.signature(window._open_file_management)
+                if 'override_rule' in sig.parameters:
+                    window._open_file_management(rel, override_rule=current_rule)
+                else:
+                    window._open_file_management(rel)
+                
+                # [CRITICAL] Since _open_file_management in lm_file_management is non-modal (show()),
+                # we need to connect to its finished signal to refresh OUR rules_edit.
+                if hasattr(window, '_current_file_mgmt_dialog') and window._current_file_mgmt_dialog:
+                    def on_mgmt_finished():
+                        # Refresh rules in the current dialog's edit box
+                        if window.db:
+                            config = window.db.get_folder_config(rel) or {}
+                            new_rules = config.get('deployment_rules', '')
+                            self.rules_edit.setText(new_rules)
+                    window._current_file_mgmt_dialog.finished.connect(on_mgmt_finished)
+                    
             except Exception as e:
                 print(f"Failed to open file management from properties: {e}")
     

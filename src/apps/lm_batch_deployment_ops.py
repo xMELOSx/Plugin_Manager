@@ -735,11 +735,38 @@ class LMDeploymentOpsMixin:
             for search_root in search_roots:
                 if not search_root: continue
                 try:
-                    # We assume the file at rel_path was just removed. 
-                    # We want to check its parent directory.
-                    candidate = os.path.join(search_root, rel_path.replace('\\', '/'))
-                    parent_dir = os.path.dirname(candidate)
-                    self.deployer._cleanup_empty_parents(parent_dir)
+                    # Determine the effective pruning start path
+                    if deploy_rule == 'tree':
+                        # For Tree mode, we must respect skip_levels to find the correct pruning entry point
+                        import json
+                        skip_val = 0
+                        rules_json = config.get('deployment_rules')
+                        if rules_json:
+                            try:
+                                rules_obj = json.loads(rules_json)
+                                skip_val = int(rules_obj.get('skip_levels', 0))
+                            except: pass
+                        
+                        parts = rel_path.replace('\\', '/').split('/')
+                        if len(parts) > skip_val:
+                            mirrored = "/".join(parts[skip_val:])
+                            prune_entry = os.path.join(search_root, mirrored)
+                        else:
+                            prune_entry = search_root
+                    elif deploy_rule == 'files':
+                        prune_entry = search_root # Files are directly in search root
+                    else:
+                        # Folder mode
+                        folder_name = os.path.basename(rel_path)
+                        prune_entry = os.path.join(search_root, folder_name)
+
+                    parent_dir = os.path.dirname(prune_entry)
+                    hit_root = self.deployer._cleanup_empty_parents(parent_dir)
+                    
+                    if hit_root:
+                        # Notify user if it stopped unexpectedly (though safety is priority)
+                        # We only notify if it stopped at a root that likely contains other things
+                        self.logger.info(f"Cleanup stopped at protected root: {hit_root}")
                 except Exception as e:
                     self.logger.warning(f"Failed to prune parents for {search_root}: {e}")
 

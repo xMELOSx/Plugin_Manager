@@ -61,7 +61,7 @@ class SelectionAwareDelegate(QStyledItemDelegate):
 
 class CheckableFileModel(QFileSystemModel):
     """ファイルシステムモデルにチェックボックス、転送モード切替、ターゲット編集機能を追加したもの。"""
-    def __init__(self, folder_path, storage_root, rules, primary_target="", secondary_target="", tertiary_target="", app_name=""):
+    def __init__(self, folder_path, storage_root, rules, primary_target="", secondary_target="", tertiary_target="", app_name="", deploy_rule="folder"):
         super().__init__()
         self.folder_path = folder_path
         self.storage_root = storage_root
@@ -70,6 +70,7 @@ class CheckableFileModel(QFileSystemModel):
         self.secondary_target = secondary_target
         self.tertiary_target = tertiary_target
         self.app_name = app_name
+        self.deploy_rule = deploy_rule
 
     def flags(self, index):
         flags = super().flags(index)
@@ -159,9 +160,21 @@ class CheckableFileModel(QFileSystemModel):
                         if rel_from_folder.startswith(old + "/"):
                             return rel_from_folder.replace(old, new, 1)
                     
-                    # App Default (Primary)
-                    if self.primary_target:
+                    # Mode-Aware Default Calculation
+                    if not self.primary_target:
+                        return ""
+
+                    # Current target calculation (Primary/Presets)
+                    if self.deploy_rule == 'files':
+                        # All files go directly into target root
+                        return os.path.join(self.primary_target, os.path.basename(rel_from_folder)).replace('\\', '/')
+                    elif self.deploy_rule == 'tree':
+                        # Mirrored structure (skip_levels logic is handled by caller/registry, but here we assume direct mirror from folder_path)
                         return os.path.join(self.primary_target, rel_from_folder).replace('\\', '/')
+                    else:
+                        # Standard folder mode: target_root / folder_name / rel_path
+                        folder_name = os.path.basename(self.folder_path)
+                        return os.path.join(self.primary_target, folder_name, rel_from_folder).replace('\\', '/')
                 return ""
             
             if index.column() == 4: # Size
@@ -249,7 +262,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
     """
     ファイル単位の高度な構成（ターゲットパス編集、シンボリック切替、バックアップ）を行うダイアログ。
     """
-    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root=""):
+    def __init__(self, parent, folder_path, current_rules_json=None, primary_target="", secondary_target="", tertiary_target="", app_name="", storage_root="", deploy_rule="folder"):
         super().__init__(parent)
         # Tool flag: Don't show in taskbar, stay above main window (like DebugWindow/OptionsWindow)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.Tool)
@@ -263,6 +276,7 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         self.secondary_target = secondary_target
         self.tertiary_target = tertiary_target
         self.app_name = app_name
+        self.deploy_rule = deploy_rule
         self.logger = logging.getLogger("FileManagementDialog")
         
         # Rules Parsing
@@ -365,7 +379,8 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
 
         # Main Tree
         self.model = CheckableFileModel(self.folder_path, self.storage_root, self.rules, 
-                                        self.primary_target, self.secondary_target, self.tertiary_target, self.app_name)
+                                        self.primary_target, self.secondary_target, self.tertiary_target, self.app_name, 
+                                        deploy_rule=self.deploy_rule)
         self.model.setRootPath(self.folder_path)
         
         self.proxy = BackupFilterProxyModel()
@@ -661,8 +676,15 @@ class FileManagementDialog(FramelessDialog, OptionsMixin):
         
         for rel, s_idx in selected:
             if target_root:
-                # Calculate new path: root + relative path from original folder
-                new_path = os.path.join(target_root, rel).replace('\\', '/')
+                # Calculate new path based on mode
+                if self.deploy_rule == 'files':
+                    new_path = os.path.join(target_root, os.path.basename(rel)).replace('\\', '/')
+                elif self.deploy_rule == 'tree':
+                    new_path = os.path.join(target_root, rel).replace('\\', '/')
+                else:
+                    folder_name = os.path.basename(self.folder_path)
+                    new_path = os.path.join(target_root, folder_name, rel).replace('\\', '/')
+                
                 self.model.setData(s_idx.siblingAtColumn(3), new_path, Qt.ItemDataRole.EditRole)
             else:
                 # Clear override

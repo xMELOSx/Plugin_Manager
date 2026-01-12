@@ -413,10 +413,11 @@ class Deployer:
             self.logger.debug(f"Backup lookup skipped (table may not exist): {e}")
         return False
 
-    def _cleanup_empty_parents(self, path: str, protected_roots: set = None):
+    def _cleanup_empty_parents(self, path: str, protected_roots: set = None) -> str:
         """Recursively remove empty parent directories.
         NEVER removes any path that is in protected_roots or is a parent of them.
         If protected_roots is None, automatically fetches ALL target roots from ALL apps using LinkMasterRegistry.
+        Returns the path of the protected root that stopped the pruning, or None if it reached root or stopped as expected.
         """
         # 🚨 AUTO-FETCH ALL TARGET ROOTS FROM GLOBAL REGISTRY
         if protected_roots is None:
@@ -436,27 +437,35 @@ class Deployer:
         
         norm_protected = {os.path.normpath(p).lower() for p in protected_roots if p}
         
-        while path and path != core_handler.get_parent(path):
+        while path:
+            try:
+                parent = core_handler.get_parent(path)
+                if not parent or path == parent:
+                    break
+            except: break
+
             norm_path = os.path.normpath(path).lower()
             
             # Safety: Never remove if this path IS a protected root
             if norm_path in norm_protected:
                 self.logger.debug(f"[Prune Safety] Stopping at protected root: {path}")
-                break
+                return path # Return the protected root path
             
             # Safety: Never remove if this path is a PARENT of any protected root
             is_parent_of_protected = any(p.startswith(norm_path + os.sep) or p.startswith(norm_path + '/') for p in norm_protected)
             if is_parent_of_protected:
                 self.logger.debug(f"[Prune Safety] Stopping at parent of protected root: {path}")
-                break
+                return path # Treat as protected boundary
             
             try:
                 if core_handler.is_dir(path) and not os.listdir(path):
                     core_handler.remove_empty_dir(path)
                     self.logger.info(f"Cleaned empty parent: {path}")
-                    path = core_handler.get_parent(path)
+                    path = parent
                 else: break
             except: break
+        
+        return None
 
     def get_link_status(self, target_link_path: str, expected_source: str = None, expected_transfer_mode: str = 'symlink') -> dict:
         """

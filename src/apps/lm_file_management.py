@@ -7,7 +7,7 @@ import logging
 from src.ui.link_master.dialogs import FileManagementDialog
 
 class LMFileManagementMixin:
-    def _open_file_management(self, rel_path):
+    def _open_file_management(self, rel_path, override_rule=None):
         """指定された相対パスのフォルダに対してファイル管理ダイアログを開く。"""
         if not hasattr(self, 'db') or not self.db: return
         if not hasattr(self, 'storage_root') or not self.storage_root: return
@@ -31,11 +31,20 @@ class LMFileManagementMixin:
         mod_secondary_base = os.path.join(secondary_root, mod_name) if secondary_root else ""
         mod_tertiary_base = os.path.join(tertiary_root, mod_name) if tertiary_root else ""
         
+        # Phase 5: Get Deploy Rule for defaults
+        deploy_rule = override_rule
+        if not deploy_rule or deploy_rule in ("default", "inherit"):
+            config_rule = config.get('deploy_rule')
+            if config_rule and config_rule not in ("default", "inherit"):
+                deploy_rule = config_rule
+            else:
+                app_default_rule = app_data.get('deployment_rule', 'folder')
+                deploy_rule = app_default_rule
+
         # Pass None as parent to prevent OS compositor alpha failure with transparent windows
-        # WA_TranslucentBackground on parent + child in same layer causes black output
         diag = FileManagementDialog(None, abs_path, config.get('deployment_rules'), 
                                    primary_target=mod_primary_base, secondary_target=mod_secondary_base, tertiary_target=mod_tertiary_base,
-                                   app_name=app_data.get('name', ''), storage_root=self.storage_root)
+                                   app_name=app_data.get('name', ''), storage_root=self.storage_root, deploy_rule=deploy_rule)
         
         # Non-modal: Use show() instead of exec() to allow main window interaction
         # Store reference to prevent garbage collection

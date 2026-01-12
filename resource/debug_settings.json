@@ -1,4 +1,5 @@
 {
   "allow_folder_deploy_pkg_view": true,
-  "log_level": "INFO"
+  "log_level": "DEBUG",
+  "show_unregistered_border": true
 }
