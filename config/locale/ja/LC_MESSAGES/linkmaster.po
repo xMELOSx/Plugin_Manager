@@ -2644,3 +2644,27 @@ msgstr "登録解除"
 
 msgid "Package Name"
 msgstr "パッケージ名"
+
+msgid "Display"
+msgstr "表示"
+
+msgid "Display:"
+msgstr "表示:"
+
+msgid "Sym"
+msgstr "記号"
+
+msgid "Sym+Text"
+msgstr "記号+文字"
+
+msgid "Img"
+msgstr "画像"
+
+msgid "Img+Text"
+msgstr "画像+文字"
+
+msgid "Tag Name:"
+msgstr "タグ名:"
+
+msgid "Symbol:"
+msgstr "シンボル:"
