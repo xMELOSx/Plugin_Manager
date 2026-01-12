@@ -24,13 +24,18 @@ class ExplorerPanel(QWidget):
         self.current_app_id = None
         self.db = get_lm_db()
         self.context_menu_provider = None # Callback to build menu
+        self.is_checking_target = False  # Suppress navigation during target check
+        self.source_root = None          # Original storage root
+        self.target_roots = {}           # { 'P': path, 'S': path, 'T': path }
         
         # Init UI
         self._init_ui()
         
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        # Phase X: Move 5pt right and set background
+        layout.setContentsMargins(5, 0, 0, 0)
+        self.setStyleSheet("background-color: #2b2b2b;")
         
         # Header (Root Info)
         self.header_frame = QFrame(self)
@@ -57,14 +62,44 @@ class ExplorerPanel(QWidget):
         self.btn_refresh.setFlat(True)
         self.btn_refresh.setToolTip(_("Refresh Tree"))
         self.btn_refresh.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; background-color: #444; border-radius: 4px; }")
-        self.btn_refresh.clicked.connect(lambda: self.fs_model.setRootPath(self.storage_root) if self.storage_root else None)
+        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
         header_layout.addWidget(self.btn_refresh)
-        self.btn_refresh.hide()  # Hidden: unclear purpose
+        # self.btn_refresh.hide()  # Use refresh btn as the "Src" button? No, let's add dedicated buttons.
         
         # Enable Context Menu on Header for Root Config
         self.header_frame.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.header_frame.customContextMenuRequested.connect(self._show_root_context_menu)
         
+        # Phase X: Target Check Buttons (P, S, T, Src)
+        self.btn_bar = QHBoxLayout()
+        self.btn_bar.setSpacing(2)
+        
+        btn_style = """
+            QPushButton { 
+                background-color: #333; color: #ccc; border: 1px solid #444; border-radius: 2px;
+                padding: 1px 4px; font-size: 10px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #444; color: #fff; }
+            QPushButton:checked { background-color: #4CAF50; color: #fff; border: 1px solid #2E7D32; }
+        """
+        
+        self.btn_src = QPushButton("Src")
+        self.btn_src.setCheckable(True)
+        self.btn_src.setChecked(True)
+        self.btn_src.setStyleSheet(btn_style)
+        self.btn_src.clicked.connect(lambda: self._switch_view('Src'))
+        self.btn_bar.addWidget(self.btn_src)
+        
+        self.target_buttons = {}
+        for key in ['P', 'S', 'T']:
+            btn = QPushButton(key)
+            btn.setCheckable(True)
+            btn.setStyleSheet(btn_style)
+            btn.clicked.connect(lambda checked, k=key: self._switch_view(k))
+            self.btn_bar.addWidget(btn)
+            self.target_buttons[key] = btn
+            
+        layout.addLayout(self.btn_bar)
         layout.addWidget(self.header_frame)
         
         # Tree View
@@ -77,7 +112,7 @@ class ExplorerPanel(QWidget):
         self.tree = QTreeView(self)
         self.tree.setStyleSheet("""
             QTreeView {
-                background-color: transparent;
+                background-color: #2b2b2b;
                 color: #ffffff;
                 border: none;
             }
@@ -173,13 +208,31 @@ class ExplorerPanel(QWidget):
             self.tree.scrollTo(proxy_idx)
             self.tree.blockSignals(block)
         
-    def set_storage_root(self, path: str, app_id: int = None, app_name: str = None):
+    def set_storage_root(self, path: str, app_id: int = None, app_name: str = None, skip_cache=False):
         """Sets the root folder to display and updates DB to app-specific."""
         if not path or not os.path.exists(path):
             self.lbl_info.setText(_("Invalid Root"))
             self.storage_root = None
             return
             
+        if not skip_cache:
+            self.source_root = path
+            self.app_name_cache = app_name
+            # Fetch target roots from DB for this app
+            if app_id:
+                try:
+                    from src.core.link_master.database import get_lm_registry
+                    reg = get_lm_registry()
+                    apps = reg.get_apps()
+                    app_data = next((a for a in apps if a['id'] == app_id), None)
+                    if app_data:
+                        self.target_roots = {
+                            'P': app_data.get('target_root'),
+                            'S': app_data.get('target_root_2'),
+                            'T': app_data.get('target_root_3')
+                        }
+                except: pass
+
         self.storage_root = path
         self.current_app_id = app_id
         
@@ -209,7 +262,59 @@ class ExplorerPanel(QWidget):
     def _on_root_label_clicked(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.storage_root:
+                 # Phase X: Suppress navigation if checking target
+                 if self.is_checking_target: return
                  self.path_selected.emit("") # Navigate to Root
+
+    def _switch_view(self, key):
+        """Switch between Source view and Target roots (P, S, T)."""
+        if not self.source_root: return
+        
+        # Uncheck others
+        self.btn_src.setChecked(key == 'Src')
+        for k, btn in self.target_buttons.items():
+            btn.setChecked(k == key)
+            
+        if key == 'Src':
+            self.is_checking_target = False
+            self.set_storage_root(self.source_root, self.current_app_id, self.app_name_cache, skip_cache=True)
+            self.lbl_info.setStyleSheet("color: #eee; font-weight: bold;")
+        else:
+            target_path = self.target_roots.get(key)
+            if not target_path or not os.path.exists(target_path):
+                # Revert if target path is invalid
+                self.logger.warning(f"Target path for {key} is invalid: {target_path}")
+                self._switch_view('Src')
+                return
+            
+            self.is_checking_target = True
+            # Temporarily point storage_root to target for QFileSystemModel
+            self._set_tree_root_path(target_path)
+            self.lbl_info.setText(f"CHECKING: {key}")
+            self.lbl_info.setStyleSheet("color: #FF9800; font-weight: bold;")
+
+    def _on_refresh_clicked(self):
+        """Standard refresh logic."""
+        if self.storage_root:
+            self.fs_model.setRootPath(self.storage_root)
+            self.tree.setRootIndex(self.proxy_model.mapFromSource(self.fs_model.index(self.storage_root)))
+
+    def _set_tree_root_path(self, path: str):
+        """Internal helper to point tree to a specific path without full set_storage_root overhead."""
+        self.fs_model.setRootPath(path)
+        self.proxy_model.set_target_path(path)
+        
+        def _on_loaded(loaded_path):
+            if loaded_path == path:
+                src_idx = self.fs_model.index(path)
+                proxy_idx = self.proxy_model.mapFromSource(src_idx)
+                self.tree.setRootIndex(proxy_idx)
+                try:
+                    self.fs_model.directoryLoaded.disconnect(_on_loaded)
+                except: pass
+        
+        self.fs_model.directoryLoaded.connect(_on_loaded)
+        _on_loaded(path)
 
     def _on_tree_clicked(self, index):
         """Handle selection (Single Click)."""
@@ -219,12 +324,20 @@ class ExplorerPanel(QWidget):
         if modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
             return
 
+        # Phase X: Suppress navigation if checking target
+        if self.is_checking_target:
+            return
+
         rel_path = self._get_rel_path(index)
         if rel_path is not None:
              self.item_clicked.emit(rel_path)
 
     def _on_tree_double_clicked(self, index):
         """Handle navigation (Double Click)."""
+        # Phase X: Suppress navigation if checking target
+        if self.is_checking_target:
+            return
+
         rel_path = self._get_rel_path(index)
         if rel_path is not None:
              self.path_selected.emit(rel_path)

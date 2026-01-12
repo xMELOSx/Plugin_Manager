@@ -948,6 +948,10 @@ class LinkMasterDB:
     # =====================================================================
     def register_backup(self, original_path: str, backup_path: str, folder_rel_path: str = None):
         """Register a backup file for auto-restore on unlink."""
+        # Phase X: Normalize paths for consistent lookup
+        original_path = original_path.replace('\\', '/').lower() if original_path else original_path
+        backup_path = backup_path.replace('\\', '/').lower() if backup_path else backup_path
+        
         with self.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO lm_backup_registry (original_path, backup_path, folder_rel_path)
@@ -957,6 +961,7 @@ class LinkMasterDB:
 
     def get_backup_path(self, original_path: str) -> str:
         """Get the backup path for an original file path, or None if not found."""
+        original_path = original_path.replace('\\', '/').lower() if original_path else original_path
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT backup_path FROM lm_backup_registry WHERE original_path = ?", (original_path,))
@@ -965,6 +970,7 @@ class LinkMasterDB:
 
     def remove_backup_entry(self, original_path: str):
         """Remove a backup entry after restore or cleanup."""
+        original_path = original_path.replace('\\', '/').lower() if original_path else original_path
         with self.get_connection() as conn:
             conn.execute("DELETE FROM lm_backup_registry WHERE original_path = ?", (original_path,))
             conn.commit()

@@ -598,6 +598,9 @@ class Deployer:
             elif os.path.exists(target_path):
                 os.remove(target_path)
             
+            # Phase X: Restore backups for copy mode too
+            self._restore_backup_if_exists(target_path)
+            
             self.logger.info(f"Copy deployment removed: {target_path}")
             return True
         except Exception as e:
