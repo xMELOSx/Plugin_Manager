@@ -17,10 +17,11 @@ def set_app_user_model_id():
     if sys.platform == 'win32':
         import ctypes
         from src.core.version import VERSION
-        # APPID format: CompanyName.ProductName.SubProduct.VersionInformation
+        # Consistent AppUserModelID for taskbar grouping
         myappid = f'xMELOSx.DionysControl.LinkMaster.{VERSION}'
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            logging.info(f"Set AppUserModelID: {myappid}")
         except Exception as e:
             logging.error(f"Failed to set AppUserModelID: {e}")
 
@@ -36,6 +37,7 @@ def resource_path(relative_path):
 def main():
     set_app_user_model_id()
     try:
+        
         app = QApplication(sys.argv)
         # Set application name for the OS to see
         from src.core.version import APP_NAME
@@ -45,10 +47,10 @@ def main():
         app.setStyleSheet(TooltipStyles.DARK)
         
         # アイコンの読み込み (EXE対応)
-        # Prioritize 1024x1024 icon.jpg for high quality over 16x16 icon.ico
-        icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
+        # We now have high-res, transparent icon.ico generated from icon.jpg
+        icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
         if not os.path.exists(icon_path):
-            icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
+            icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
             
         if os.path.exists(icon_path):
             app.setWindowIcon(QIcon(icon_path))

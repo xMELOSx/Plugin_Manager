@@ -688,27 +688,8 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
         self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
         self.set_default_icon()
         
-        # Phase 1.1.210: Set window icon (moved from styling method to avoid redundancy)
-        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
-        if os.path.exists(icon_path):
-            pixmap = QPixmap(icon_path).scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            rounded = QPixmap(pixmap.size())
-            rounded.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(rounded)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # Use QBrush(pixmap) + drawRoundedRect for cleaner results
-            painter.setOpacity(0.92)
-            brush = QBrush(pixmap)
-            painter.setBrush(brush)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(0, 0, 24, 24, 6, 6)
-            painter.end()
-            self.icon_label.setPixmap(rounded)
-            self.icon_label.setVisible(True)
-            self.setWindowIcon(QIcon(rounded))
-        else:
-            self.set_default_icon()
+        # Phase 1.1.210: Set window icon (Unified)
+        self.set_default_icon()
 
         # Phase 1.1.211: Initial opacity sync
         if self.parent() and hasattr(self.parent(), '_bg_opacity'):

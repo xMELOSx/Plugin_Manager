@@ -34,6 +34,33 @@ def force_dark_mode(window):
             )
         except: pass
 
+def get_icon_path() -> str:
+    """Robustly resolve the application icon path across dev and bundle."""
+    import sys
+    import os
+    # Priority 1: PyInstaller bundle internal path
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    # Priority 2: Frozen EXE directory
+    elif getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+    # Priority 3: Development source tree
+    else:
+        # Expected: src/ui/frameless_window.py -> ProjectRoot/src/ui/frameless_window.py
+        # Project Root is 3 levels up from this file
+        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Check common locations
+    candidates = [
+        os.path.join(base_path, "src", "resource", "icon", "icon.ico"),
+        os.path.join(base_path, "resource", "icon", "icon.ico"),
+        os.path.join(base_path, "src", "resource", "icon", "icon.jpg"),
+        os.path.join(base_path, "resource", "icon", "icon.jpg")
+    ]
+    for c in candidates:
+        if os.path.exists(c): return c
+    return ""
+
 class FramelessWindow(QMainWindow, Win32Mixin):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -98,6 +125,7 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         self.content_area = QWidget(self.container)
         self.main_layout.addWidget(self.content_area)
         self.main_layout.setContentsMargins(0, 0, 5, 5)
+        self.set_default_icon()
 
     def setWindowTitle(self, title: str):
         super().setWindowTitle(title)
@@ -358,29 +386,58 @@ class FramelessWindow(QMainWindow, Win32Mixin):
         return False, 0 
 
     def set_window_icon_from_path(self, path: str):
+        """High-resolution, DPI-aware icon loader (Shared logic)."""
         try:
-            from PyQt6.QtGui import QPainter, QBrush
-            image = QImage(path)
-            if image.isNull(): return
-            image = image.scaled(256, 256, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            pixmap = QPixmap.fromImage(image)
+            if not os.path.exists(path): return False
             
-            # Apply rounded corners using CompositionMode for strict masking
-            size = 24
-            scaled = pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # 1. Prepare/Set QIcon - ICO files have multiple sizes
+            if path.lower().endswith('.ico'):
+                multi_icon = QIcon(path)
+            else:
+                original_image = QImage(path)
+                if original_image.isNull(): return False
+                multi_icon = QIcon()
+                for size in [256, 128, 64, 48, 32, 16]:
+                    scaled_pix = QPixmap.fromImage(original_image).scaled(
+                        size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    )
+                    multi_icon.addPixmap(scaled_pix)
             
-            # 1. Create Mask (White rounded rect on transparent)
-            mask = QPixmap(size, size)
+            self.setWindowIcon(multi_icon)
+            
+            # 2. Set Title Bar Label (Rounded, DPI aware)
+            dpr = self.devicePixelRatioF()
+            base_size = 24
+            target_size = int(base_size * dpr)
+            
+            if path.lower().endswith('.ico'):
+                scaled = multi_icon.pixmap(target_size, target_size)
+                scaled.setDevicePixelRatio(dpr)
+                if hasattr(self, 'icon_label'):
+                    self.icon_label.setPixmap(scaled)
+                    self.icon_label.setVisible(True)
+                return True
+
+            # Manual rounding for standard images
+            original_image = QImage(path)
+            scaled = QPixmap.fromImage(original_image).scaled(
+                target_size, target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+            if scaled.isNull(): return False
+
+            # Create Mask
+            mask = QPixmap(target_size, target_size)
             mask.fill(Qt.GlobalColor.transparent)
-            mask_painter = QPainter(mask)
-            mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            mask_painter.setBrush(QBrush(Qt.GlobalColor.white))
-            mask_painter.setPen(Qt.PenStyle.NoPen)
-            mask_painter.drawRoundedRect(0, 0, size, size, 6, 6)
-            mask_painter.end()
+            mask_p = QPainter(mask)
+            mask_p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            mask_p.setBrush(QBrush(Qt.GlobalColor.white))
+            mask_p.setPen(Qt.PenStyle.NoPen)
+            radius = 6 * dpr
+            mask_p.drawRoundedRect(0, 0, target_size, target_size, radius, radius)
+            mask_p.end()
             
-            # 2. Draw Image into Mask
-            rounded = QPixmap(size, size)
+            # Composition
+            rounded = QPixmap(target_size, target_size)
             rounded.fill(Qt.GlobalColor.transparent)
             p = QPainter(rounded)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -388,20 +445,27 @@ class FramelessWindow(QMainWindow, Win32Mixin):
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
             p.drawPixmap(0, 0, scaled)
             p.end()
+            rounded.setDevicePixelRatio(dpr)
             
             if hasattr(self, 'icon_label'):
                 self.icon_label.setPixmap(rounded)
                 self.icon_label.setVisible(True)
-            self.setWindowIcon(QIcon(rounded)) 
-        except: pass
-
+            return True
+        except Exception as e:
+            print(f"Icon Load Fail: {e}")
+            return False
 
     def set_default_icon(self):
-        icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
-        if hasattr(self, 'icon_label'):
-            self.icon_label.setPixmap(icon.pixmap(24, 24))
-            self.icon_label.setVisible(True)
-        self.setWindowIcon(icon)
+        """Unified default icon loader."""
+        path = get_icon_path()
+        if path:
+            self.set_window_icon_from_path(path)
+        else:
+            icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
+            if hasattr(self, 'icon_label'):
+                self.icon_label.setPixmap(icon.pixmap(24, 24))
+                self.icon_label.setVisible(True)
+            self.setWindowIcon(icon)
 
     def center_on_screen(self):
         screen = self.screen() or QApplication.primaryScreen()
@@ -455,6 +519,7 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.addWidget(self.content_area, 1) # Give content area stretch factor 1
+        self.set_default_icon()
 
     def set_resizable(self, resizable: bool): self.resizable = resizable 
     
@@ -468,25 +533,13 @@ class FramelessDialog(QDialog, Win32Mixin):
     def set_content_opacity(self, opacity: float):
         self._content_opacity = max(0.0, min(1.0, opacity))
 
+    def set_window_icon_from_path(self, path: str):
+        """Delegate to simplified high-quality logic (matching FramelessWindow)."""
+        return FramelessWindow.set_window_icon_from_path(self, path)
+
     def set_default_icon(self):
-        try:
-            # Try to load application icon from src/resource/icon/icon.ico
-            import os
-            # __file__ is src/ui/frameless_window.py -> src/ui -> src
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            icon_path = os.path.join(base_dir, "resource", "icon", "icon.ico")
-            
-            if self.set_window_icon_from_path(icon_path):
-                return
-            
-            # Fallback if failed
-            icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DesktopIcon)
-            if hasattr(self, 'icon_label'):
-                self.icon_label.setPixmap(icon.pixmap(24, 24))
-                self.icon_label.setVisible(True)
-            self.setWindowIcon(icon)
-        except:
-            pass
+        """Delegate to unified logic."""
+        return FramelessWindow.set_default_icon(self)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -649,28 +702,39 @@ class FramelessDialog(QDialog, Win32Mixin):
             
             from PyQt6.QtGui import QPainter, QBrush, QImage
             
-            # 1. Prepare a high-quality QIcon with multiple sizes
-            # This ensures taskbar and system dialogs get sharp icons
-            original_image = QImage(path)
-            if original_image.isNull():
-                return False
-                
-            multi_icon = QIcon()
-            # Standard Windows icon sizes
-            for size in [256, 128, 64, 48, 32, 16]:
-                scaled_pix = QPixmap.fromImage(original_image).scaled(
-                    size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-                )
-                multi_icon.addPixmap(scaled_pix)
+            # 1. Prepare/Set QIcon - ICO files already have multiple sizes
+            if path.lower().endswith('.ico'):
+                multi_icon = QIcon(path)
+            else:
+                original_image = QImage(path)
+                if original_image.isNull(): return False
+                multi_icon = QIcon()
+                # Standard Windows icon sizes
+                for size in [256, 128, 64, 48, 32, 16]:
+                    scaled_pix = QPixmap.fromImage(original_image).scaled(
+                        size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    )
+                    multi_icon.addPixmap(scaled_pix)
             
             self.setWindowIcon(multi_icon)
             
-            # 2. Prepare Title Bar Label Icon (Rounded, DPI aware)
+            # 2. Set Title Bar Label (Rounded, DPI aware)
             dpr = self.devicePixelRatioF()
             base_size = 24
             target_size = int(base_size * dpr)
             
-            # Use the high-res image for rounding to avoid pixelation
+            # For our generated ICO, it should already be rounded and multi-size
+            if path.lower().endswith('.ico'):
+                scaled = multi_icon.pixmap(target_size, target_size)
+                # Set DPR so it displays at logical size (e.g. 24x24) instead of physical size (e.g. 48x48)
+                scaled.setDevicePixelRatio(dpr)
+                if hasattr(self, 'icon_label'):
+                    self.icon_label.setPixmap(scaled)
+                    self.icon_label.setVisible(True)
+                return True
+
+            # For other formats (like JPG), apply rounding manually
+            original_image = QImage(path)
             scaled = QPixmap.fromImage(original_image).scaled(
                 target_size, target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )

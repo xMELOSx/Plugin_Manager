@@ -128,15 +128,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.logger.debug(f"[Profile] Scanner thread start took {time.perf_counter()-t_thread:.3f}s")
         t_icon = time.perf_counter()
         
-        # Icon Setup (User Request)
-        # Prioritize 1024x1024 icon.jpg for high quality over 16x16 icon.ico
-        icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))
-        if not os.path.exists(icon_path):
-            icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.ico"))
-            
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-            self.set_window_icon_from_path(icon_path)
+        # Icon Setup: Mouse event only. Icon loading is handled by the base class.
+        if hasattr(self, 'icon_label'):
             self.icon_label.mousePressEvent = self._icon_mouse_press
         self.logger.debug(f"[Profile] Icon setup took {time.perf_counter()-t_icon:.3f}s")
         t_win_state = time.perf_counter()
