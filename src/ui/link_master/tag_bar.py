@@ -242,7 +242,7 @@ class TagBar(QWidget):
         self.edit_btn = QPushButton("E", self)
         self.edit_btn.setObjectName("tagbar_edit_btn")
         self.edit_btn.setFixedSize(24, 24)
-        self.edit_btn.setToolTip(_("Edit Frequent Tags"))
+        self.edit_btn.setToolTip(_("Edit Quick Tags"))
         self.edit_btn.clicked.connect(self.request_edit_tags.emit)
         self.edit_btn.setStyleSheet(f"""
             QPushButton {{ 

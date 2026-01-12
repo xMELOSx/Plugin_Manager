@@ -2300,7 +2300,7 @@ class TagManagerDialog(QDialog):
             import logging; logging.info(f"[TagManagerDialog] Using global registry singleton")
         self.registry = registry
         import logging; logging.info(f"[TagManagerDialog] __init__: registry={registry is not None}")
-        self.setWindowTitle(_("Manage Frequent Tags"))
+        self.setWindowTitle(_("Manage Quick Tags"))
         self.resize(500, 400)
         self.tags = [] 
         self._dirty = False 
@@ -2377,18 +2377,46 @@ class TagManagerDialog(QDialog):
         self.tag_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         # Embedded Header Pattern: Hide built-in headers
+        # Custom styling for Horizontal Header (Premium Frameless look)
+        self.tag_table.horizontalHeader().setVisible(True)
+        self.tag_table.horizontalHeader().setStretchLastSection(True)
         self.tag_table.verticalHeader().setVisible(False)
-        self.tag_table.horizontalHeader().setVisible(False)
+        self.tag_table.verticalHeader().setDefaultSectionSize(26)  # Denser rows
+        
         self.tag_table.setShowGrid(True)
-        self.tag_table.setStyleSheet("QTableWidget { gridline-color: #3d3d3d; border: 1px solid #3d3d3d; }")
+        # Refined style: brighter selection, no dotted outline, consistent grid, dark header
+        self.tag_table.setStyleSheet("""
+            QTableWidget { 
+                gridline-color: #3d3d3d; 
+                border: 1px solid #3d3d3d; 
+                outline: none; 
+                background-color: #1e1e1e;
+            }
+            QHeaderView::section {
+                background-color: #333;
+                color: #aaa;
+                padding: 4px;
+                border: none;
+                border-right: 1px solid #444;
+                border-bottom: 1px solid #444;
+                font-weight: bold;
+            }
+            QTableWidget::item:selected { 
+                background-color: #3498db; 
+                color: white; 
+            }
+            QTableWidget::item:focus {
+                background-color: #3498db;
+            }
+        """)
         
         # Column resizing still works on hidden header
         self.tag_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tag_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.tag_table.setColumnWidth(0, 40)  # Icon
-        self.tag_table.setColumnWidth(1, 70)  # Symbol (4 chars)
-        self.tag_table.setColumnWidth(3, 50)  # Inherit
-        self.tag_table.setColumnWidth(4, 70)  # Display (表示)
+        self.tag_table.setColumnWidth(1, 60)  # Symbol
+        self.tag_table.setColumnWidth(3, 60)  # Inherit
+        # Display (表示) will stretch or be minimal
         
         self.tag_table.itemClicked.connect(self._on_table_clicked)
         self.tag_table.setDragEnabled(True)
@@ -2432,10 +2460,13 @@ class TagManagerDialog(QDialog):
         self.emoji_edit.setMaxLength(4) 
         self.emoji_edit.textChanged.connect(self._on_data_changed)
         
-        self.display_mode_combo = QComboBox() # Defined here
+        self.display_mode_combo = QComboBox()
         self.display_mode_combo.setView(QListView())
-        # Inherit color from DialogStyles.COMMON
-        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { selection-background-color: #3498db; }")
+        # Fix transparency: explicit opaque background for both combo and its view
+        self.display_mode_combo.setStyleSheet("""
+            QComboBox { background-color: #2b2b2b; color: #eee; border: 1px solid #555; padding: 2px; }
+            QComboBox QAbstractItemView { background-color: #2b2b2b; color: #eee; selection-background-color: #3498db; outline: none; }
+        """)
         self.display_mode_combo.addItem(_("Text"), "text")
         self.display_mode_combo.addItem(_("Symbol"), "symbol")
         self.display_mode_combo.addItem(_("Sym+Text"), "text_symbol")
@@ -2452,7 +2483,7 @@ class TagManagerDialog(QDialog):
         self.inheritable_check = SlideButton()
         self.inheritable_check.setChecked(True)
         self.inheritable_check.toggled.connect(self._on_data_changed)
-        form.addRow(_("Inherit to children:"), self.inheritable_check)
+        form.addRow(_("子供に継承:"), self.inheritable_check)
         
         self.icon_edit = QLineEdit()
         self.icon_edit.textChanged.connect(self._on_data_changed)
@@ -2507,7 +2538,6 @@ class TagManagerDialog(QDialog):
         btn_layout.addWidget(self.save_btn)
         
         right_layout.addWidget(btn_group)
-        layout.addWidget(self.right_panel, 10)
         
         # Common style applied in __init__
 
@@ -2601,18 +2631,18 @@ class TagManagerDialog(QDialog):
             self.empty_placeholder.setVisible(True)
             self.current_tag_ref = None
         else:
-            self.empty_placeholder.setVisible(False)
-            self.edit_container.setVisible(True)
-            if self.tag_table.currentRow() == -1:
-                if self.tag_table.rowCount() > 1:
-                    self.tag_table.selectRow(1)
-                    item = self.tag_table.item(1, 0)
-                    if item: self._on_table_clicked(item)
+            # Rebranded requirement: Don't select any item on startup
+            self.tag_table.clearSelection()
+            self.tag_table.setCurrentCell(-1, -1)
+            self.edit_container.setVisible(False)
+            self.empty_placeholder.setVisible(True)
+            self.current_tag_ref = None
+            self.overwrite_btn.setEnabled(False)
+            self.overwrite_btn.setStyleSheet("background-color: #444; color: #888;")
             
     def _on_table_clicked(self, item):
         if not item: return
         row = self.tag_table.row(item)
-        if row == 0: return # Skip custom header
         main_item = self.tag_table.item(row, 0)
         self._on_item_clicked(main_item)
 
@@ -2631,8 +2661,34 @@ class TagManagerDialog(QDialog):
 
         self.current_tag_ref = tag
         self._loading = True
+        
+        # Separator Guard: if name is "|", disable most inputs
+        is_sep = tag.get('is_sep', False) or tag.get('name') == "|"
+        
         self.edit_container.setVisible(True)
         self.empty_placeholder.setVisible(False)
+        
+        # Apply Separator Styles
+        bg_color = "#3d3d3d" if is_sep else "#1e1e1e"
+        edit_style = f"background-color: {bg_color}; color: #eee; border: 1px solid #555; padding: 4px;"
+        
+        self.name_edit.setEnabled(not is_sep)
+        self.name_edit.setStyleSheet(edit_style)
+        self.emoji_edit.setEnabled(not is_sep)
+        self.emoji_edit.setStyleSheet(edit_style)
+        self.display_mode_combo.setEnabled(not is_sep)
+        self.inheritable_check.setEnabled(not is_sep)
+        self.icon_edit.setEnabled(not is_sep)
+        self.icon_edit.setStyleSheet(edit_style)
+        self.icon_btn.setEnabled(not is_sep)
+        
+        # Button dimming
+        if is_sep:
+            self.overwrite_btn.setEnabled(False)
+            self.overwrite_btn.setStyleSheet("background-color: #444; color: #888;")
+        else:
+            self.overwrite_btn.setEnabled(True)
+            self.overwrite_btn.setStyleSheet("background-color: #2980b9; color: white;")
         self.name_edit.setText(tag.get('name', ''))
         self.emoji_edit.setText(tag.get('emoji', ''))
         mode = tag.get('display_mode', 'text')
@@ -2790,14 +2846,28 @@ class TagManagerDialog(QDialog):
         self._save_geometry()
         
         if self._dirty:
-            from PyQt6.QtWidgets import QMessageBox
-            reply = QMessageBox.question(self, _("Unsaved Changes"), _("You have unsaved changes. Do you want to save them?"), QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
-            if reply == QMessageBox.StandardButton.Save:
+            from src.ui.common_widgets import FramelessMessageBox
+            msg_box = FramelessMessageBox(self)
+            msg_box.setIcon(FramelessMessageBox.Icon.Question)
+            msg_box.setWindowTitle(_("Unsaved Changes"))
+            msg_box.setText(_("You have unsaved changes. Do you want to save them?"))
+            
+            save_btn = msg_box.addButton(_("Save"), QMessageBox.ButtonRole.AcceptRole)
+            discard_btn = msg_box.addButton(_("Discard"), QMessageBox.ButtonRole.DestructiveRole)
+            cancel_btn = msg_box.addButton(_("Cancel"), QMessageBox.ButtonRole.RejectRole)
+            
+            msg_box.exec()
+            clicked = msg_box.clickedButton()
+            
+            if clicked == save_btn:
                 self._save_and_close()
                 event.accept()
-            elif reply == QMessageBox.StandardButton.Discard: event.accept()
-            else: event.ignore()
-        else: event.accept()
+            elif clicked == discard_btn:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape: self.close()
@@ -2821,7 +2891,7 @@ class FrequentTagEditDialog(QDialog):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         
-        self.label = QLabel(_("Edit frequent tags (one per line):"))
+        self.label = QLabel(_("Edit quick tags (one per line):"))
         self.label.setStyleSheet("background: transparent; color: #ffffff; border: none;")
         layout.addWidget(self.label)
         
@@ -2845,7 +2915,13 @@ class FrequentTagEditDialog(QDialog):
 
     def _load_data(self):
         if not self.db: return
-        raw = self.db.get_setting('frequent_tags', '')
+        # User requested: "Empty on launch" (or maybe they meant the first line?)
+        # Let's keep data loading but if they want it empty we could clear it.
+        # But usually 'Edit' means loading current state.
+        # Rereading: "クイックタグ編集起動時 1番目のデータが入っているが空にする"
+        # This usually means the input fields in the Manager. 
+        # I already cleared selection in TagManagerDialog.
+        raw = self.db.get_setting('frequent_tags', '') 
         self.text_edit.setPlainText(raw)
 
     def get_data(self):
@@ -2886,20 +2962,23 @@ class TagCreationDialog(QDialog):
         form.addRow(_("Tag Name:"), self.name_edit)
         
         self.emoji_edit = QLineEdit()
-        self.emoji_edit.setPlaceholderText(_("e.g. 💼"))
+        self.emoji_edit.setPlaceholderText(_("e.g. 🎨"))
         self.emoji_edit.setMaxLength(4)
         
         # Display Mode Combo (Match TagManagerDialog)
         self.display_mode_combo = QComboBox()
         from PyQt6.QtWidgets import QListView
         self.display_mode_combo.setView(QListView()) # FORCE QSS on windows
-        # Inherit color from DialogStyles.COMMON
-        self.display_mode_combo.setStyleSheet("QComboBox QAbstractItemView { selection-background-color: #3498db; }")
+        # Explicitly set opaque background to avoid transparency issues
+        self.display_mode_combo.setStyleSheet("""
+            QComboBox { background-color: #2b2b2b; color: #eee; border: 1px solid #555; padding: 2px; }
+            QComboBox QAbstractItemView { background-color: #2b2b2b; color: #eee; selection-background-color: #3498db; outline: none; }
+        """)
         self.display_mode_combo.addItem(_("Text"), "text")
         self.display_mode_combo.addItem(_("Symbol"), "symbol")
-        self.display_mode_combo.addItem(_("Symbol + Text"), "text_symbol")
-        self.display_mode_combo.addItem(_("Image"), "image")
-        self.display_mode_combo.addItem(_("Image + Text"), "image_text")
+        self.display_mode_combo.addItem(_("Sym+Text"), "text_symbol")
+        self.display_mode_combo.addItem(_("Img"), "image")
+        self.display_mode_combo.addItem(_("Img+Text"), "image_text")
         
         emoji_h = QHBoxLayout()
         emoji_h.addWidget(self.emoji_edit)
@@ -2924,7 +3003,7 @@ class TagCreationDialog(QDialog):
         # Inheritance (Phase 18.9 compatibility)
         self.inheritable_check = SlideButton()
         self.inheritable_check.setChecked(True)
-        form.addRow(_("Inherit to children:"), self.inheritable_check)
+        form.addRow(_("子供に継承:"), self.inheritable_check)
         
         self.is_sep_check = SlideButton()
         self.is_sep_check.toggled.connect(self._on_sep_toggled)

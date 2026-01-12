@@ -21,8 +21,8 @@ class LMTagsMixin:
         """Load available tags for the current app."""
         if not self.current_app_id: return
         
-        # Only load Frequent Tags (managed via Tag Manager)
-        frequent = self._load_frequent_tags()
+        # Only load Quick Tags (managed via Tag Manager)
+        frequent = self._load_quick_tags()
         
         final_tags = list(frequent)
         
@@ -42,8 +42,8 @@ class LMTagsMixin:
             if hasattr(self.tag_bar, 'refresh_tags'):
                 self.tag_bar.refresh_tags()
 
-    def _load_frequent_tags(self):
-        """Load frequent tags from DB, supporting both JSON config and CSV fallback."""
+    def _load_quick_tags(self):
+        """Load quick tags from DB, supporting both JSON config and CSV fallback."""
         # 1. Try Loading JSON Config for Rich Tags
         raw_config = self.db.get_setting('frequent_tags_config', '[]')
         try:
@@ -155,7 +155,7 @@ class LMTagsMixin:
         self.cat_result_label.setText(f"🏷️ {visible_count} (タグフィルター: セグメントAND)")
 
     def _get_non_inheritable_tags_from_json(self):
-        """Parse frequent_tags_config to find tags marked as non-inheritable."""
+        """Parse quick_tags_config to find tags marked as non-inheritable."""
         raw = self.db.get_setting('frequent_tags_config', '[]')
         try:
             tags_data = json.loads(raw)
