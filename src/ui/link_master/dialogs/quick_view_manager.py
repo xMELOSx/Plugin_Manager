@@ -683,11 +683,10 @@ class QuickViewManagerDialog(FramelessDialog, OptionsMixin):
             QPushButton#save_btn { background-color: #3498db; border-color: #2980b9; }
         """)
         
-        # Ensure Title Bar looks correct via explicit props if base class is overridden
-        if hasattr(self, 'title_label'):
-             self.title_label.setStyleSheet("color: #cccccc; font-weight: bold; padding-left: 5px;")
-        if hasattr(self, 'title_bar'):
-             self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #444;")
+        # Use FramelessDialog container coloring but force TitleBar to be solid dark
+        self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #3d3d3d;")
+        self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
+        self.set_default_icon()
         
         # Phase 1.1.210: Set window icon (moved from styling method to avoid redundancy)
         icon_path = os.path.abspath(os.path.join("src", "resource", "icon", "icon.jpg"))

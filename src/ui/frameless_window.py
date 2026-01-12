@@ -433,7 +433,7 @@ class FramelessDialog(QDialog, Win32Mixin):
         self.content_area = QWidget(self.container)
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.addWidget(self.content_area)
+        self.main_layout.addWidget(self.content_area, 1) # Give content area stretch factor 1
 
     def set_resizable(self, resizable: bool): self.resizable = resizable 
     

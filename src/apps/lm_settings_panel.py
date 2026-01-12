@@ -15,10 +15,11 @@ Link Master: Settings Panel Mixin
 import copy
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QSpinBox, QTabWidget, QWidget, QCheckBox
+    QSlider, QSpinBox, QTabWidget, QWidget, QCheckBox, QStyle
 )
 from PyQt6.QtCore import Qt
 from src.core.lang_manager import _
+from src.ui.frameless_window import FramelessDialog
 
 
 class LMSettingsPanelMixin:
@@ -33,7 +34,12 @@ class LMSettingsPanelMixin:
         
         # Create panel if not exists
         if not hasattr(self, '_settings_panel'):
-            self._settings_panel = QFrame(self)
+            self._settings_panel = FramelessDialog(self)
+            self._settings_panel.setWindowTitle(_("Card Settings"))
+            self._settings_panel.set_default_icon()
+            
+            # Content widget for the dialog
+            content_widget = QWidget()
             self._settings_panel.setStyleSheet("""
                 QFrame { background-color: #2b2b2b; border: 2px solid #555; border-radius: 8px; }
                 QLabel { color: #ddd; padding: 2px; }
@@ -55,34 +61,35 @@ class LMSettingsPanelMixin:
             # Flag to prevent mode forcing on initial open
             self._settings_panel_initializing = False
             
-            layout = QVBoxLayout(self._settings_panel)
-            layout.setContentsMargins(8, 8, 8, 8)
-            layout.setSpacing(2)
+            layout = QVBoxLayout(content_widget)
+            layout.setContentsMargins(8, 2, 8, 8)
+            layout.setSpacing(10)
 
-            # Header with buttons
-            header = QHBoxLayout()
-            header.setSpacing(5)
-            header.addWidget(QLabel(_("<b>📓 Card Settings</b>")))
-            header.addStretch()
+            # Clean header without redundant title label (since FramelessDialog has its own)
+            header_container = QWidget()
+            header_container.setStyleSheet("background-color: transparent;")
+            header_inner_layout = QHBoxLayout(header_container)
+            header_inner_layout.setContentsMargins(5, 0, 5, 0)
+            header_inner_layout.setSpacing(10)
+            
+            header_inner_layout.addStretch()
             
             save_btn = QPushButton(_("Save"))
-            save_btn.setFixedWidth(50)
-            save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 2px; } QPushButton:hover { background-color: #2ecc71; border-color: #fff; }")
+            save_btn.setFixedWidth(60)
+            save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 6px; font-weight: bold; } QPushButton:hover { background-color: #2ecc71; }")
             save_btn.clicked.connect(self._settings_panel.hide)
-            header.addWidget(save_btn)
+            header_inner_layout.addWidget(save_btn)
             
             cancel_btn = QPushButton(_("Reset"))
-            cancel_btn.setFixedWidth(50)
-            cancel_btn.setStyleSheet("QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 2px; border: 1px solid #555; } QPushButton:hover { background-color: #4a4a4a; border-color: #999; }")
+            cancel_btn.setFixedWidth(60)
+            cancel_btn.setStyleSheet("QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 6px; border: 1px solid #555; } QPushButton:hover { background-color: #4a4a4a; }")
             cancel_btn.clicked.connect(self._cancel_settings)
-            header.addWidget(cancel_btn)
+            header_inner_layout.addWidget(cancel_btn)
             
-            close_btn = QPushButton("✕")
-            close_btn.setFixedSize(20, 20)
-            close_btn.setStyleSheet("QPushButton { border: none; color: #888; } QPushButton:hover { color: #fff; }")
-            close_btn.clicked.connect(self._cancel_settings)
-            header.addWidget(close_btn)
-            layout.addLayout(header)
+            layout.addWidget(header_container)
+            
+            # Finalize layout
+            self._settings_panel.set_content_widget(content_widget)
             
             # Lock View Mode Option
             self._lock_check = QCheckBox(_("Lock Display Mode (Persist)"))

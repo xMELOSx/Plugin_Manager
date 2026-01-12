@@ -2285,10 +2285,12 @@ class FolderPropertiesDialog(QDialog, OptionsMixin):
             
         return data
 
-class TagManagerDialog(QDialog):
+from src.ui.frameless_window import FramelessDialog
+
+class TagManagerDialog(FramelessDialog):
     def __init__(self, parent=None, db=None, registry=None):
         super().__init__(parent)
-        apply_common_dialog_style(self)
+        # FramelessDialog handles its own background styling
         self.db = db
         # Fallback: Try to get registry from parent if not provided
         if registry is None and parent and hasattr(parent, 'registry'):
@@ -2306,6 +2308,7 @@ class TagManagerDialog(QDialog):
         self._dirty = False 
         self._loading = False 
         
+        # FramelessDialog setup
         self._init_ui()
         self._load_tags()
         
@@ -2350,9 +2353,23 @@ class TagManagerDialog(QDialog):
         from PyQt6.QtGui import QIcon, QColor, QPixmap
         from PyQt6.QtCore import Qt, QRect
         
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        content_widget = QWidget()
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(10, 5, 10, 10) # Reduced top margin
         main_layout.setSpacing(5)
+        
+        # Explicit Title Bar Styling via container styling to prevent white bleed
+        self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #3d3d3d;")
+        self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
+        self.set_default_icon()
+        
+        # Consistent Button/Input styles for this dialog (Local to container)
+        content_widget.setStyleSheet("""
+            QLineEdit, QComboBox { background-color: #1e1e1e; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px; }
+            QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 6px; }
+            QPushButton:hover { background-color: #4a4a4a; }
+            QLabel { color: #ddd; }
+        """)
         
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(self.splitter)
@@ -2398,12 +2415,13 @@ class TagManagerDialog(QDialog):
                 border: 1px solid #3d3d3d; 
                 outline: none; 
                 background-color: #1e1e1e;
+                color: #eeeeee;
                 padding-left: 0px;
                 margin-left: 0px;
             }
             QHeaderView::section {
                 background-color: #333;
-                color: #aaa;
+                color: #ffffff;
                 padding: 0px;
                 border: none;
                 border-right: 1px solid #444;
@@ -2548,7 +2566,8 @@ class TagManagerDialog(QDialog):
         
         right_layout.addWidget(btn_group)
         
-        # Common style applied in __init__
+        # Finish layout
+        self.set_content_widget(content_widget)
 
     def _load_tags(self):
         if not self.db: return
@@ -2610,8 +2629,10 @@ class TagManagerDialog(QDialog):
                 sym_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tag_table.setItem(row, 1, sym_item)
                 
-                # Tag Name
+                # Tag Name (Inherits default alignment but force it to be safe)
                 name_item = QTableWidgetItem(tag.get('name', ''))
+                name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter) # Name is better left-aligned
+                name_item.setForeground(QColor("#eeeeee"))
                 self.tag_table.setItem(row, 2, name_item)
                 
                 # Inherit
@@ -2619,6 +2640,7 @@ class TagManagerDialog(QDialog):
                 inh_text = _("Yes") if inherit else _("No")
                 inh_item = QTableWidgetItem(inh_text)
                 inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                inh_item.setForeground(QColor("#eeeeee"))
                 self.tag_table.setItem(row, 3, inh_item)
                 
                 # Display Mode
@@ -2632,6 +2654,7 @@ class TagManagerDialog(QDialog):
                 }
                 mode_item = QTableWidgetItem(mode_labels.get(mode, mode))
                 mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                mode_item.setForeground(QColor("#eeeeee"))
                 self.tag_table.setItem(row, 4, mode_item)
 
             for col in range(5):
