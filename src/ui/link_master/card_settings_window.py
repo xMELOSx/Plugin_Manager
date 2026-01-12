@@ -5,10 +5,11 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QTabWidget, QSpinBox, 
                              QSlider, QMessageBox, QScrollArea)
 from src.ui.common_widgets import StyledSpinBox
+from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.core.lang_manager import _
 
-class CardSettingsWindow(QWidget):
+class CardSettingsWindow(FramelessDialog):
     # Signals to communicate back to the main window
     # type_, mode, param, value
     paramChanged = pyqtSignal(str, str, str, object)
@@ -22,14 +23,17 @@ class CardSettingsWindow(QWidget):
     cancelRequested = pyqtSignal()
     closed = pyqtSignal()
 
-    def __init__(self, current_settings, display_mode_locked):
-        super().__init__()
+    def __init__(self, current_settings, display_mode_locked, parent=None):
+        super().__init__(parent)
         self.setWindowTitle(_("Card Settings"))
-        # Use Tool window look but independent, hidden from taskbar
-        self.setWindowFlags(Qt.WindowType.Tool) 
+        self.set_default_icon()
         self.resize(400, 850)
         self.settings = current_settings
         self.locked = display_mode_locked
+        
+        # Explicit Title Bar Styling
+        self.title_bar.setStyleSheet("background-color: #2b2b2b; border-bottom: 1px solid #3d3d3d;")
+        self.title_label.setStyleSheet("color: #ffffff; background-color: transparent; font-weight: bold; padding-left: 5px;")
         
         # Apply dark theme style
         self.setStyleSheet("""
@@ -54,24 +58,24 @@ class CardSettingsWindow(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        content_widget = QWidget()
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(10, 5, 10, 10)
         main_layout.setSpacing(10)
 
-        # --- Header (Save/Reset Buttons) ---
+        # --- Header (Save/Reset Buttons) - Clean style ---
         header = QHBoxLayout()
-        header.addWidget(QLabel(_("<b>📓 Card Settings</b>")))
         header.addStretch()
         
         save_btn = QPushButton(_("Save"))
-        save_btn.setFixedWidth(60)
-        save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border: none; } QPushButton:hover { background-color: #2ecc71; }")
+        save_btn.setFixedWidth(70)
+        save_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; border-radius: 4px; padding: 6px; font-weight: bold; } QPushButton:hover { background-color: #2ecc71; }")
         save_btn.clicked.connect(self.saveRequested.emit)
         header.addWidget(save_btn)
         
         cancel_btn = QPushButton(_("Reset"))
-        cancel_btn.setFixedWidth(60)
-        cancel_btn.setStyleSheet("QPushButton { background-color: #555; color: white; border: none; } QPushButton:hover { background-color: #777; }")
+        cancel_btn.setFixedWidth(70)
+        cancel_btn.setStyleSheet("QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 6px; border: 1px solid #555; } QPushButton:hover { background-color: #4a4a4a; }")
         cancel_btn.clicked.connect(self.cancelRequested.emit)
         header.addWidget(cancel_btn)
         
@@ -149,6 +153,9 @@ class CardSettingsWindow(QWidget):
         op_spin.valueChanged.connect(update_opacity)
         
         main_layout.addLayout(row)
+        
+        # Set content area
+        self.set_content_widget(content_widget)
 
     def _create_mode_tab(self, mode):
         """Create a tab page for a specific display mode."""

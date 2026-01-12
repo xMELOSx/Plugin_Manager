@@ -526,9 +526,11 @@ class FramelessDialog(QDialog, Win32Mixin):
             try:
                 hwnd = int(self.winId())
                 GWL_STYLE = -16
-                WS_CAPTION, WS_THICKFRAME = 0x00C00000, 0x00040000
+                WS_THICKFRAME, WS_SYSMENU = 0x00040000, 0x00080000
                 style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
-                ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME)
+                # DO NOT use WS_CAPTION for Dialogs/Small Windows to avoid native title bar leak
+                # Just keep ThickFrame for resize handles if needed
+                ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_SYSMENU)
                 ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)
             except: pass
 
