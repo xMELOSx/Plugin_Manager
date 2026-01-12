@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QScrollArea, QHBoxLayout, QPushButton, QSizePolicy, QFrame
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QMimeData
 from PyQt6.QtGui import QMouseEvent, QWheelEvent, QDragEnterEvent, QDropEvent, QPixmap
+from src.ui.styles import TooltipStyles
 import os
 
 class TagWidget(QLabel):
@@ -99,19 +100,21 @@ class TagWidget(QLabel):
             return
 
         if self.selected:
-            self.setStyleSheet("""
-                QLabel {
+            self.setStyleSheet(f"""
+                QLabel {{
                     background-color: #2980b9; color: white; border: 1px solid #3498db;
                     border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;
-                }
+                }}
+                {TooltipStyles.DARK}
             """)
         else:
-            self.setStyleSheet("""
-                QLabel {
+            self.setStyleSheet(f"""
+                QLabel {{
                     background-color: #333; color: #ddd; border: 1px solid #555;
                     border-radius: 4px; padding: 2px 6px; font-size: 11px;
-                }
-                QLabel:hover { background-color: #444; border-color: #777; }
+                }}
+                QLabel:hover {{ background-color: #444; border-color: #777; }}
+                {TooltipStyles.DARK}
             """)
 
     def mousePressEvent(self, event: QMouseEvent):
@@ -241,12 +244,13 @@ class TagBar(QWidget):
         self.edit_btn.setFixedSize(24, 24)
         self.edit_btn.setToolTip(_("Edit Frequent Tags"))
         self.edit_btn.clicked.connect(self.request_edit_tags.emit)
-        self.edit_btn.setStyleSheet("""
-            QPushButton { 
+        self.edit_btn.setStyleSheet(f"""
+            QPushButton {{ 
                 background-color: #e67e22; color: white; border-radius: 12px; 
                 border: 1px solid #d35400; font-weight: bold; font-size: 10px;
-            }
-            QPushButton:hover { background-color: #d35400; }
+            }}
+            QPushButton:hover {{ background-color: #d35400; }}
+            {TooltipStyles.DARK}
         """)
         main_layout.addWidget(self.edit_btn)
         

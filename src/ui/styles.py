@@ -195,7 +195,7 @@ class TooltipStyles:
     DARK = """
         QToolTip {
             color: #ffffff;
-            background-color: #323232;
+            background-color: #2b2b2b;
             border: 1px solid #76797C;
             padding: 4px;
         }
