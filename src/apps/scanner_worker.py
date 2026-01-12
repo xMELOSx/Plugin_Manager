@@ -504,8 +504,35 @@ class ScannerWorker(QObject):
             
         # DEBUG: Trace target calculation for specific item
         # if "15Folder" in item_rel: 
-        status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
-        link_status = status_info.get('status', 'none')
+        
+        # Phase 42: Files mode special handling
+        # In files mode, individual files are placed directly in scan_base (not in a folder)
+        # We need to check if any source file exists in the target
+        if deploy_rule == 'files' and os.path.isdir(item_abs_path):
+            # Check if at least one file from source exists in scan_base
+            files_found = 0
+            files_total = 0
+            try:
+                for f in os.listdir(item_abs_path):
+                    f_path = os.path.join(item_abs_path, f)
+                    if os.path.isfile(f_path):
+                        files_total += 1
+                        target_file = os.path.join(scan_base, f)
+                        if os.path.exists(target_file) or os.path.islink(target_file):
+                            files_found += 1
+            except:
+                pass
+            
+            if files_found > 0 and files_found >= files_total:
+                link_status = 'linked'
+            elif files_found > 0:
+                link_status = 'partial'
+            else:
+                link_status = 'none'
+            status_info = {'status': link_status}
+        else:
+            status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
+            link_status = status_info.get('status', 'none')
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)
         db_status = item_config.get('last_known_status')
