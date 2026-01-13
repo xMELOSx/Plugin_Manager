@@ -205,14 +205,15 @@ class ItemCard(QFrame):
         # Phase 51: Handle Partial Status with Warning Dialog
         if self.link_status == 'partial':
             from src.ui.common_widgets import FramelessMessageBox
-            msg = FramelessMessageBox(
-                self, 
-                _("Partial Deployment"), 
-                _("This item is partially deployed (some files missing).\nWhat would you like to do?"),
-                "warning",
-                [_("Redeploy"), _("Unlink")]
-            )
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Partial Deployment"))
+            msg.setText(_("This item is partially deployed (some files missing).\nWhat would you like to do?"))
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            
             # Custom buttons returns index: 0=Redeploy, 1=Unlink
+            msg.addButton(_("Redeploy"), 0, "Blue")
+            msg.addButton(_("Unlink"), 1, "Gray")
+            
             if msg.exec() == 0:
                 # Redeploy
                 target_path = path if path else self.path

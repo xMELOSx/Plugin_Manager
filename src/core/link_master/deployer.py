@@ -445,7 +445,7 @@ class Deployer:
         return None
 
     def get_link_status(self, target_link_path: str, expected_source: str = None, 
-                        expected_transfer_mode: str = 'symlink', deploy_rule: str = 'folder') -> dict:
+                        expected_transfer_mode: str = 'symlink', deploy_rule: str = 'folder', rules: dict = None) -> dict:
         """
         Checks if the target_link_path is a valid link to expected_source.
         Returns {'status': 'linked'|'conflict'|'none', 'type': 'symlink'|'junction'|'file'|'dir'}
@@ -455,6 +455,7 @@ class Deployer:
             expected_source: The source path it should point to.
             expected_transfer_mode: 'symlink' or 'copy'. If 'copy', physical files are valid links.
             deploy_rule: 'folder', 'files', 'tree', etc. used for specialized checks.
+            rules: (dict) Optional deployment rules for Custom/Tree modes.
         """
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
             return {"status": "none", "type": "none"}
@@ -479,25 +480,10 @@ class Deployer:
                  files_found = 0
                  files_total = 0
                  
-                 # Prepare Excludes if Custom Mode
+                 # Prepare Excludes ONLY if Custom Mode
                  excludes = []
-                 if deploy_rule == 'custom':
-                     try:
-                         rules_path = os.path.join(expected_source, f"lm_deploy_rules_{self._db.get_app_id_by_path(expected_source)}.json")
-                         # Try fallback rule path check or pass rules in? 
-                         # Ideally passed in, but get_link_status signature is limited. 
-                         # We try to read standard rule file if exists.
-                         # Actually, checking expected_source for rule file is best effort.
-                         # Or check if 'excludes' passed in via kwargs? No kwargs.
-                         # Let's check the file directly.
-                         import glob
-                         json_files = glob.glob(os.path.join(expected_source, "lm_deploy_rules_*.json"))
-                         if json_files:
-                             import json
-                             with open(json_files[0], 'r', encoding='utf-8') as f:
-                                 data = json.load(f)
-                                 excludes = data.get('exclude', [])
-                     except: pass
+                 if deploy_rule == 'custom' and rules:
+                     excludes = rules.get('exclude', [])
 
                  try:
                      import fnmatch
@@ -835,10 +821,13 @@ class Deployer:
             real_mode = 'copy'
             
         # 3. Quick Path for Folder-level operations
-        excludes = rules.get('exclude', [])
-        # Overrides are only active if resolved_rule is 'custom'
-        overrides = rules.get('overrides', rules.get('rename', {})) if resolved_rule == 'custom' else {}
-        skip_levels = int(rules.get('skip_levels', 0))
+        # JSON-based excludes/overrides/skip_levels are strictly Custom/Tree Mode features
+        is_custom = resolved_rule == 'custom'
+        is_tree = resolved_rule == 'tree'
+        
+        excludes = rules.get('exclude', []) if is_custom else []
+        overrides = rules.get('overrides', rules.get('rename', {})) if is_custom else {}
+        skip_levels = int(rules.get('skip_levels', 0)) if (is_custom or is_tree) else 0
         
         has_complex_filters = (isinstance(excludes, list) and len(excludes) > 0) or \
                               (isinstance(overrides, dict) and len(overrides) > 0) or \

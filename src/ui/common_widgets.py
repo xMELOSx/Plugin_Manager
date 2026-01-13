@@ -182,6 +182,11 @@ class StyledComboBox(QComboBox):
                 border: 1px solid #555;
                 outline: none;
             }
+            QComboBox:disabled {
+                color: gray;
+                background-color: #2b2b2b;
+                border: 1px solid #444;
+            }
         """)
     
     def paintEvent(self, event):

@@ -2021,17 +2021,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         if is_custom:
             from src.core.lang_manager import _ # Ensure localization
             self.transfer_mode_override_combo.setToolTip(_("Transfer mode is determined by JSON rules in Custom mode."))
-            # Visual indication: Darker background and gray text for disabled state
-            self.transfer_mode_override_combo.setStyleSheet("""
-                QComboBox:disabled {
-                    color: gray; 
-                    background-color: #2b2b2b; 
-                    border: 1px solid #444;
-                }
-            """)
         else:
              self.transfer_mode_override_combo.setToolTip("")
-             self.transfer_mode_override_combo.setStyleSheet("") # Reset to default style
 
     def _browse_target_override(self):
         """Browse for a custom target destination path."""

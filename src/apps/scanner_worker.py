@@ -295,8 +295,16 @@ class ScannerWorker(QObject):
         
         if not effective_target_base: effective_target_base = scan_base
         
+        # Phase 51: Pass JSON rules from config to status check for proper 'partial' detection (Custom mode)
+        rules_dict = {}
+        if item_config.get('deployment_rules'):
+            try:
+                import json
+                rules_dict = json.loads(item_config['deployment_rules'])
+            except: pass
+            
         check_path = effective_target_base if deploy_rule == 'files' else os.path.join(effective_target_base, item['name'])
-        status_res = self.deployer.get_link_status(check_path, expected_source=item_abs_path, deploy_rule=deploy_rule)
+        status_res = self.deployer.get_link_status(check_path, expected_source=item_abs_path, deploy_rule=deploy_rule, rules=rules_dict)
         
         # 3. Child Status Check (Folders only) - Restored for Phase 4 markers
         has_linked_children = False
