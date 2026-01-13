@@ -906,7 +906,7 @@ class PreviewWindow(FramelessDialog):
 
             if window:
                 # 🚨 Phase 42: Use Unified Property Saving (Centralized in LMFileOpsMixin)
-                original_cfg_map = { self.folder_path: original_config }
+                original_cfg_map = { self.folder_path: self.folder_config }
                 window._apply_folder_config_updates([self.folder_path], update_kwargs, original_configs=original_cfg_map)
                 
                 # Check current link status to handle explicit toggle request
@@ -917,9 +917,9 @@ class PreviewWindow(FramelessDialog):
                 current_status = 'unlinked'
                 if self.deployer and self.target_dir:
                     # Resolve deploy_rule specifically for detection
-                    deploy_rule = update_kwargs.get('deploy_rule') or original_config.get('deploy_rule')
+                    deploy_rule = update_kwargs.get('deploy_rule') or self.folder_config.get('deploy_rule')
                     if not deploy_rule or deploy_rule == 'inherit':
-                        deploy_rule = update_kwargs.get('deploy_type') or original_config.get('deploy_type', 'folder')
+                        deploy_rule = update_kwargs.get('deploy_type') or self.folder_config.get('deploy_type', 'folder')
                     if deploy_rule == 'flatten': deploy_rule = 'files'
                     
                     if deploy_rule == 'files':
