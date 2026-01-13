@@ -176,7 +176,17 @@ def create_item_context_menu(window, rel_path, is_package_context=False):
             if not tm or tm == 'KEEP':
                  tm = app_data.get('transfer_mode', 'symlink')
 
-            status_res = window.deployer.get_link_status(target_link, expected_source=full_src, expected_transfer_mode=tm)
+            # Phase: Resolve deploy_rule specifically for detection
+            deploy_rule = config.get('deploy_rule')
+            if not deploy_rule or deploy_rule == 'inherit':
+                deploy_rule = config.get('deploy_type', 'folder')
+            if deploy_rule == 'flatten': deploy_rule = 'files'
+
+            # Fix target_link for Files mode if not already set by overrides
+            if deploy_rule == 'files' and not config.get('target_override'):
+                 target_link = target_dir
+
+            status_res = window.deployer.get_link_status(target_link, expected_source=full_src, expected_transfer_mode=tm, deploy_rule=deploy_rule)
             status = status_res.get('status', 'none')
 
             

@@ -765,11 +765,20 @@ class LMScanHandlerMixin:
                     
                     cfg = self.db.get_folder_config(rel) or {}
                     
+                    deploy_rule = cfg.get('deploy_rule')
+                    if not deploy_rule or deploy_rule == 'inherit':
+                        deploy_rule = cfg.get('deploy_type', 'folder')
+                    if deploy_rule == 'flatten': deploy_rule = 'files'
+
                     # Check status in any target root
                     status = 'none'
                     for t_root in target_roots:
-                        t_link = cfg.get('target_override') or os.path.join(t_root, d)
-                        res = self.deployer.get_link_status(t_link, expected_source=abs_src)
+                        if deploy_rule == 'files':
+                            t_link = cfg.get('target_override') or t_root
+                        else:
+                            t_link = cfg.get('target_override') or os.path.join(t_root, d)
+                        
+                        res = self.deployer.get_link_status(t_link, expected_source=abs_src, deploy_rule=deploy_rule)
                         if res.get('status') in ['linked', 'partial']:
                             status = res['status']
                             break

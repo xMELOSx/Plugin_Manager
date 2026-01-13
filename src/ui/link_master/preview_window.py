@@ -690,10 +690,21 @@ class PreviewWindow(FramelessDialog):
         # Link Enabled (Check actual filesystem status) - block signals for initial load
         is_actually_linked = False
         if self.deployer and self.folder_path:
+            # Resolve deploy_rule specifically for detection
+            deploy_rule = cfg.get('deploy_rule')
+            if not deploy_rule or deploy_rule == 'inherit':
+                deploy_rule = cfg.get('deploy_type', 'folder')
+            if deploy_rule == 'flatten': deploy_rule = 'files'
+            
             # Re-use logic from ItemCard border
-            target_link = os.path.join(self.target_dir, os.path.basename(self.folder_path)) if self.target_dir else None
+            target_link = None
+            if deploy_rule == 'files' and self.target_dir:
+                target_link = self.target_dir
+            else:
+                target_link = os.path.join(self.target_dir, os.path.basename(self.folder_path)) if self.target_dir else None
+                
             if target_link:
-                status = self.deployer.get_link_status(target_link, expected_source=self.folder_path)
+                status = self.deployer.get_link_status(target_link, expected_source=self.folder_path, deploy_rule=deploy_rule)
                 if status.get('status') in ['linked', 'conflict']: # 'conflict' counts as 'linked' for the checkbox usually
                     is_actually_linked = True
         self.deploy_check.blockSignals(True)
@@ -900,8 +911,18 @@ class PreviewWindow(FramelessDialog):
                 # Check current status
                 current_status = 'unlinked'
                 if self.deployer and self.target_dir:
-                    target_link = os.path.join(self.target_dir, os.path.basename(self.folder_path))
-                    status_info = self.deployer.get_link_status(target_link, expected_source=self.folder_path)
+                    # Resolve deploy_rule specifically for detection
+                    deploy_rule = update_kwargs.get('deploy_rule') or original_config.get('deploy_rule')
+                    if not deploy_rule or deploy_rule == 'inherit':
+                        deploy_rule = update_kwargs.get('deploy_type') or original_config.get('deploy_type', 'folder')
+                    if deploy_rule == 'flatten': deploy_rule = 'files'
+                    
+                    if deploy_rule == 'files':
+                        target_link = self.target_dir
+                    else:
+                        target_link = os.path.join(self.target_dir, os.path.basename(self.folder_path))
+                        
+                    status_info = self.deployer.get_link_status(target_link, expected_source=self.folder_path, deploy_rule=deploy_rule)
                     current_status = status_info.get('status', 'unlinked')
                 
                 currently_linked = current_status in ['linked', 'conflict']

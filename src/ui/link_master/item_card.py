@@ -518,7 +518,7 @@ class ItemCard(QFrame):
                 transfer_mode = tm
             except: pass
 
-        status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode)
+        status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode, deploy_rule=deploy_rule)
         self.link_status = status.get('status', 'none')
 
         # Phase 35: Multi-root Fallback
@@ -538,7 +538,7 @@ class ItemCard(QFrame):
                                 # but usually folder is the standard.
                                 alt_target = os.path.join(other_root, self.folder_name)
                             
-                            alt_status = self.deployer.get_link_status(alt_target, expected_source=self.path, expected_transfer_mode=transfer_mode)
+                            alt_status = self.deployer.get_link_status(alt_target, expected_source=self.path, expected_transfer_mode=transfer_mode, deploy_rule=deploy_rule)
                             if alt_status.get('status') == 'linked':
                                 self.link_status = 'linked'
                                 status = alt_status

@@ -361,13 +361,16 @@ class LMDeploymentOpsMixin:
              c_policy = app_data.get('conflict_policy', 'backup')
 
         # Phase: Unlink then Deploy (Transition Handling)
-        # If already linked, perform a sweep to remove existing links/copies 
-        # specifically pointing to this source across all app targets.
-        # This handles property changes (e.g. target_override or rule change).
+        # If already linked OR if we suspect a configuration change, perform a sweep.
+        # This handles property changes (e.g. target_override or rule change) even if
+        # the scanner already updated last_status to 'none'.
         last_status = config.get('last_known_status')
         self.logger.debug(f"[Transition-Check] '{folder_name}' last_status={last_status}, current_rule={deploy_rule}")
         
-        if last_status == 'linked' or last_status == 'partial':
+        # PROACTIVE: Always attempt sweep if we are deploying a registered mod to be safe,
+        # UNLESS it's already correctly linked (which is checked later).
+        # We trigger sweep for 'none' as well to clean up leftovers from mode changes.
+        if last_status in ('linked', 'partial', 'none'):
             self.logger.info(f"[Transition-Start] Sweeping existing deployment before re-deploy: {rel_path}")
             try:
                 # Sweep all targets for this app
@@ -378,12 +381,13 @@ class LMDeploymentOpsMixin:
             except Exception as e:
                 self.logger.warning(f"Exhaustive cleanup during transition failed: {e}")
                 # Non-blocking notification
-                msg_box = QMessageBox(self.window() if hasattr(self, 'window') else self)
-                msg_box.setIcon(QMessageBox.Icon.Warning)
-                msg_box.setWindowTitle(_("Cleanup Warning"))
-                msg_box.setText(_("Could not fully clean up previous deployment for '{name}'.\n\nError: {err}\n\nContinuing with new deployment...").format(name=folder_name, err=str(e)))
-                apply_common_dialog_style(msg_box)
-                msg_box.exec()
+                if hasattr(self, 'window'):
+                    msg_box = QMessageBox(self.window())
+                    msg_box.setIcon(QMessageBox.Icon.Warning)
+                    msg_box.setWindowTitle(_("Cleanup Warning"))
+                    msg_box.setText(_("Could not fully clean up previous deployment for '{name}'.\n\nError: {err}\n\nContinuing with new deployment...").format(name=folder_name, err=str(e)))
+                    apply_common_dialog_style(msg_box)
+                    msg_box.exec()
 
         # Determine Target Link Path
         target_link = config.get('target_override')
@@ -454,8 +458,10 @@ class LMDeploymentOpsMixin:
         if current_status == 'linked':
             self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
             if update_ui:
+                # Use standard LMScanHandlerMixin refresh methods instead of non-existent _refresh_ui
                 if hasattr(self, '_refresh_package_cards'): self._refresh_package_cards()
                 if hasattr(self, '_refresh_category_cards'): self._refresh_category_cards()
+            
             # Update DB status if it was not 'linked' before
             if config.get('last_known_status') != 'linked':
                 self.db.update_folder_display_config(rel_path, last_known_status='linked')
