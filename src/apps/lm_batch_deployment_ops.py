@@ -761,6 +761,7 @@ class LMDeploymentOpsMixin:
                         prune_entry = os.path.join(search_root, folder_name)
 
                     parent_dir = os.path.dirname(prune_entry)
+                    # Phase 32: Ensure search roots are protected during pruning
                     self.deployer._cleanup_empty_parents(parent_dir, protected_roots=set(search_roots))
                 except Exception as e:
                     self.logger.warning(f"Failed to prune parents for {search_root}: {e}")

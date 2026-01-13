@@ -363,7 +363,8 @@ class ExplorerPanel(QWidget):
         # Use currently viewed root path (either source or target P/S/T)
         path = self.fs_model.rootPath()
         if path and os.path.exists(path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            # Phase 33: Use os.startfile for EXE compatibility on Windows
+            os.startfile(os.path.normpath(path))
 
     def _on_tree_clicked(self, index):
         """Handle selection (Single Click)."""
