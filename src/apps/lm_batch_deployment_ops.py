@@ -113,6 +113,16 @@ class LMDeploymentOpsMixin:
         """Wrapper for library panel unlink signal."""
         self._unlink_single(rel_path, update_ui=True)
 
+    def _handle_redeploy_request(self, abs_path):
+        """Handle deployment RE-deploy request from ItemCard (Partial state)."""
+        if not self.storage_root: return
+        try:
+            rel_path = os.path.relpath(abs_path, self.storage_root)
+            self.logger.info(f"Redeploy requested for {rel_path}")
+            self._deploy_single(rel_path, update_ui=True)
+        except ValueError:
+            self.logger.warning(f"Could not relativize path for redeploy: {abs_path}")
+
     def _resolve_dependencies(self, rel_paths):
         """
         Recursively find all required libraries for the given rel_paths.

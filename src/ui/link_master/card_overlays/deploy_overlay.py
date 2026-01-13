@@ -47,6 +47,14 @@ class DeployOverlay(QPushButton):
             self._hover_color = QColor(46, 204, 113, 242) # 0.95 * 255
             self._border_color = QColor("#1e8449")
             self.setToolTip(_("Linked (Unlink)"))
+        elif link_status == 'partial':
+            icon_pixmap = self._get_emoji_pixmap("⚠", 16)
+            self._base_color = QColor("#f39c12")
+            self._base_color.setAlpha(int(255 * opacity))
+            self._hover_color = QColor("#f1c40f")
+            self._hover_color.setAlpha(242)
+            self._border_color = QColor("#d68910")
+            self.setToolTip(_("Partial Deployment (Repair)"))
         elif link_status == 'conflict':
             icon_pixmap = self._get_emoji_pixmap("⚠", 16)
             self._base_color = QColor(231, 76, 60, int(255 * opacity))

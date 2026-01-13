@@ -473,15 +473,41 @@ class Deployer:
         # This block handles BOTH Copy and Symlink detection for 'files' mode identically.
         # It relies on strict source-file enumeration to avoid ghost detection in target roots.
         # -------------------------------------------------------------------------
-        if deploy_rule == 'files' and expected_source and os.path.isdir(expected_source):
+        if (deploy_rule == 'files' or deploy_rule == 'custom') and expected_source and os.path.isdir(expected_source):
              # Ensure target directory exists (it might be the root itself)
              if os.path.isdir(target_link_path):
                  files_found = 0
                  files_total = 0
+                 
+                 # Prepare Excludes if Custom Mode
+                 excludes = []
+                 if deploy_rule == 'custom':
+                     try:
+                         rules_path = os.path.join(expected_source, f"lm_deploy_rules_{self._db.get_app_id_by_path(expected_source)}.json")
+                         # Try fallback rule path check or pass rules in? 
+                         # Ideally passed in, but get_link_status signature is limited. 
+                         # We try to read standard rule file if exists.
+                         # Actually, checking expected_source for rule file is best effort.
+                         # Or check if 'excludes' passed in via kwargs? No kwargs.
+                         # Let's check the file directly.
+                         import glob
+                         json_files = glob.glob(os.path.join(expected_source, "lm_deploy_rules_*.json"))
+                         if json_files:
+                             import json
+                             with open(json_files[0], 'r', encoding='utf-8') as f:
+                                 data = json.load(f)
+                                 excludes = data.get('exclude', [])
+                     except: pass
+
                  try:
+                     import fnmatch
                      for f in os.listdir(expected_source):
                          f_path = os.path.join(expected_source, f)
                          if os.path.isfile(f_path):
+                             # Exclude Check
+                             if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
+                                 continue
+                                 
                              files_total += 1
                              target_file = os.path.join(target_link_path, f)
                              
@@ -735,8 +761,16 @@ class Deployer:
 
             success_all = True
             
+            # Use 'exclude' list from rules
+            import fnmatch
+            excludes = rules.get('exclude', []) if (rules and isinstance(rules, dict)) else []
+
             # Iterate source files
             for item_name in os.listdir(source_path):
+                # Exclude Check
+                if excludes and any(fnmatch.fnmatch(item_name, pat) for pat in excludes):
+                    continue
+
                 src_item = os.path.join(source_path, item_name)
                 dst_item = os.path.join(target_link_path, item_name)
                 

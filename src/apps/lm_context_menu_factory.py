@@ -234,6 +234,10 @@ def create_item_context_menu(window, rel_path, is_package_context=False):
                     act_dep_cat = menu.addAction(_("📦 Deploy Category (All Packages)"))
                     act_dep_cat.triggered.connect(lambda: window._handle_deploy_category(rel_path))
             elif status in ('linked', 'partial'):
+                if status == 'partial':
+                    act_redeploy = menu.addAction(_("⚠ Re-deploy (Repair)"))
+                    act_redeploy.triggered.connect(lambda: window._deploy_single(rel_path, update_ui=True))
+
                 act_rem = menu.addAction(_("🔗 Unlink (Remove Safe)"))
                 act_rem.triggered.connect(lambda: window._handle_unlink_single(rel_path))
             elif status == 'conflict':

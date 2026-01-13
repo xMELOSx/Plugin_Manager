@@ -162,6 +162,10 @@ class LMCardPoolMixin:
              # Fallback/Direct if mixin not fully initialized
              card.request_deployment_toggle.connect(card.toggle_deployment)
         
+        # Connect partial redeploy request
+        if hasattr(self, '_handle_redeploy_request'):
+            card.request_redeploy.connect(self._handle_redeploy_request)
+        
         # Phase 28: Alt+Double-Click to open property editor for any item
         if hasattr(self, '_open_properties_for_path'):
             card.request_edit_properties.connect(self._open_properties_for_path)

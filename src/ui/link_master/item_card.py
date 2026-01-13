@@ -68,6 +68,7 @@ class ItemCard(QFrame):
     request_reorder = pyqtSignal(str, str)         # New: path, "top" or "bottom"
     request_edit_properties = pyqtSignal(str)      # Phase 28: Alt+Double-Click -> Edit Properties
     request_focus_library = pyqtSignal(str)        # Phase 32: Focus library in library tab
+    request_redeploy = pyqtSignal(str)             # Phase 51: Partial -> Redeploy
     def __init__(self, name: str, path: str, image_path: str = None, loader = None,
                  deployer = None, target_dir: str = None, parent=None,
                  storage_root: str = None, db = None,
@@ -200,6 +201,28 @@ class ItemCard(QFrame):
     def toggle_deployment(self, path=None, is_package=None):
         """Phase 30: Direct deployment trigger from card button or public API."""
         if not self.deployer: return
+        
+        # Phase 51: Handle Partial Status with Warning Dialog
+        if self.link_status == 'partial':
+            from src.ui.common_widgets import FramelessMessageBox
+            msg = FramelessMessageBox(
+                self, 
+                _("Partial Deployment"), 
+                _("This item is partially deployed (some files missing).\nWhat would you like to do?"),
+                "warning",
+                [_("Redeploy"), _("Unlink")]
+            )
+            # Custom buttons returns index: 0=Redeploy, 1=Unlink
+            if msg.exec() == 0:
+                # Redeploy
+                target_path = path if path else self.path
+                self.request_redeploy.emit(target_path)
+                return
+            else:
+                # Unlink (Fall through to standard toggle, which will see 'partial' and treat as 'unlink' attempt? 
+                # Or we explicitly ask for unlink?
+                # Usually toggle unlinks if status != none. Partial is != none, so it should unlink.
+                pass
         
         # If this is a category (folder) but we are in Package View, 
         # it might be allowed to deploy as a package via debug flag.
