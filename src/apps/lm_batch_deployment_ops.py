@@ -510,77 +510,42 @@ class LMDeploymentOpsMixin:
                 return False
 
 
-        # Phase 50: Explicit Handling for 'files' (Flatten) + 'symlink'
-        # To avoid any ambiguity in deployer.py's recursion or parallel rules, we handle this case explicitly here.
-        if deploy_rule == 'files' and transfer_mode == 'symlink':
-            self.logger.info(f"[DeploySingle] Explicit Flat Symlink deployment for: {folder_name}")
-            try:
-                if not os.path.exists(target_link):
-                    os.makedirs(target_link, exist_ok=True)
+        # Standard Delegation
+        try:
+            success = self.deployer.deploy_with_rules(
+                full_src, target_link, rules, 
+                deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
+                conflict_policy=c_policy,
+                package_rel_path=rel_path # Phase 42 Tracking
+            )
+        except DeploymentCollisionError as e:
+            self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
+            
+            # Show Dialog
+            detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
+            
+            # Limit display to first 10
+            display_limit = 10
+            count = 0
+            for item in e.collisions:
+                if count >= display_limit:
+                    detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
+                    break
                 
-                items_deployed = 0
-                errors = []
+                # item is dict: target, source_existing, source_conflicting
+                tgt = item['target']
+                src_exist = os.path.basename(item['source_existing'])
+                src_new = os.path.basename(item['source_conflicting'])
+                detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
+                count += 1
                 
-                # Recursive walk to find all files
-                for root, dirs, files in os.walk(full_src):
-                    for name in files:
-                        src_path = os.path.join(root, name)
-                        # Flat mode: Target is directly in target_link (root)
-                        # Collision check is implied (deploy_link handles conflict policy)
-                        tgt_path = os.path.join(target_link, name)
-                        
-                        if self.deployer.deploy_link(src_path, tgt_path, conflict_policy=c_policy):
-                            items_deployed += 1
-                        else:
-                            errors.append(name)
-                
-                if items_deployed > 0:
-                    self.logger.info(f"[DeploySingle] Successfully flat-linked {items_deployed} files.")
-                    success = True
-                else:
-                    self.logger.warning(f"[DeploySingle] No files were linked. Errors: {errors}")
-                    success = False
-                    
-            except Exception as e:
-                self.logger.error(f"[DeploySingle] Flat Symlink failed: {e}")
-                success = False
-        else:
-            # Standard Delegation
-            try:
-                success = self.deployer.deploy_with_rules(
-                    full_src, target_link, rules, 
-                    deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
-                    conflict_policy=c_policy,
-                    package_rel_path=rel_path # Phase 42 Tracking
-                )
-            except DeploymentCollisionError as e:
-                self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
-                
-                # Show Dialog
-                detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
-                
-                # Limit display to first 10
-                display_limit = 10
-                count = 0
-                for item in e.collisions:
-                    if count >= display_limit:
-                        detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
-                        break
-                    
-                    # item is dict: target, source_existing, source_conflicting
-                    tgt = item['target']
-                    src_exist = os.path.basename(item['source_existing'])
-                    src_new = os.path.basename(item['source_conflicting'])
-                    detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
-                    count += 1
-                    
-                msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
-                msg_box.setIcon(FramelessMessageBox.Icon.Critical)
-                msg_box.setWindowTitle(_("Deployment Collision"))
-                msg_box.setText(detail_txt)
-                # apply_common_dialog_style(msg_box)
-                msg_box.exec()
-                return False
+            msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+            msg_box.setIcon(FramelessMessageBox.Icon.Critical)
+            msg_box.setWindowTitle(_("Deployment Collision"))
+            msg_box.setText(detail_txt)
+            # apply_common_dialog_style(msg_box)
+            msg_box.exec()
+            return False
         
         try:
             if success:
@@ -757,13 +722,15 @@ class LMDeploymentOpsMixin:
         current_status = config.get('last_known_status')
         if current_status == 'linked' or current_status == 'partial':
              self.logger.info(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
-             failed_paths = []
+             failed_paths_list = [] # Renaming to avoid any scope confusion
              try:
                  target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
-                 _, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                 _, result_failed = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                 if result_failed:
+                     failed_paths_list = result_failed
                  
-                 if failed_paths:
-                     self._show_cleanup_failure_dialog(failed_paths)
+                 if failed_paths_list:
+                     self._show_cleanup_failure_dialog(failed_paths_list)
              except Exception as e:
                  self.logger.warning(f"Exhaustive cleanup during unlink failed: {e}")
              

@@ -499,34 +499,63 @@ class Deployer:
         # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
         # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
         # OR if it's a file. If it's a directory, it might just be the search root (collision!).
+
+        # -------------------------------------------------------------------------
+        # 🚨 UNIFIED FLATTEN (FILES) MODE CHECK
+        # This block handles BOTH Copy and Symlink detection for 'files' mode identically.
+        # It relies on strict source-file enumeration to avoid ghost detection in target roots.
+        # -------------------------------------------------------------------------
+        if deploy_rule == 'files' and expected_source and os.path.isdir(expected_source):
+             # Ensure target directory exists (it might be the root itself)
+             if os.path.isdir(target_link_path):
+                 files_found = 0
+                 files_total = 0
+                 try:
+                     for f in os.listdir(expected_source):
+                         f_path = os.path.join(expected_source, f)
+                         if os.path.isfile(f_path):
+                             files_total += 1
+                             target_file = os.path.join(target_link_path, f)
+                             
+                             # Check 1: Is it a symlink? (Valid for Symlink mode, or unexpected in Copy mode)
+                             if os.path.islink(target_file):
+                                 real = os.readlink(target_file)
+                                 # Resolve relative links
+                                 if not os.path.isabs(real):
+                                     real = os.path.join(os.path.dirname(target_file), real)
+                                 
+                                 if self._normalize_path(real) == self._normalize_path(f_path):
+                                     files_found += 1
+                                     continue
+
+                             # Check 2: Is it a physical file? (Valid for Copy mode)
+                             if os.path.isfile(target_file) and not os.path.islink(target_file):
+                                 # For Copy mode, we ideally check DB or just existence if simplistic
+                                 # We accept existence as "linked" for flat files to prevent overwrites, 
+                                 # matching original logic.
+                                 files_found += 1
+                                 continue
+                 except Exception as e:
+                     # self.logger.warning(f"Flat check error: {e}")
+                     pass
+                 
+                 if files_found > 0:
+                     if files_found >= files_total:
+                         # Determine type based on majority?? No, just report 'linked' and let deployment type resolve itself if needed?
+                         # Or respect expected_transfer_mode for labeling?
+                         return {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "file"}
+                     else:
+                         return {"status": "partial", "type": expected_transfer_mode if expected_transfer_mode else "file"}
+                 
+                 # If we are in 'files' mode and found NOTHING, we explicitly return NONE 
+                 # to prevent falling through to os.walk and finding ghosts.
+                 return {"status": "none", "type": "none"}
+
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
              exists = os.path.exists(target_link_path)
              
              if exists and not is_link:
-                 # Special Case: Flatten (files) mode check
-                 if deploy_rule == 'files' and expected_source and os.path.isdir(expected_source):
-                     # Check if at least one file from source exists in target_link_path
-                     files_found = 0
-                     files_total = 0
-                     try:
-                         for f in os.listdir(expected_source):
-                             f_path = os.path.join(expected_source, f)
-                             if os.path.isfile(f_path):
-                                 files_total += 1
-                                 target_file = os.path.join(target_link_path, f)
-                                 if os.path.exists(target_file) or os.path.islink(target_file):
-                                     files_found += 1
-                     except: pass
-                     
-                     if files_found > 0:
-                         if files_found >= files_total:
-                             return {"status": "linked", "type": "copy"}
-                         else:
-                             return {"status": "partial", "type": "copy"}
-                     # If it's the search root but no files found, it's none.
-                     return {"status": "none", "type": "search_root"}
-
                  
                  if os.path.isfile(target_link_path):
                      # If it's a file, we can't easily verify source without metadata, 
@@ -568,18 +597,26 @@ class Deployer:
             if expected_source:
                 exp_norm = self._normalize_path(expected_source)
                 try:
-                    # 1. Symlink-based partial detection
-                    for root, dirs, files in os.walk(target_link_path):
-                        for name in files + dirs:
-                            path = os.path.join(root, name)
-                            if os.path.islink(path):
-                                real = os.readlink(path)
-                                if not os.path.isabs(real):
-                                    real = os.path.join(os.path.dirname(path), real)
-                                
-                                real_norm = self._normalize_path(real)
-                                if real_norm.startswith(exp_norm):
-                                    return {"status": "linked", "type": "partial"}
+                    # 1. Symlink-based partial detection (Standard Tree/Folder Fallback)
+                    # Note: We skip this if we already handled 'files' mode to avoid double counting or inefficiency
+                    # But for tree mode, we still need it? 
+                    # If deploy_rule was 'files', we returned above (if >0 found). 
+                    # If deploy_rule was 'files' and found 0, we fall through.
+                    # 🚨 FIX: For 'files' mode, we should NOT scan recursively. 
+                    # If we didn't find the specific files above, we shouldn't hunt for ghosts in subdirs.
+                    
+                    if deploy_rule != 'files':
+                        for root, dirs, files in os.walk(target_link_path):
+                            for name in files + dirs:
+                                path = os.path.join(root, name)
+                                if os.path.islink(path):
+                                    real = os.readlink(path)
+                                    if not os.path.isabs(real):
+                                        real = os.path.join(os.path.dirname(path), real)
+                                    
+                                    real_norm = self._normalize_path(real)
+                                    if real_norm.startswith(exp_norm):
+                                        return {"status": "linked", "type": "partial"}
                 except: pass
             
             # 2. DB-based directory detection (Phase 43)
