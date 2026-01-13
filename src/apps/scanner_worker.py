@@ -461,7 +461,7 @@ class ScannerWorker(QObject):
                   # For 'folder' mode: T/A.
                   # For 'files' mode: T/A (if flattening into T/A) or T (if flattening into T directly)?
                   # App standard is: Roots contain the Item Folders.
-                  effective_rel_to_base = item['name']
+                  effective_rel_to_base = ""
                   scan_base_debug = f"[Direct Override] {item_target_base}"
 
              # Construct final link based on rule
@@ -482,7 +482,7 @@ class ScannerWorker(QObject):
              # Standard default logic (Primary Root)
              # Use original relative path from storage root
              if deploy_rule == 'files':
-                 target_link = os.path.join(scan_base, item['name'])
+                 target_link = scan_base
              elif deploy_rule == 'tree':
                   rules_json = item_config.get('deployment_rules')
                   skip_val = 0
@@ -492,7 +492,7 @@ class ScannerWorker(QObject):
                          skip_val = int(ro.get('skip_levels', 0))
                      except: pass
                   
-                  parts = item_rel.split('/')
+                  parts = item_rel.replace('\\', '/').split('/')
                   if len(parts) > skip_val:
                      mirrored = "/".join(parts[skip_val:])
                      target_link = os.path.join(scan_base, mirrored)

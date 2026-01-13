@@ -360,6 +360,26 @@ class LMDeploymentOpsMixin:
         if c_policy == "default":
              c_policy = app_data.get('conflict_policy', 'backup')
 
+        # Phase: Unlink then Deploy (Transition Handling)
+        # If already linked, perform a sweep to remove existing links/copies 
+        # specifically pointing to this source across all app targets.
+        # This handles property changes (e.g. target_override or rule change).
+        if config.get('last_known_status') == 'linked':
+            self.logger.info(f"[Transition] Sweeping existing deployment before re-deploy: {rel_path}")
+            try:
+                # Sweep all targets for this app
+                target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+                self.deployer.remove_links_pointing_to(target_roots, full_src)
+            except Exception as e:
+                self.logger.warning(f"Exhaustive cleanup during transition failed: {e}")
+                # Non-blocking notification
+                msg_box = QMessageBox(self.window() if hasattr(self, 'window') else self)
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.setWindowTitle(_("Cleanup Warning"))
+                msg_box.setText(_("Could not fully clean up previous deployment for '{name}'.\n\nError: {err}\n\nContinuing with new deployment...").format(name=folder_name, err=str(e)))
+                apply_common_dialog_style(msg_box)
+                msg_box.exec()
+
         # Determine Target Link Path
         target_link = config.get('target_override')
         if not target_link:
@@ -660,6 +680,7 @@ class LMDeploymentOpsMixin:
                 continue
 
             # Determine Target Link Path (Replicated from deployer logic)
+            rules_json = config.get('deployment_rules')
             target_link = config.get('target_override')
             if not target_link:
                 if deploy_rule == 'files':
@@ -668,7 +689,6 @@ class LMDeploymentOpsMixin:
                      # Tree mode logic
                      import json
                      skip_val = 0
-                     rules_json = config.get('deployment_rules')
                      if rules_json:
                          try:
                              rules_obj = json.loads(rules_json)
@@ -686,17 +706,13 @@ class LMDeploymentOpsMixin:
                     target_link = os.path.join(search_root, folder_name)
             
             # Use unified undeploy with transfer_mode
-            # For Tree/Files+Copy/Symlink modes, we need file-by-file deletion to avoid deleting unrelated content (Search Roots)
-            if deploy_rule == 'tree':
-                 # Safe Tree Undeploy: delete source-matched files only, then prune empty dirs
-                 deleted_count = self._safe_tree_undeploy(full_src, target_link)
+            # For Tree/Files/Custom modes, we need file-by-file deletion to avoid deleting unrelated content
+            if deploy_rule in ('tree', 'files', 'custom'):
+                 # Safe Batch Undeploy: delete source-matched files only, then prune empty dirs
+                 # We use search_root as base because _safe_batch_undeploy handles mirroring/overrides internally
+                 deleted_count = self._safe_batch_undeploy(full_src, search_root, deploy_rule, rules_json=rules_json)
                  if deleted_count > 0:
-                      self.logger.info(f"Tree undeploy: removed {deleted_count} items from {target_link}")
-            elif deploy_rule == 'files':
-                 # Safe Files Undeploy: delete source-matched files directly in search root
-                 deleted_count = self._safe_files_undeploy(full_src, target_link)
-                 if deleted_count > 0:
-                      self.logger.info(f"Files undeploy: removed {deleted_count} items from {target_link}")
+                      self.logger.info(f"Batch undeploy ({deploy_rule}): removed {deleted_count} items from {search_root}")
             else:
                  # 🚨 Safety Check: Avoid unlinking the search root itself unless it is genuinely a link to us
                  if target_link:
@@ -795,114 +811,94 @@ class LMDeploymentOpsMixin:
         
         return dependent_packages
 
-    def _safe_files_undeploy(self, source_path: str, target_dir: str) -> int:
+    def _safe_batch_undeploy(self, source_path: str, target_base: str, deploy_rule: str, rules_json: str = None) -> int:
         """
-        Safely undeploy 'files' (Flatten) mode by deleting only files that match the source.
-        This prevents accidental deletion of the search root.
+        Unified safe undeploy for Tree, Files (Flatten), and Custom modes.
+        Walks the source and deletes matching files in the target according to rules.
         """
+        import json
         if not os.path.isdir(source_path): return 0
-        if not os.path.isdir(target_dir): return 0
+        if not os.path.isdir(target_base): return 0
+        
+        # Parse rules
+        rules = {}
+        if rules_json:
+            try: rules = json.loads(rules_json)
+            except: pass
+        
+        overrides = rules.get('overrides', rules.get('rename', {})) if deploy_rule == 'custom' else {}
+        skip_levels = int(rules.get('skip_levels', 0))
         
         deleted_count = 0
-        try:
-            for root, dirs, files in os.walk(source_path):
-                # Flatten mode puts EVERYTHING in target_dir regardless of subfolders
-                for f in files:
-                    target_file = os.path.join(target_dir, f)
-                    if os.path.exists(target_file):
-                        # Verify it's either a symlink OR a physical copy
-                        # (Note: we don't strictly check if it points to US here, 
-                        # just like tree undeploy, to maintain consistency)
-                        try:
-                            if os.path.islink(target_file):
-                                os.unlink(target_file)
-                            else:
-                                os.remove(target_file)
-                            deleted_count += 1
-                        except: pass
-        except Exception as e:
-            self.logger.error(f"Safe files undeploy failed: {e}")
+        deleted_dirs = set()
+        
+        self.logger.debug(f"Starting safe batch undeploy: rule={deploy_rule}, target={target_base}")
+        
+        for root, dirs, files in os.walk(source_path):
+            rel_root = os.path.relpath(root, source_path).replace('\\', '/')
+            if rel_root == ".": rel_root = ""
             
-        return deleted_count
+            # Skip levels check
+            start_lvl = 0
+            if rel_root:
+                start_lvl = len(rel_root.split('/'))
+            
+            if start_lvl < skip_levels and deploy_rule != 'files':
+                continue
 
-    def _safe_tree_undeploy(self, source_path: str, target_root: str) -> int:
-        """
-        Safely undeploy Tree mode copies by deleting only source-matched files,
-        then pruning only empty directories.
-        
-        Args:
-            source_path: The source folder that was deployed.
-            target_root: The target folder where files were copied to.
-        
-        Returns:
-            Number of items deleted.
-        """
-        import shutil
-        
-        if not os.path.isdir(source_path):
-             self.logger.warning(f"Source path is not a directory: {source_path}")
-             return 0
-        
-        deleted_count = 0
-        deleted_dirs = []  # Track directories to prune later
-        
-        # Phase 1: Delete files that match source structure
-        for root, dirs, files in os.walk(source_path, topdown=False):
-            # Calculate relative path from source_path
-            rel_root = os.path.relpath(root, source_path)
-            if rel_root == '.':
-                 target_dir = target_root
-            else:
-                 target_dir = os.path.join(target_root, rel_root)
-            
-            # Delete files (including symlinks)
-            for f in files:
-                target_file = os.path.join(target_dir, f)
-                # Phase 32: Remove items regardless of link status to ensure clean undeploy
+            for name in files:
+                rel_path = f"{rel_root}/{name}" if rel_root else name
+                
+                # Determine deploy path (mirrors deployer logic)
+                deploy_path = rel_path
+                if deploy_rule == 'custom' and rel_path in overrides:
+                    deploy_path = overrides[rel_path]
+                elif deploy_rule == 'files':
+                    deploy_path = name
+                
+                # Adjust for skip levels
+                if skip_levels > 0 and deploy_rule != 'files':
+                    parts = deploy_path.split('/')
+                    if len(parts) > skip_levels:
+                        deploy_path = '/'.join(parts[skip_levels:])
+                    else:
+                        continue
+
+                target_file = os.path.join(target_base, deploy_path.replace('/', os.sep))
+                
                 if os.path.lexists(target_file):
                     try:
-                        os.remove(target_file)
+                        if os.path.islink(target_file):
+                            os.unlink(target_file)
+                        else:
+                            os.remove(target_file)
                         deleted_count += 1
-                        self.logger.debug(f"Deleted item: {target_file}")
+                        # Mark parent for pruning
+                        deleted_dirs.add(os.path.dirname(target_file))
                     except Exception as e:
-                        self.logger.warning(f"Failed to delete item {target_file}: {e}")
+                        self.logger.warning(f"Failed to delete {target_file}: {e}")
+
+        # Prune empty directories
+        if deleted_dirs:
+            sorted_dirs = sorted(list(deleted_dirs), key=len, reverse=True)
+            app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
+            protected_roots = set()
+            if app_data:
+                for k in ['target_root', 'target_root_2', 'target_root_3']:
+                    if app_data.get(k): protected_roots.add(os.path.normpath(app_data[k]).lower())
             
-            # Mark directories for potential pruning (handle later)
-            for d in dirs:
-                target_subdir = os.path.join(target_dir, d)
-                if os.path.isdir(target_subdir) and not os.path.islink(target_subdir):
-                    deleted_dirs.append(target_subdir)
-        
-        # Add the root target itself for pruning check
-        deleted_dirs.append(target_root)
-        
-        # Phase 2: Prune ONLY empty directories (deepest first via sorting by length)
-        # Sort by path length descending to process deepest dirs first
-        deleted_dirs.sort(key=lambda x: len(x), reverse=True)
-        
-        # Determine if target_root should be protected
-        app_data = self.app_combo.currentData() if hasattr(self, 'app_combo') else None
-        protected_roots = set()
-        if app_data:
-             for k in ['target_root', 'target_root_2', 'target_root_3']:
-                  if k in app_data and app_data[k]:
-                       protected_roots.add(os.path.normpath(app_data[k]).lower())
-
-        for d in deleted_dirs:
-            if os.path.isdir(d):
-                # Skip deletion if it's one of the main target roots
-                if os.path.normpath(d).lower() in protected_roots:
-                     continue
-
-                try:
-                    # Only remove if EMPTY
-                    if not os.listdir(d):
-                        os.rmdir(d)
-                        deleted_count += 1
-                        self.logger.debug(f"Pruned empty dir: {d}")
-                except Exception as e:
-                    self.logger.debug(f"Could not prune dir {d}: {e}")
-        
+            for d in sorted_dirs:
+                curr = d
+                while curr:
+                    if not os.path.isdir(curr): break
+                    if os.path.normpath(curr).lower() in protected_roots: break
+                    try:
+                        if not os.listdir(curr):
+                            os.rmdir(curr)
+                            curr = os.path.dirname(curr)
+                        else: break
+                    except: break
+                    
         return deleted_count
 
     def _deploy_items(self, rel_paths, skip_refresh=False):

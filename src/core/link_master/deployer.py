@@ -481,13 +481,39 @@ class Deployer:
             return {"status": "none", "type": "none"}
         
         # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
-        # If we expect a copy, and the target exists physically (file or dir), we treat it as linked.
+        # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
+        # OR if it's a file. If it's a directory, it might just be the search root (collision!).
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
              exists = os.path.exists(target_link_path)
              
-             # If it exists and is NOT a symlink, it's a valid copy deployment
              if exists and not is_link:
+                 # Check for metadata
+                 copy_meta = self._get_copy_metadata(target_link_path)
+                 if copy_meta and expected_source:
+                     norm_meta = self._normalize_path(copy_meta.get('source', ''))
+                     norm_exp = self._normalize_path(expected_source)
+                     if norm_meta == norm_exp:
+                         return {"status": "linked", "type": "copy"}
+                 
+                 if os.path.isfile(target_link_path):
+                     # If it's a file, we can't easily verify source without metadata, 
+                     # but it's better than incorrectly flagging search roots as linked.
+                     return {"status": "linked", "type": "copy"}
+
+                 # For directories, existence is NOT enough if it could be a search root.
+                 from src.core.link_master.database import LinkMasterRegistry
+                 registry = LinkMasterRegistry()
+                 all_apps = registry.get_apps()
+                 protected_roots = set()
+                 for app in all_apps:
+                     for key in ['target_root', 'target_root_2', 'target_root_3']:
+                         if app.get(key): protected_roots.add(os.path.normpath(app.get(key)).lower())
+                 
+                 if os.path.normpath(target_link_path).lower() in protected_roots:
+                     return {"status": "none", "type": "search_root"}
+                 
+                 # If it's a subfolder that is NOT a search root, it's likely our folder-level deployment.
                  return {"status": "linked", "type": "copy"}
              
              # If it IS a symlink but we expected copy, it's technically a conflict (or user change)
@@ -596,14 +622,28 @@ class Deployer:
             
             # 🚨 Safety Check: NEVER remove a directory if it's a registered search root
             if os.path.isdir(target_path):
-                # We need to check against app target roots
-                # Since Deployer is core, it doesn't have app_combo.
-                # But we can check if it's EMPTY or if it matches common patterns.
-                # Better: lm_batch_deployment_ops should have handled this, but as a last resort:
-                if not os.listdir(target_path):
-                     os.rmdir(target_path)
-                else:
-                     self.logger.warning(f"Undeploy Safety: Refusing to rmtree non-empty directory (possibly search root): {target_path}")
+                # Get protected roots from registry
+                from src.core.link_master.database import LinkMasterRegistry
+                registry = LinkMasterRegistry()
+                all_apps = registry.get_apps()
+                protected_roots = set()
+                for app in all_apps:
+                    for key in ['target_root', 'target_root_2', 'target_root_3']:
+                        if app.get(key): protected_roots.add(os.path.normpath(app.get(key)).lower())
+                
+                norm_target = os.path.normpath(target_path).lower()
+                if norm_target in protected_roots:
+                     self.logger.error(f"Undeploy Safety: Blocked attempt to delete search root: {target_path}")
+                     return False
+                
+                # If verified not a root, we can rmtree.
+                try:
+                    import shutil
+                    shutil.rmtree(target_path)
+                    self.logger.info(f"Successfully removed copy-deployed directory: {target_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to rmtree {target_path}: {e}")
+                    return False
             elif os.path.exists(target_path):
                 os.remove(target_path)
             
@@ -726,9 +766,13 @@ class Deployer:
                     if resolved_rule == 'custom' and rel_path in overrides:
                          deploy_path = overrides[rel_path]
                     
+                    # 🚨 NEW: Handle 'files' (Flatten) mode - strip directory structure
+                    if resolved_rule == 'files':
+                        deploy_path = name
+
                     # Determine target path
                     # Adjust for skip levels: remove first N components
-                    if skip_levels > 0:
+                    if skip_levels > 0 and resolved_rule != 'files':
                         parts = deploy_path.split('/')
                         if len(parts) > skip_levels:
                             deploy_path = '/'.join(parts[skip_levels:])
@@ -783,6 +827,11 @@ class Deployer:
             if real_mode == 'copy':
                 self.logger.info(f"Parallel bulk copy: {len(files_to_deploy)} files")
                 results = self.deploy_copies_batch(files_to_deploy, conflict_policy)
+                # Phase X: Save metadata to facilitate unlinking and status check
+                # Check for overall success in results
+                any_success = any(r['status'] == 'success' for r in results)
+                if any_success and resolved_rule != 'files':
+                     self._save_copy_metadata(target_link_path, source_path)
             else:
                 self.logger.info(f"Parallel bulk symlink: {len(files_to_deploy)} files")
                 results = self.deploy_links_batch(files_to_deploy, conflict_policy)
@@ -998,6 +1047,12 @@ class Deployer:
                             if self._normalize_path(real).startswith(source_root_norm):
                                 orphan_links.append(path)
                         except: pass
+                    else:
+                        # Check for copy metadata
+                        meta = self._get_copy_metadata(path)
+                        if meta:
+                            if self._normalize_path(meta.get('source', '')).startswith(source_root_norm):
+                                orphan_links.append(path)
                 
                 # Track empty folders for later cleanup (except the search root itself)
                 if root != root_dir:
