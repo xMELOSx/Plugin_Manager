@@ -549,7 +549,7 @@ class ItemCard(QFrame):
         # Debug: Log detection result
         import logging
         cat_deploy = getattr(self, 'category_deploy_status', 'None')
-        logging.debug(f"[UpdateData] {os.path.basename(self.path)} (Status: {self.link_status}, Deploy: {self.deploy_rule})")
+        logging.debug(f"[UpdateData] {os.path.basename(self.path)} (Status: {self.link_status}, Deploy: {self.deploy_type})")
         
         self.has_physical_conflict = (self.link_status == 'conflict')
 

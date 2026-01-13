@@ -275,11 +275,6 @@ class LMFileOpsMixin:
             updates_to_apply = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
             if not updates_to_apply: return
 
-        from PyQt6.QtWidgets import QApplication
-        from src.ui.toast import Toast
-        active_win = QApplication.activeWindow() or self
-        Toast.show_toast(active_win, _("Folder properties saved successfully"), preset="success")
-
         for abs_path in target_paths:
             try:
                 rel = os.path.relpath(abs_path, storage_root).replace('\\', '/')
@@ -294,6 +289,17 @@ class LMFileOpsMixin:
                     # If no original provided, assume impact if any affecting key is in updates (Safe default)
                     impacts_link = any(k in updates_to_apply for k in self.LINK_AFFECTING_KEYS)
                 
+                # Capture current link status BEFORE any updates
+                # This prevents a race condition where ItemCard.update_data re-checks status 
+                # using the NEW rules before we've had a chance to sweep the old ones.
+                was_linked = False
+                card = self._get_active_card_by_path(abs_path.replace('\\', '/'))
+                if card:
+                    was_linked = (card.link_status == 'linked')
+                else:
+                    cfg = self.db.get_folder_config(rel)
+                    was_linked = (cfg and cfg.get('last_known_status') == 'linked')
+
                 # Special Case: is_partial calculation for deployment_rules
                 if 'deployment_rules' in updates_to_apply:
                     is_partial = False
@@ -314,34 +320,35 @@ class LMFileOpsMixin:
                 self.db.update_folder_display_config(rel, **updates_to_apply)
                 
                 # UI Update (Card)
-                card = self._get_active_card_by_path(abs_path.replace('\\', '/'))
                 if card:
                     card.update_data(**updates_to_apply)
                     
-                    # Trigger Sweep/Deploy if already linked and configuration changed
-                    # (Phase 42: force_sweep=True ensures transition cleanup)
-                    if impacts_link and card.link_status == 'linked':
+                    # Trigger Sweep/Deploy if WAS linked and configuration changed.
+                    # This ensures the transitional sweep correctly cleans up old rules.
+                    if impacts_link and was_linked:
                         self.logger.info(f"[Property-Sync] Config changed for linked item {rel}. Triggering forceful sweep.")
                         self._deploy_single(rel, update_ui=True, force_sweep=True)
                     else:
                         # Even if not link-impacting, we might need a status refresh (e.g. metadata only)
                         card.update_link_status()
                 
-                # If no card but impacts_link, we should still sweep if we suspect it's linked
-                elif impacts_link:
-                    # Fetch fresh config to check last_status
-                    cfg = self.db.get_folder_config(rel)
-                    if cfg and cfg.get('last_known_status') == 'linked':
-                         self.logger.info(f"[Property-Sync] No card found but linked item {rel} changed. Sweeping.")
-                         self._deploy_single(rel, update_ui=False, force_sweep=True)
+                # If no card but WAS linked, we should still sweep
+                elif impacts_link and was_linked:
+                     self.logger.info(f"[Property-Sync] No card found but linked item {rel} changed. Sweeping.")
+                     self._deploy_single(rel, update_ui=False, force_sweep=True)
 
             except Exception as e:
                 self.logger.error(f"Failed to apply update for {abs_path}: {e}")
 
-        # Final UI Refreshes
+        # Final UI Refreshes & Notification
         if any(k in updates_to_apply for k in self.TAG_AFFECTING_KEYS):
             self._refresh_tag_visuals()
 
+        from PyQt6.QtWidgets import QApplication
+        from src.ui.toast import Toast
+        active_win = QApplication.activeWindow() or (self.window() if hasattr(self, 'window') else self)
+        Toast.show_toast(active_win, _("Folder properties saved successfully"), preset="success")
+    
     def _on_property_edit_accepted(self, dialog, is_batch, target_paths, original_config):
         """Handle saving and UI updates after non-modal property dialog is accepted."""
         data = dialog.get_data()

@@ -400,6 +400,10 @@ class LMDeploymentOpsMixin:
                     self._show_cleanup_failure_dialog(failed_paths)
             except Exception as e:
                 self.logger.warning(f"Transition sweep failed: {e}")
+            
+            # Phase 42: Allow UI to breather after sweep before potential re-deploy
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
 
         # --- PROACTIVE LINK CHECK ---
         # Check if already deployed correctly (mode-aware)
@@ -415,8 +419,8 @@ class LMDeploymentOpsMixin:
         if current_status == 'linked':
             self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
             if update_ui:
-                if hasattr(self, '_refresh_package_cards'): self._refresh_package_cards()
-                if hasattr(self, '_refresh_category_cards'): self._refresh_category_cards()
+                # Targeted update instead of full background refresh
+                self._update_card_by_path(full_src)
             
             # Update DB status if it was not 'linked' before
             if config.get('last_known_status') != 'linked':
@@ -724,6 +728,10 @@ class LMDeploymentOpsMixin:
                      self._show_cleanup_failure_dialog(failed_paths)
              except Exception as e:
                  self.logger.warning(f"Exhaustive cleanup during unlink failed: {e}")
+             
+             # Phase 42: Allow UI to breathe after sweep
+             from PyQt6.QtWidgets import QApplication
+             QApplication.processEvents()
 
         # Phase 28: Optimization - Stop exhaustive sweeping of all targets on every deploy/unlink.
         # This was causing "Target not found" warnings and massive filesystem overhead.

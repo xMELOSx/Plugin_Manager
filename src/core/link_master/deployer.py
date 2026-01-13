@@ -1128,7 +1128,7 @@ class Deployer:
         self.logger.info(f"Sweeping for orphaned links pointing to: {source_root_norm}")
         
         # Phase 1: Collect all orphaned links
-        orphan_links = []
+        orphan_links = set()
         empty_dirs = []
         
         for root_dir in search_roots:
@@ -1142,21 +1142,21 @@ class Deployer:
                 # If source_root is e.g. "C:/Mods/Packages/MyMod" and storage_root is "C:/Mods/Packages"
                 # then rel_path is "MyMod"
                 if hasattr(self, '_db'):
-                    from src.core import core_handler
                     # Phase 42: Slash Consistency Fix
                     # Normalize search root for DB query (DB uses '/' and lowercase on Windows)
+                    # Use a set for orphan_links for fast lookup
                     source_root_db = source_root_norm.replace('\\', '/')
                     
                     with self._db.get_connection() as conn:
                         cursor = conn.cursor()
                         # Use LIKE to match all files inside this source package
+                        # register_deployed_file already lowercases source_path, so this matches efficiently
                         cursor.execute("SELECT target_path FROM lm_deployed_files WHERE source_path LIKE ?", (f"{source_root_db}%",))
                         db_items = [row[0] for row in cursor.fetchall()]
                         for item_path in db_items:
                             if os.path.exists(item_path) or os.path.islink(item_path):
-                                if item_path not in orphan_links:
-                                    orphan_links.append(item_path)
-                                    self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
+                                orphan_links.add(item_path)
+                                self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
             except Exception as e:
                 self.logger.warning(f"DB-backed sweep query failed: {e}")
 
@@ -1173,15 +1173,20 @@ class Deployer:
                             if not os.path.isabs(real):
                                 real = os.path.join(os.path.dirname(path), real)
                                 
-                            if self._normalize_path(real).startswith(source_root_norm):
-                                orphan_links.append(path)
+                            real_norm = self._normalize_path(real)
+                            # Safe Match: exact or sub-path
+                            if real_norm == source_root_norm or real_norm.startswith(source_root_norm + "/"):
+                                orphan_links.add(path)
                         except: pass
                     else:
                         # Check for copy metadata (Legacy/External fallback)
                         meta = self._get_copy_metadata(path)
                         if meta:
-                            if self._normalize_path(meta.get('source', '')).startswith(source_root_norm):
-                                orphan_links.append(path)
+                            source_meta = meta.get('source', '')
+                            if source_meta:
+                                meta_norm = self._normalize_path(source_meta)
+                                if meta_norm == source_root_norm or meta_norm.startswith(source_root_norm + "/"):
+                                    orphan_links.add(path)
                 
                 # Track empty folders for later cleanup
                 if root != root_dir:
