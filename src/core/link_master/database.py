@@ -1081,6 +1081,25 @@ class LinkMasterDB:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def is_directory_ours(self, target_dir_path: str, expected_source_prefix: str = None) -> bool:
+        """Check if any files under target_dir_path are registered as ours."""
+        target_dir_path = target_dir_path.replace('\\', '/').lower() if target_dir_path else target_dir_path
+        if not target_dir_path.endswith('/'): target_dir_path += '/'
+        
+        query = "SELECT 1 FROM lm_deployed_files WHERE target_path LIKE ?"
+        params = [target_dir_path + "%"]
+        
+        if expected_source_prefix:
+            expected_source_prefix = expected_source_prefix.replace('\\', '/').lower()
+            if not expected_source_prefix.endswith('/'): expected_source_prefix += '/'
+            query += " AND source_path LIKE ?"
+            params.append(expected_source_prefix + "%")
+            
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchone() is not None
+
 # Singletons / Helpers
 _registry_instance = None
 def get_lm_registry():

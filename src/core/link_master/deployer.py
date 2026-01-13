@@ -563,12 +563,12 @@ class Deployer:
                     return {"status": "conflict", "target": real_target}
             return {"status": "linked", "target": real_target}
             
-        # If it's a directory, it MIGHT be a partial deployment
+        # If it's a directory, it MIGHT be a partial deployment or a physical copy
         if os.path.isdir(target_link_path):
             if expected_source:
                 exp_norm = self._normalize_path(expected_source)
                 try:
-                    # Recursive scan: if ANY symlink inside points to us, it's linked
+                    # 1. Symlink-based partial detection
                     for root, dirs, files in os.walk(target_link_path):
                         for name in files + dirs:
                             path = os.path.join(root, name)
@@ -582,14 +582,18 @@ class Deployer:
                                     return {"status": "linked", "type": "partial"}
                 except: pass
             
-            # Phase 42: Check DB for registration (Supersedes sidecar files)
+            # 2. DB-based directory detection (Phase 43)
+            # This handles physical "tree" deployments where files are registered but the root folder is not.
+            if self._db.is_directory_ours(target_link_path, expected_source_prefix=expected_source):
+                return {"status": "linked", "type": "copy"}
+
+            # Phase 42: Exact DB match for the directory itself (folder-level copy)
             db_source = self._db.get_deployed_file_source(target_link_path)
             if db_source and expected_source:
                 if self._normalize_path(db_source) == self._normalize_path(expected_source):
                     return {"status": "linked", "type": "copy"}
             
-            # If expected_source is specified but no link to it was found, treat as 'none' (not deployed) rather than conflict
-            # This is important for Flatten mode where target_dir itself is the check target
+            # If expected_source is specified but no link to it was found, treat as 'none'
             return {"status": "none", "type": "dir_no_match"}
         
         # Check DB for copy deployment (Phase 42)

@@ -348,6 +348,11 @@ class ScannerWorker(QObject):
         app_deploy_default = (self.app_data or {}).get('deployment_type', 'folder')
         deploy_rule = item_config.get('deploy_rule') or item_config.get('deploy_type') or app_deploy_default
         if deploy_rule == 'flatten': deploy_rule = 'files'
+        
+        # Phase 42: Resolve Transfer Mode (copy vs symlink)
+        transfer_mode = item_config.get('transfer_mode')
+        if not transfer_mode or transfer_mode == "default":
+            transfer_mode = (self.app_data or {}).get('transfer_mode', 'symlink')
 
         # STRICT TARGET LOGIC:
         # 1. Use Item's 'target_override' if set.
@@ -455,14 +460,33 @@ class ScannerWorker(QObject):
                   # Logging for debug
                   scan_base_debug = f"[Inherited from {ancestor_rel_path}] {ancestor_override}"
              else:
-                  # Direct Override: The item IS the child of the base.
-                  # Example: Item "A"->Override "T". Result "T/A".
-                  # UNLESS we are in 'files' mode? 
-                  # For 'folder' mode: T/A.
-                  # For 'files' mode: T/A (if flattening into T/A) or T (if flattening into T directly)?
-                  # App standard is: Roots contain the Item Folders.
-                  effective_rel_to_base = ""
-                  scan_base_debug = f"[Direct Override] {item_target_base}"
+                  # Direct Selection (New standard)
+                  selection = item_config.get('target_selection')
+                  # Rule: inheritance and custom selection differ in how we treat the "base".
+                  # For global roots, the base is the PARENT; for custom path, it's the DESTINATION.
+                  if selection and selection in ('primary', 'secondary', 'tertiary'):
+                       # Global Root: we append subpath just like default
+                       if deploy_rule == 'tree':
+                            # Calculate mirrored subpath (same as default logic)
+                            rules_json = item_config.get('deployment_rules')
+                            skip_val = 0
+                            if rules_json:
+                                try:
+                                    ro = json.loads(rules_json)
+                                    skip_val = int(ro.get('skip_levels', 0))
+                                except: pass
+                            parts = item_rel.replace('\\', '/').split('/')
+                            if len(parts) > skip_val:
+                                effective_rel_to_base = "/".join(parts[skip_val:])
+                            else:
+                                effective_rel_to_base = ""
+                       else:
+                            # Use basename for folder/symlink modes
+                            effective_rel_to_base = os.path.basename(item_rel)
+                  else:
+                       # Custom or Legacy Override: already the literal target
+                       effective_rel_to_base = ""
+                  scan_base_debug = f"[Direct Selection] {item_target_base}"
 
              # Construct final link based on rule
              if deploy_rule == 'files':
@@ -499,7 +523,9 @@ class ScannerWorker(QObject):
                   else:
                      target_link = scan_base
              else:
-                 target_link = os.path.join(scan_base, item_rel)
+                  # Standard logic for folder/symlink: use basename to match _deploy_single behavior
+                  # (Nested mods in flat categories are placed in game root, not category folder)
+                  target_link = os.path.join(scan_base, os.path.basename(item_rel))
 
             
         # DEBUG: Trace target calculation for specific item
@@ -534,6 +560,7 @@ class ScannerWorker(QObject):
             status_info = self.deployer.get_link_status(
                 target_link, 
                 expected_source=item_abs_path,
+                expected_transfer_mode=transfer_mode,
                 deploy_rule=deploy_rule
             )
             link_status = status_info.get('status', 'none')
