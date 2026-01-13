@@ -523,22 +523,12 @@ class LMFileOpsMixin:
                         if w_path == target_path:
                             self.logger.info(f"[CardUpdate] HIT in {layout_name}_layout: {w.folder_name}")
                             
-                            # Force update explicitly
-                            if getattr(w, 'is_package', True):
-                                w.link_status = 'linked' # Force status attribute
-                                w.update_link_status('linked') # Force visual update
-                                
-                                # Force Deploy Button Overlay Update directly
-                                if hasattr(w, 'deploy_btn'):
-                                    op = getattr(w, '_deploy_btn_opacity', 0.8)
-                                    w.deploy_btn.setStatus('linked', op, is_category=False)
-                                    w.deploy_btn.update()
-                            else:
-                                # For categories, we need a hierarchical refresh!
-                                if hasattr(self, '_refresh_category_cards'):
-                                    self._refresh_category_cards()
-                                    
-                            w.update() # Force full Widget repaint
+                            # Phase 51: DO NOT force 'linked' status. Let the card re-detect its actual state
+                            # (which handles excludes and partial failures correctly).
+                            w.update_link_status() # This triggers _check_link_status()
+                            
+                            # Force full Widget repaint and overlay refresh
+                            w.update()
                             card_found = True
                             break
             if card_found: break

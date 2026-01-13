@@ -130,6 +130,7 @@ class ItemCard(QFrame):
         self.is_library = is_library  # Phase 30: Library flag (from DB, 0 or 1)
         self.lib_name = lib_name   # Phase 30: Library name for grouping
         self.has_category_conflict = False # Phase 35: Category deployment blocked by logic conflict
+        self.missing_samples = [] # Phase 51: Sampled missing files for Partial status
 
         # Phase 31: Visibility Toggles (Per mode)
         self.show_link_overlay = show_link
@@ -192,6 +193,7 @@ class ItemCard(QFrame):
 
         # Phase 1.1.7: Async tracking
         self._current_scale_id = 0
+        self.missing_samples = []
 
         self._check_link_status()
         self._update_name_label()
@@ -213,6 +215,11 @@ class ItemCard(QFrame):
             # Custom buttons returns index: 0=Redeploy, 1=Unlink
             msg.addButton(_("Redeploy"), 0, "Blue")
             msg.addButton(_("Unlink"), 1, "Gray")
+            
+            # Phase 51: Show missing files if available
+            if getattr(self, 'missing_samples', []):
+                file_list = ", ".join(self.missing_samples)
+                msg.setText(_("This item is partially deployed.\nMissing: {files}\n\nWhat would you like to do?").format(files=file_list))
             
             if msg.exec() == 0:
                 # Redeploy
@@ -306,6 +313,7 @@ class ItemCard(QFrame):
         self.is_misplaced = kwargs.get('is_misplaced', getattr(self, 'is_misplaced', False))
         self.is_partial = kwargs.get('is_partial', getattr(self, 'is_partial', False))
         self.is_trash_view = kwargs.get('is_trash_view', getattr(self, 'is_trash_view', False))
+        self.missing_samples = kwargs.get('missing_samples', getattr(self, 'missing_samples', []))
 
         # Support 'is_visible' (0/1) mapping to 'is_hidden'
         if 'is_visible' in kwargs:
@@ -542,8 +550,23 @@ class ItemCard(QFrame):
                 transfer_mode = tm
             except: pass
 
-        status = self.deployer.get_link_status(target_link, expected_source=self.path, expected_transfer_mode=transfer_mode, deploy_rule=deploy_rule)
+        # Phase 51: Parse rules for exclude-aware status check
+        rules_dict = {}
+        if self.deployment_rules:
+            try:
+                import json
+                rules_dict = json.loads(self.deployment_rules)
+            except: pass
+
+        status = self.deployer.get_link_status(
+            target_link, 
+            expected_source=self.path, 
+            expected_transfer_mode=transfer_mode, 
+            deploy_rule=deploy_rule,
+            rules=rules_dict # Phase 51: Pass rules for EXCLUDE awareness
+        )
         self.link_status = status.get('status', 'none')
+        self.missing_samples = status.get('missing_samples', [])
 
         # Phase 35: Multi-root Fallback
         # If not found in primary target, check target_root_2 and target_root_3
@@ -555,17 +578,18 @@ class ItemCard(QFrame):
                         other_root = app_data.get(root_key)
                         if other_root and other_root != self.target_dir:
                             # Re-calculate target path for this root
-                            if deploy_rule == 'files':
-                                alt_target = os.path.join(other_root, self.folder_name)
-                            else:
-                                # For tree/folder, we'd need full rel-path logic again, 
-                                # but usually folder is the standard.
-                                alt_target = os.path.join(other_root, self.folder_name)
-                            
-                            alt_status = self.deployer.get_link_status(alt_target, expected_source=self.path, expected_transfer_mode=transfer_mode, deploy_rule=deploy_rule)
+                            alt_target = os.path.join(other_root, self.folder_name)
+                            alt_status = self.deployer.get_link_status(
+                                alt_target, 
+                                expected_source=self.path, 
+                                expected_transfer_mode=transfer_mode, 
+                                deploy_rule=deploy_rule,
+                                rules=rules_dict
+                            )
                             if alt_status.get('status') == 'linked':
                                 self.link_status = 'linked'
                                 status = alt_status
+                                self.missing_samples = []
                                 break
             except: pass
         # status is already updated if fallback succeeded
@@ -587,16 +611,14 @@ class ItemCard(QFrame):
              self._prev_link_status = self.link_status
              self.deploy_changed.emit()
 
-        # Phase 28: is_partial logic MUST match ScannerWorker
-        # Yellow border ONLY for 'custom' mode with specific settings
-        self.is_partial = False
-        if deploy_rule == 'custom':
-            if self.deployment_rules:
-                try:
-                    rules = json.loads(self.deployment_rules)
-                    if rules.get('exclude') or rules.get('overrides') or rules.get('rename'):
-                        self.is_partial = True
-                except: pass
+        # Phase 28/51: is_partial logic
+        # 1. True if actually missing files
+        self.is_partial = (self.link_status == 'partial')
+        
+        # 2. ALSO True if Custom Mode (for visual aesthetic), but only if not conflicted
+        if not self.is_partial and deploy_rule == 'custom' and self.link_status != 'conflict':
+            if rules_dict.get('exclude') or rules_dict.get('overrides') or rules_dict.get('rename'):
+                self.is_partial = True
 
         # Phase 28: Sync status to DB for fast total count lookups
         if self.db:

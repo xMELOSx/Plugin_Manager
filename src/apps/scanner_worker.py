@@ -327,6 +327,7 @@ class ScannerWorker(QObject):
             'has_linked': status_res.get('status') in ('linked', 'partial'),
             'has_unlinked': status_res.get('status') == 'none',
             'is_partial': status_res.get('status') == 'partial',
+            'missing_samples': status_res.get('missing_samples', []),
             'has_conflict': status_res.get('status') == 'conflict' or has_child_conflict,
             'is_misplaced': status_res.get('status') == 'misplaced',
             'has_favorite': self._favorite_ancestors and item_rel in self._favorite_ancestors,

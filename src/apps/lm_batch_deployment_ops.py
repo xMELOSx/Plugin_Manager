@@ -415,13 +415,23 @@ class LMDeploymentOpsMixin:
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
 
+        # Parse rules early for mode-aware status check
+        rules_str = config.get('deployment_rules')
+        rules_dict = {}
+        if rules_str:
+            try:
+                import json
+                rules_dict = json.loads(rules_str)
+            except: pass
+
         # --- PROACTIVE LINK CHECK ---
         # Check if already deployed correctly (mode-aware)
         status_info = self.deployer.get_link_status(
             target_link, 
             expected_source=full_src, 
             expected_transfer_mode=transfer_mode,
-            deploy_rule=deploy_rule
+            deploy_rule=deploy_rule,
+            rules=rules_dict # Phase 51: Pass rules for EXCLUDE awareness
         )
         current_status = status_info.get('status', 'none')
         self.logger.debug(f"[Deploy-Check] '{folder_name}' target_link={target_link}, current_status={current_status}")
@@ -446,14 +456,8 @@ class LMDeploymentOpsMixin:
             return True
         # -------------------------------------------------------------
 
-        rules_str = config.get('deployment_rules')
-        rules = {}
-        if rules_str:
-            try:
-                import json
-                rules = json.loads(rules_str)
-            except:
-                self.logger.warning(f"Failed to parse deployment_rules for {rel_path}: {rules_str}")
+        # rules_dict is already parsed above
+        rules = rules_dict 
 
         # Library Version Conflict Check
         if config.get('is_library', 0):
@@ -527,44 +531,45 @@ class LMDeploymentOpsMixin:
                 return False
 
 
-        # Standard Delegation
+        success = False
         try:
-            success = self.deployer.deploy_with_rules(
-                full_src, target_link, rules, 
-                deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
-                conflict_policy=c_policy,
-                package_rel_path=rel_path # Phase 42 Tracking
-            )
-        except DeploymentCollisionError as e:
-            self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
-            
-            # Show Dialog
-            detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
-            
-            # Limit display to first 10
-            display_limit = 10
-            count = 0
-            for item in e.collisions:
-                if count >= display_limit:
-                    detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
-                    break
+            # Standard Delegation
+            try:
+                success = self.deployer.deploy_with_rules(
+                    full_src, target_link, rules, 
+                    deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
+                    conflict_policy=c_policy,
+                    package_rel_path=rel_path # Phase 42 Tracking
+                )
+            except DeploymentCollisionError as e:
+                self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
                 
-                # item is dict: target, source_existing, source_conflicting
-                tgt = item['target']
-                src_exist = os.path.basename(item['source_existing'])
-                src_new = os.path.basename(item['source_conflicting'])
-                detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
-                count += 1
+                # Show Dialog
+                detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
                 
-            msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
-            msg_box.setIcon(FramelessMessageBox.Icon.Critical)
-            msg_box.setWindowTitle(_("Deployment Collision"))
-            msg_box.setText(detail_txt)
-            # apply_common_dialog_style(msg_box)
-            msg_box.exec()
-            return False
-        
-        try:
+                # Limit display to first 10
+                display_limit = 10
+                count = 0
+                for item in e.collisions:
+                    if count >= display_limit:
+                        detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
+                        break
+                    
+                    # item is dict: target, source_existing, source_conflicting
+                    tgt = item['target']
+                    src_exist = os.path.basename(item['source_existing'])
+                    src_new = os.path.basename(item['source_conflicting'])
+                    detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
+                    count += 1
+                    
+                msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Critical)
+                msg_box.setWindowTitle(_("Deployment Collision"))
+                msg_box.setText(detail_txt)
+                # apply_common_dialog_style(msg_box)
+                msg_box.exec()
+                return False
+            
             if success:
                  self.logger.info(f"[DeploySingle] Success. Updating DB for {rel_path}")
                  self.db.update_folder_display_config(rel_path, last_known_status='linked')
@@ -583,25 +588,24 @@ class LMDeploymentOpsMixin:
                     msg_box.setText(msg)
                     apply_common_dialog_style(msg_box)
                     msg_box.exec()
-
-                 self.logger.info(f"[DeployUI] Calling _update_card_by_path for {full_src}")
-                 self._update_card_by_path(full_src)
-                 
-                 if hasattr(self, '_update_total_link_count'):
-                     self._update_total_link_count()
-                 
-                 # Phase 28/Debug: Always refresh tag visuals after any deploy to ensure physical occupancy
-                 # or library alt-version highlighting is updated globally.
-                 tag = config.get('conflict_tag')
-                 self._refresh_tag_visuals(target_tag=tag)
-                 
-                 if hasattr(self, 'library_panel') and self.library_panel:
-                     self.library_panel.refresh()
-        except Exception as e:
-            self.logger.error(f"[DeploySingle] CRITICAL ERROR during post-deploy update: {e}", exc_info=True)
-            import traceback
-            self.logger.error(traceback.format_exc())
         
+        finally:
+            try:
+                # Phase 51: ALWAYS refresh card visual (including border/symbols) even on partial success or failure
+                self.logger.info(f"[DeployUI] Refreshing card visual for {rel_path} (Final state check)")
+                self._update_card_by_path(full_src)
+                
+                if hasattr(self, '_update_total_link_count'):
+                    self._update_total_link_count()
+                
+                tag = config.get('conflict_tag')
+                self._refresh_tag_visuals(target_tag=tag)
+                
+                if hasattr(self, 'library_panel') and self.library_panel:
+                    self.library_panel.refresh()
+            except Exception as ex:
+                self.logger.warning(f"Failed to perform post-deployment UI update for {rel_path}: {ex}")
+
         return success
 
     def _unlink_single(self, rel_path, update_ui=True, _cascade=True):

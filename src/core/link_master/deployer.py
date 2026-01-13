@@ -485,51 +485,56 @@ class Deployer:
                  if deploy_rule == 'custom' and rules:
                      excludes = rules.get('exclude', [])
 
+                 missing_samples = []
                  try:
                      import fnmatch
-                     for f in os.listdir(expected_source):
+                     # Get list of all items in source (files and dirs)
+                     all_items = os.listdir(expected_source)
+                     for f in all_items:
                          f_path = os.path.join(expected_source, f)
-                         if os.path.isfile(f_path):
-                             # Exclude Check
-                             if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
-                                 continue
-                                 
-                             files_total += 1
-                             target_file = os.path.join(target_link_path, f)
+                         
+                         # Exclude Check (Apply to both files and dirs)
+                         if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
+                             continue
                              
-                             # Check 1: Is it a symlink? (Valid for Symlink mode, or unexpected in Copy mode)
-                             if os.path.islink(target_file):
-                                 real = os.readlink(target_file)
-                                 # Resolve relative links
-                                 if not os.path.isabs(real):
-                                     real = os.path.join(os.path.dirname(target_file), real)
-                                 
-                                 if self._normalize_path(real) == self._normalize_path(f_path):
-                                     files_found += 1
-                                     continue
-
-                             # Check 2: Is it a physical file? (Valid for Copy mode)
-                             if os.path.isfile(target_file) and not os.path.islink(target_file):
-                                 # For Copy mode, we ideally check DB or just existence if simplistic
-                                 # We accept existence as "linked" for flat files to prevent overwrites, 
-                                 # matching original logic.
+                         files_total += 1
+                         target_file = os.path.join(target_link_path, f)
+                         
+                         is_valid = False
+                         if os.path.islink(target_file):
+                             # Link Verification
+                             real = os.readlink(target_file)
+                             if not os.path.isabs(real):
+                                 real = os.path.join(os.path.dirname(target_file), real)
+                             
+                             if self._normalize_path(real) == self._normalize_path(f_path):
                                  files_found += 1
-                                 continue
+                                 is_valid = True
+                         elif os.path.exists(target_file):
+                             # Physical existence check (for Copy mode)
+                             # Note: We take existence as "linked" for simplicity in copy mode
+                             files_found += 1
+                             is_valid = True
+                         
+                         if not is_valid and len(missing_samples) < 3:
+                             missing_samples.append(f)
+
                  except Exception as e:
                      # self.logger.warning(f"Flat check error: {e}")
                      pass
                  
-                 if files_found > 0:
+                 res = {"status": "none", "type": "none"}
+                 if files_total == 0:
+                     # If all items are excluded, it's effectively linked if target root exists
+                     res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
+                 elif files_found > 0:
                      if files_found >= files_total:
-                         # Determine type based on majority?? No, just report 'linked' and let deployment type resolve itself if needed?
-                         # Or respect expected_transfer_mode for labeling?
-                         return {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "file"}
+                         res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
                      else:
-                         return {"status": "partial", "type": expected_transfer_mode if expected_transfer_mode else "file"}
+                         res = {"status": "partial", "type": expected_transfer_mode if expected_transfer_mode else "dir", 
+                                "missing_samples": missing_samples}
                  
-                 # If we are in 'files' mode and found NOTHING, we explicitly return NONE 
-                 # to prevent falling through to os.walk and finding ghosts.
-                 return {"status": "none", "type": "none"}
+                 return res
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
