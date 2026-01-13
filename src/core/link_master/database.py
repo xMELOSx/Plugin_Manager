@@ -289,7 +289,6 @@ class LinkMasterDB:
                 is_expanded INTEGER DEFAULT 1,
                 FOREIGN KEY(parent_id) REFERENCES lm_lib_folders(id) ON DELETE CASCADE
             )''',
-            # Phase 30: Backup registry for auto-restore on unlink
             '''CREATE TABLE IF NOT EXISTS lm_backup_registry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 original_path TEXT NOT NULL,
@@ -297,6 +296,16 @@ class LinkMasterDB:
                 folder_rel_path TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(original_path)
+            )''',
+            # Phase 42: Deployed files tracking (User Request)
+            '''CREATE TABLE IF NOT EXISTS lm_deployed_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_path TEXT NOT NULL,
+                source_path TEXT NOT NULL,
+                package_rel_path TEXT NOT NULL,
+                deploy_type TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(target_path)
             )'''
         ]
         with self.get_connection() as conn:
@@ -462,7 +471,7 @@ class LinkMasterDB:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_folder_config_status ON lm_folder_config (last_known_status)")
             except: pass
             
-            # Phase 30: Ensure backup registry table exists for existing databases
+            # Phase 42: Ensure tracking tables exist for existing databases
             try:
                 cursor.execute('''CREATE TABLE IF NOT EXISTS lm_backup_registry (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -471,6 +480,18 @@ class LinkMasterDB:
                     folder_rel_path TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(original_path)
+                )''')
+            except: pass
+            
+            try:
+                cursor.execute('''CREATE TABLE IF NOT EXISTS lm_deployed_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target_path TEXT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    package_rel_path TEXT NOT NULL,
+                    deploy_type TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(target_path)
                 )''')
             except: pass
             
@@ -987,6 +1008,52 @@ class LinkMasterDB:
         with self.get_connection() as conn:
             conn.execute("DELETE FROM lm_backup_registry WHERE folder_rel_path = ?", (folder_rel_path,))
             conn.commit()
+
+    # =====================================================================
+    # Phase 42: Deployed Files Tracking Methods (Declarative State)
+    # =====================================================================
+    def register_deployed_file(self, target_path: str, source_path: str, package_rel_path: str, deploy_type: str = None):
+        """Register a file or link created by the application."""
+        target_path = target_path.replace('\\', '/').lower() if target_path else target_path
+        source_path = source_path.replace('\\', '/').lower() if source_path else source_path
+        package_rel_path = package_rel_path.replace('\\', '/') if package_rel_path else package_rel_path
+        
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO lm_deployed_files (target_path, source_path, package_rel_path, deploy_type)
+                VALUES (?, ?, ?, ?)
+            """, (target_path, source_path, package_rel_path, deploy_type))
+            conn.commit()
+
+    def get_deployed_files_for_package(self, package_rel_path: str) -> list:
+        """Get all files/links registered to a package."""
+        package_rel_path = package_rel_path.replace('\\', '/') if package_rel_path else package_rel_path
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT target_path, source_path, deploy_type FROM lm_deployed_files WHERE package_rel_path = ?", (package_rel_path,))
+            return cursor.fetchall()
+
+    def remove_deployed_file_entry(self, target_path: str):
+        """Remove an entry for a specific target path."""
+        target_path = target_path.replace('\\', '/').lower() if target_path else target_path
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_deployed_files WHERE target_path = ?", (target_path,))
+            conn.commit()
+            
+    def clear_deployed_files_for_package(self, package_rel_path: str):
+        """Clear all registered files for a package."""
+        package_rel_path = package_rel_path.replace('\\', '/') if package_rel_path else package_rel_path
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM lm_deployed_files WHERE package_rel_path = ?", (package_rel_path,))
+            conn.commit()
+
+    def is_file_ours(self, target_path: str) -> bool:
+        """Check if a path is registered as being deployed by Link Master."""
+        target_path = target_path.replace('\\', '/').lower() if target_path else target_path
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM lm_deployed_files WHERE target_path = ?", (target_path,))
+            return cursor.fetchone() is not None
 
 # Singletons / Helpers
 _registry_instance = None

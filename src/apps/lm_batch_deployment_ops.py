@@ -475,6 +475,18 @@ class LMDeploymentOpsMixin:
                             self._deploy_single(lib_rel, update_ui=True)
             return True
         # -------------------------------------------------------------
+        
+        # 🚨 Phase 28: Proactive Exhaustive transition sweep BEFORE deployment.
+        # This ensures old physical files (e.g. from Flat mode) are cleared before we deploy the new state.
+        # We only do this if we are not skipping (if current_status != 'linked').
+        self.logger.info(f"[Deploy-Sweep] Transitioning {rel_path} to {target_link} (Rule: {deploy_rule}). Performing cleanup.")
+        try:
+            target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+            _, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
+            if failed_paths:
+                self._show_cleanup_failure_dialog(failed_paths)
+        except Exception as e:
+            self.logger.warning(f"Transition sweep failed: {e}")
 
         rules = config.get('deployment_rules')
 
@@ -553,7 +565,8 @@ class LMDeploymentOpsMixin:
             success = self.deployer.deploy_with_rules(
                 full_src, target_link, rules, 
                 deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
-                conflict_policy=c_policy
+                conflict_policy=c_policy,
+                package_rel_path=rel_path # Phase 42 Tracking
             )
         except DeploymentCollisionError as e:
             self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
@@ -756,11 +769,15 @@ class LMDeploymentOpsMixin:
 
         # Phase: Exhaustive Transition Sweep for Manual Unlink
         # If the user clicks Unlink, we want to make sure it's REALLY unlinked even if rules changed.
-        if config.get('last_known_status') == 'linked' or config.get('last_known_status') == 'partial':
+        current_status = config.get('last_known_status')
+        if current_status == 'linked' or current_status == 'partial':
              self.logger.info(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
              try:
                  target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
-                 self.deployer.remove_links_pointing_to(target_roots, full_src)
+                 _, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                 
+                 if failed_paths:
+                     self._show_cleanup_failure_dialog(failed_paths)
              except Exception as e:
                  self.logger.warning(f"Exhaustive cleanup during unlink failed: {e}")
 
@@ -911,6 +928,11 @@ class LMDeploymentOpsMixin:
                                 try: os.remove(meta_file)
                                 except: pass
                             os.remove(target_file)
+                        
+                        # Phase 42: Clear DB tracking
+                        try: self.db.remove_deployed_file_entry(target_file)
+                        except: pass
+
                         deleted_count += 1
                         # Mark parent for pruning
                         deleted_dirs.add(os.path.dirname(target_file))
@@ -1360,3 +1382,22 @@ class LMDeploymentOpsMixin:
                             )
                         if hasattr(card, '_update_style'):
                             card._update_style()
+    def _show_cleanup_failure_dialog(self, failed_paths: list):
+        """Show a warning dialog when cleanup fails."""
+        if not failed_paths: return
+        from src.ui.link_master.dialogs.frameless_dialogs import FramelessMessageBox
+        
+        msg = _("Some files could not be removed (they may be in use by the game):\n\n")
+        limit = 10
+        for i, p in enumerate(failed_paths):
+            if i >= limit:
+                msg += _("...and {n} others.").format(n=len(failed_paths) - limit)
+                break
+            msg += f"- {os.path.basename(p)}\n"
+            
+        msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else None)
+        msg_box.setIcon(FramelessMessageBox.Icon.Warning)
+        msg_box.setWindowTitle(_("Cleanup Warning"))
+        msg_box.setText(msg)
+        msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+        msg_box.exec()

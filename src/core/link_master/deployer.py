@@ -144,7 +144,7 @@ def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: s
 
     try:
         core_handler.copy_path(source_path, target_path)
-        return {"status": "success", "path": target_path, "action": action_taken, "mode": "copy"}
+        return {"status": "success", "path": target_path, "action": action_taken, "mode": "copy", "source": source_path}
     except Exception as e:
         return {"status": "error", "path": target_path, "msg": str(e)}
 
@@ -204,6 +204,11 @@ class Deployer:
             is_dir = os.path.isdir(source_path)
             os.symlink(source_path, target_link_path, target_is_directory=is_dir)
             self.logger.info(f"Symlink created ({'Dir' if is_dir else 'File'}): {target_link_path} -> {source_path}")
+            
+            # Phase 42: Register deployment
+            if hasattr(self, '_pkg_rel'):
+                self._db.register_deployed_file(target_link_path, source_path, self._pkg_rel, deploy_type='symlink')
+                
             return True
         except OSError as e:
             self.logger.error(f"Symlink creation failed: {e}")
@@ -240,16 +245,20 @@ class Deployer:
 
         try:
             if os.path.isdir(source_path):
-                import shutil
                 shutil.copytree(source_path, target_path)
                 self.logger.info(f"Folder copied: {source_path} -> {target_path}")
             else:
-                import shutil
                 shutil.copy2(source_path, target_path)
                 self.logger.info(f"File copied: {source_path} -> {target_path}")
             
             # Save deploy metadata for tracking (Phase X: Copy mode detection)
+            # Legacy hidden file (for older scanners) - keeping as backup signal
             self._save_copy_metadata(target_path, source_path)
+            
+            # Phase 42: Register in DB (New standard)
+            if hasattr(self, '_pkg_rel'):
+                self._db.register_deployed_file(target_path, source_path, self._pkg_rel, deploy_type='copy')
+            
             return True
         except Exception as e:
             self.logger.error(f"Copy failed: {e}")
@@ -301,6 +310,15 @@ class Deployer:
                 return 'error'
                 
         if policy == 'backup':
+            # Phase 42: Prevent infinite backups
+            # If the file is already registered as 'ours', overwrite it instead of backing up.
+            try:
+                if self._db.is_file_ours(path):
+                    self.logger.info(f"Policy: BACKUP - Path '{path}' is already registered as our deployment. Overwriting instead of creating redundant backup.")
+                    core_handler.remove_path(path)
+                    return 'overwrite'
+            except: pass
+
             try:
                 import time
                 backup_path = f"{path}.bak_{int(time.time())}"
@@ -335,6 +353,10 @@ class Deployer:
                 os.unlink(target_link_path)
                 self.logger.info(f"Symlink removed: {target_link_path}")
                 
+                # Phase 42: Clear DB tracking
+                try: self._db.remove_deployed_file_entry(target_link_path)
+                except: pass
+
                 # Check for backup to restore
                 if restore_backups:
                     self._restore_backup_if_exists(target_link_path)
@@ -357,6 +379,10 @@ class Deployer:
                 os.unlink(target_link_path)
                 self.logger.info(f"Copied file removed: {target_link_path}")
                 
+                # Phase 42: Clear DB tracking
+                try: self._db.remove_deployed_file_entry(target_link_path)
+                except: pass
+
                 # Check for backup to restore
                 if restore_backups:
                     self._restore_backup_if_exists(target_link_path)
@@ -485,6 +511,11 @@ class Deployer:
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
             return {"status": "none", "type": "none"}
         
+        # Phase 42: Declarative State Check
+        # If registered in DB, it's ours.
+        if self._db.is_file_ours(target_link_path):
+             return {"status": "linked", "type": expected_transfer_mode}
+
         # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
         # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
         # OR if it's a file. If it's a directory, it might just be the search root (collision!).
@@ -648,6 +679,10 @@ class Deployer:
             if os.path.exists(meta_file):
                 os.remove(meta_file)
             
+            # Phase 42: Clear DB tracking
+            try: self._db.remove_deployed_file_entry(target_path)
+            except: pass
+
             # 🚨 Safety Check: NEVER remove a directory if it's a registered search root
             if os.path.isdir(target_path):
                 # Get protected roots from registry
@@ -693,9 +728,12 @@ class Deployer:
             return self.remove_link(target_path, source_path_hint=source_path_hint)
 
     def deploy_with_rules(self, source_path: str, target_link_path: str, rules_json: str = None, 
-                          deploy_rule: str = 'folder', transfer_mode: str = 'symlink', conflict_policy: str = 'backup') -> bool:
+                          deploy_rule: str = 'folder', transfer_mode: str = 'symlink', 
+                          conflict_policy: str = 'backup', package_rel_path: str = None) -> bool:
         """
         Deploys using the NEW rules set (Phase 5: Target-specific defaults & Custom mode).
+        
+        package_rel_path: Phase 42 tracking.
         
         deploy_rule:
           - 'folder': Force whole folder link.
@@ -715,6 +753,9 @@ class Deployer:
                 rules = json.loads(rules_json)
             except:
                 self.logger.error(f"Invalid rules JSON: {rules_json}")
+        
+        # Phase 42: Store package info for workers
+        self._pkg_rel = package_rel_path
         
         # 1.1. Resolve Rule (Phase 5 Logic)
         resolved_rule = deploy_rule
@@ -860,14 +901,25 @@ class Deployer:
                 any_success = any(r['status'] == 'success' for r in results)
                 if any_success and resolved_rule != 'files':
                      self._save_copy_metadata(target_link_path, source_path)
+                
+                # Phase 42: Register all successful files in DB
+                for res in results:
+                    if res.get('status') == 'success' and package_rel_path:
+                        self._db.register_deployed_file(res['path'], res.get('source', ''), package_rel_path, deploy_type='copy')
             else:
                 self.logger.info(f"Parallel bulk symlink: {len(files_to_deploy)} files")
                 results = self.deploy_links_batch(files_to_deploy, conflict_policy)
+                
+                # Phase 42: Register all successful symlinks in DB
+                for res in results:
+                    if res.get('status') == 'success' and package_rel_path:
+                        source_map = {tgt: src for src, tgt in files_to_deploy}
+                        self._db.register_deployed_file(res['path'], source_map.get(res['path'], ''), package_rel_path, deploy_type='symlink')
             
             # Check for generic failure
             success = True
             for res in results:
-                if res['status'] == 'error' and conflict_policy != 'skip':
+                if res.get('status') == 'error' and conflict_policy != 'skip':
                     success = False
                           
         except DeploymentCollisionError:
@@ -1120,6 +1172,8 @@ class Deployer:
         
         elapsed = time.perf_counter() - t0
         self.logger.info(f"Sweep completed: Removed {removed_count} orphaned links, {dirs_removed} empty dirs in {elapsed:.3f}s")
+        
+        return removed_count > 0, orphan_links if removed_count < len(orphan_links) else []
 
 
 
