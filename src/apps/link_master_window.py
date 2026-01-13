@@ -153,6 +153,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.favorite_filter_mode = False
         self.show_hidden = False  # Show hidden folders toggle
  
+        # Phase 43: App Switch Generation tracking to prevent race conditions
+        self._app_switch_generation = 0
+        
         # Phase 4 Style Sync: Base Button Styles
         self.btn_normal_style = "background-color: #3b3b3b; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px;"
         self.btn_selected_style = "background-color: #3498db; color: #fff; border: 1px solid #5dade2; border-radius: 4px; padding: 2px; font-weight: bold;"
@@ -1558,6 +1561,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
     # Import/drop methods moved to LMImportMixin
 
     def _on_app_changed(self, index):
+        # Phase 43: Increment generation ID on every app switch
+        self._app_switch_generation += 1
+        sn_gen_id = self._app_switch_generation
+        
         app_data = self.app_combo.currentData()
         
         # Guard: If leaving an app with unsaved notes
@@ -1640,7 +1647,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self.explorer_panel.config_changed.connect(lambda: self._refresh_current_view())
                 
                 # Defer Auto-registration (L1/L2) to background to speed up app switching (Save ~0.7s)
-                QTimer.singleShot(800, lambda: self._auto_register_folders(root_path))
+                # Phase 43: Pass Generation ID to background registration check
+                QTimer.singleShot(800, lambda: self._auto_register_folders(root_path, generation_id=sn_gen_id))
                 
                 self._load_items_for_path(root_path)
 
@@ -1716,10 +1724,15 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, "完了", "全てのパッケージ容量チェックが完了しました。")
 
-    def _auto_register_folders(self, storage_root):
+    def _auto_register_folders(self, storage_root, generation_id=0):
         """Auto-register folders to ensure they exist in DB, but let dynamic logic handle types."""
+        # Phase 43: Discard if generation doesn't match current app switch
+        if generation_id > 0 and generation_id != self._app_switch_generation:
+            self.logger.info(f"[RaceFix] Discarding auto-registration (Stale generation: {generation_id} vs {self._app_switch_generation})")
+            return
+
         try:
-            self.logger.info(f"Auto-registering folders using DB: {self.db.db_path}")
+            self.logger.info(f"Auto-registering folders using DB: {self.db.db_path} (Gen: {generation_id})")
             registered_count = 0
             for name in os.listdir(storage_root):
                 path = os.path.join(storage_root, name)
@@ -2228,7 +2241,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
 
         super().mousePressEvent(event)
 
-    def _load_items_for_path(self, path, force=False):
+    def _load_items_for_path(self, path, force=False, generation_id=None):
         # Phase 19.x Optimization: Skip redundant scans if already at the path (e.g., clicking Home/Breadcrumb)
         # unless force=True (used by _refresh_current_view)
         # Phase 28: Normalize paths for reliable comparison
@@ -2290,14 +2303,31 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         app_data = self.app_combo.currentData()
         if not app_data: return
-        storage_root = app_data['storage_root']
-        target_root = app_data.get(self.current_target_key)
         
-        self.cat_scanner_worker.set_params(path, target_root, storage_root, context="view", 
-                                           app_data=app_data, target_key=self.current_target_key, app_id=app_data.get('id'))
-        self._scan_in_progress = True  # Prevent duplicate scans from rapid clicks
-        from PyQt6.QtCore import QMetaObject, Qt
-        QMetaObject.invokeMethod(self.cat_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
+        # Phase 43: Capture generation ID for workers
+        gen_id = generation_id if generation_id is not None else self._app_switch_generation
+        
+        # Use appropriate worker based on area
+        is_category_path = (os.path.normpath(path) == os.path.normpath(self.storage_root))
+        worker = self.cat_scanner_worker if is_category_path else self.pkg_scanner_worker
+        
+        # Stop previous scan if any (Phase 19.x)
+        # Note: worker is already in self.scanner_thread
+        
+        self._scan_in_progress = True 
+        worker.set_params(
+            path=path,
+            target_root=self.current_target_key, # Link to current target A/B
+            storage_root=self.storage_root,
+            context="view",
+            app_data=app_data,
+            app_id=self.current_app_id,
+            generation_id=gen_id # NEW: Track specific switch generation
+        )
+        # Re-trigger work - worker.run is already connected to scanner_thread.started
+        # but since thread is already running, we use QMetaObject.invokeMethod
+        from PyQt6.QtCore import QMetaObject, Q_ARG, Qt
+        QMetaObject.invokeMethod(worker, "run", Qt.ConnectionType.QueuedConnection)
 
     def _on_category_selected(self, path, force=False):
         """Called when a category card is clicked. Loads its contents into the bottom area asynchronously."""

@@ -29,7 +29,7 @@ import re # Phase 33: Natural Sort
 class LMScanHandlerMixin:
     """スキャン結果処理とカード生成を担当するMixin。"""
     
-    def _on_scan_results_ready(self, results, original_path, context="view", app_id=None):
+    def _on_scan_results_ready(self, results, original_path, context="view", app_id=None, gen_id=0):
         """Populates the category and package layouts based on scan results and context."""
         import time
         start_t = time.perf_counter()
@@ -37,8 +37,8 @@ class LMScanHandlerMixin:
         # Reset scan-in-progress flag to allow new scans
         self._scan_in_progress = False
         
-        # 1. Validate context and prevent race conditions (Phase 33: includes app_id)
-        if not self._validate_scan_context(original_path, context, app_id):
+        # 1. Validate context and prevent race conditions (Phase 33/43: includes app_id and gen_id)
+        if not self._validate_scan_context(original_path, context, app_id, gen_id):
             return
             
         # Phase 34: Scan Suppression during Critical Operations (e.g. Category Deployment)
@@ -74,8 +74,14 @@ class LMScanHandlerMixin:
             self.setUpdatesEnabled(True)
 
 
-    def _validate_scan_context(self, original_path, context, app_id=None):
-        """Phase 28: Scan version tracking and context validation to prevent stale results."""
+    def _validate_scan_context(self, original_path, context, app_id=None, gen_id=0):
+        """Phase 28/43: Scan version tracking and context validation to prevent stale results."""
+        # Phase 43: Generation ID Check (Main Race Fix)
+        if gen_id > 0 and hasattr(self, '_app_switch_generation'):
+            if gen_id != self._app_switch_generation:
+                self.logger.info(f"[RaceFix] Rejected stale scan results: Gen {gen_id} != Current {self._app_switch_generation}")
+                return False
+
         # Phase 33: App ID Validation to prevent bleed between different apps
         if app_id and hasattr(self, 'current_app_id'):
             if str(app_id) != str(self.current_app_id):
