@@ -482,6 +482,7 @@ class AppRegistrationDialog(FramelessDialog):
     def _paste_cover_from_clipboard(self):
         """Paste cover image from clipboard."""
         from PyQt6.QtGui import QGuiApplication, QPixmap
+        from src.ui.common_widgets import FramelessMessageBox
         clipboard = QGuiApplication.clipboard()
         mime_data = clipboard.mimeData()
         
@@ -538,64 +539,39 @@ class AppRegistrationDialog(FramelessDialog):
         import os
         from src.ui.common_widgets import FramelessMessageBox
         
+        # Validate all fields
+        errors = []
+        
         # Required field checks
         if not self.name_edit.text().strip():
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Validation Error"))
-            msg.setText(_("Application name is required."))
-            msg.exec()
-            return
-        if not self.storage_edit.text().strip():
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Validation Error"))
-            msg.setText(_("Storage path is required."))
-            msg.exec()
-            return
-        if not self.target_edit.text().strip():
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Validation Error"))
-            msg.setText(_("Primary target install path is required."))
-            msg.exec()
-            return
-        
-        # Path existence checks
+            errors.append(_("Application name is required."))
+
         storage_path = self.storage_edit.text().strip()
-        if not os.path.exists(storage_path):
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Path Error"))
-            msg.setText(_("Storage path does not exist:\n{path}").format(path=storage_path))
-            msg.exec()
-            return
-        
+        if not storage_path:
+            errors.append(_("Storage path is required."))
+        elif not os.path.exists(storage_path):
+            errors.append(_("Storage path does not exist:\n{path}").format(path=storage_path))
+            
         target_path = self.target_edit.text().strip()
-        if not os.path.exists(target_path):
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Path Error"))
-            msg.setText(_("Primary target path does not exist:\n{path}").format(path=target_path))
-            msg.exec()
-            return
+        if not target_path:
+            errors.append(_("Primary target install path is required."))
+        elif not os.path.exists(target_path):
+            errors.append(_("Primary target path does not exist:\n{path}").format(path=target_path))
         
-        # Optional target paths - only check if specified
+        # Optional target paths
         target_path_2 = self.target_edit_2.text().strip()
         if target_path_2 and not os.path.exists(target_path_2):
-            msg = FramelessMessageBox(self)
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Path Error"))
-            msg.setText(_("Secondary target path does not exist:\n{path}").format(path=target_path_2))
-            msg.exec()
-            return
+            errors.append(_("Secondary target path does not exist:\n{path}").format(path=target_path_2))
             
         target_path_3 = self.target_edit_3.text().strip()
         if target_path_3 and not os.path.exists(target_path_3):
+            errors.append(_("Tertiary target path does not exist:\n{path}").format(path=target_path_3))
+            
+        if errors:
             msg = FramelessMessageBox(self)
             msg.setIcon(FramelessMessageBox.Icon.Warning)
-            msg.setWindowTitle(_("Path Error"))
-            msg.setText(_("Tertiary target path does not exist:\n{path}").format(path=target_path_3))
+            msg.setWindowTitle(_("Validation Error"))
+            msg.setText("\n".join(errors))
             msg.exec()
             return
         
@@ -1476,7 +1452,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
         self.skip_levels_spin.setRange(-1, 5) # -1 = Default
-        self.skip_levels_spin.setSpecialValueText(_("Default"))
+        self.skip_levels_spin.setSpecialValueText(_("Default ({val})").format(val=self.app_skip_levels_default))
         self.skip_levels_spin.setSuffix(_(" levels"))
         
         # Extract skip_levels from rules JSON if exists, otherwise Default (-1)
@@ -2038,8 +2014,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.skip_levels_spin.setVisible(is_tree)
         self.skip_levels_label.setVisible(is_tree)
         if is_tree:
-            # Load app default every time it becomes visible
-            self.skip_levels_spin.setValue(self.app_skip_levels_default)
+            # Do NOT reset value here - trust __init__ or user input
+            pass
 
     def _browse_target_override(self):
         """Browse for a custom target destination path."""
@@ -2391,13 +2367,13 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         # Inject skip_levels into rules JSON
         skip_val = self.skip_levels_spin.value()
         rules_str = self.rules_edit.toPlainText().strip()
-        if skip_val > 0 or rules_str:
+        if skip_val >= 0 or rules_str:
             try:
                 import json
                 rules_obj = json.loads(rules_str) if rules_str else {}
-                if skip_val > 0:
+                if skip_val >= 0:
                     rules_obj['skip_levels'] = skip_val
-                elif 'skip_levels' in rules_obj:
+                elif skip_val == -1 and 'skip_levels' in rules_obj:
                     del rules_obj['skip_levels']
                 rules_str = json.dumps(rules_obj) if rules_obj else ""
             except:
