@@ -37,6 +37,24 @@ class LinkMasterRegistry:
             '''CREATE TABLE IF NOT EXISTS lm_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
+            )''',
+            # Phase 42: Deployed files tracking (User Request) - Safe to have in global DB for fallback
+            '''CREATE TABLE IF NOT EXISTS lm_deployed_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_path TEXT NOT NULL,
+                source_path TEXT NOT NULL,
+                package_rel_path TEXT NOT NULL,
+                deploy_type TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(target_path)
+            )''',
+            '''CREATE TABLE IF NOT EXISTS lm_backup_registry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_path TEXT NOT NULL,
+                backup_path TEXT NOT NULL,
+                folder_rel_path TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(original_path)
             )'''
         ]
         with self.get_connection() as conn:
@@ -202,8 +220,7 @@ class LinkMasterDB:
         else:
             self.db_path = core_handler.db_path # Fallback to global
             self.logger.debug("LinkMasterDB created without app_name - using global DB fallback.")
-            # Skip table creation for global DB - app-specific tables should not exist there
-            return  # Exit __init__ without creating tables
+            # We no longer skip table creation here to ensure lm_deployed_files exists if called.
             
         self._create_tables()
 

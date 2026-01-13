@@ -132,19 +132,32 @@ def _parallel_copy_worker(source_path: str, target_path: str, conflict_policy: s
                 core_handler.remove_path(target_path)
                 action_taken = "overwrite"
             elif conflict_policy == 'backup':
-                import time
-                import random
-                import string
-                suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
-                backup_path = f"{target_path}.bak_{int(time.time())}_{suffix}"
+                # Phase 42: Simplified Managed Backup for Parallel Worker
+                base_backup = f"{target_path}.bak"
+                backup_path = base_backup
+                counter = 1
+                while os.path.exists(backup_path):
+                    backup_path = f"{base_backup}_{counter}"
+                    counter += 1
+                
                 core_handler.move_path(target_path, backup_path)
+                final_backup_path = backup_path
                 action_taken = "backup"
         except Exception as e:
             return {"status": "error", "path": target_path, "msg": f"Conflict handle failed: {e}"}
 
+    final_backup_path = None
+
     try:
         core_handler.copy_path(source_path, target_path)
-        return {"status": "success", "path": target_path, "action": action_taken, "mode": "copy", "source": source_path}
+        return {
+            "status": "success", 
+            "path": target_path, 
+            "action": action_taken, 
+            "mode": "copy", 
+            "source": source_path,
+            "backup_path": final_backup_path if action_taken == "backup" else None
+        }
     except Exception as e:
         return {"status": "error", "path": target_path, "msg": str(e)}
 
@@ -320,11 +333,19 @@ class Deployer:
             except: pass
 
             try:
-                import time
-                backup_path = f"{path}.bak_{int(time.time())}"
+                # Managed Backup Naming (User Request)
+                # Instead of bak_TIMESTAMP, use .bak, .bak_1, .bak_2 etc.
+                base_backup = f"{path}.bak"
+                backup_path = base_backup
+                counter = 1
+                while os.path.exists(backup_path):
+                    backup_path = f"{base_backup}_{counter}"
+                    counter += 1
+                
                 core_handler.move_path(path, backup_path)
                 self.logger.info(f"Policy: BACKUP - moved {path} to {backup_path}")
                 self.last_actions.append({'type': 'backup', 'path': path, 'backup_path': backup_path})
+                
                 # Registering backup path logic 
                 try:
                     self._db.register_backup(path, backup_path)
@@ -1113,10 +1134,38 @@ class Deployer:
         for root_dir in search_roots:
             if not os.path.isdir(root_dir): continue
             
-            # Use bottom-up walk to allow cleaning empty folders after unlinking
+            # Phase: DB-backed Sweep (Declarative)
+            # Find any files registered in the DB for this source package
+            # This is much faster and more reliable than scanning the whole target tree for copies.
+            try:
+                # We need the relative path of the package to query the DB
+                # If source_root is e.g. "C:/Mods/Packages/MyMod" and storage_root is "C:/Mods/Packages"
+                # then rel_path is "MyMod"
+                if hasattr(self, '_db'):
+                    from src.core import core_handler
+                    # Phase 42: Slash Consistency Fix
+                    # Normalize search root for DB query (DB uses '/' and lowercase on Windows)
+                    source_root_db = source_root_norm.replace('\\', '/')
+                    
+                    with self._db.get_connection() as conn:
+                        cursor = conn.cursor()
+                        # Use LIKE to match all files inside this source package
+                        cursor.execute("SELECT target_path FROM lm_deployed_files WHERE source_path LIKE ?", (f"{source_root_db}%",))
+                        db_items = [row[0] for row in cursor.fetchall()]
+                        for item_path in db_items:
+                            if os.path.exists(item_path) or os.path.islink(item_path):
+                                if item_path not in orphan_links:
+                                    orphan_links.append(item_path)
+                                    self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
+            except Exception as e:
+                self.logger.warning(f"DB-backed sweep query failed: {e}")
+
+            # Use bottom-up walk to allow cleaning empty folders after unlinking (Legacy/Safety fallback)
             for root, dirs, files in os.walk(root_dir, topdown=False):
                 for name in files + dirs:
                     path = os.path.join(root, name)
+                    if path in orphan_links: continue # Already found via DB
+                    
                     if os.path.islink(path):
                         try:
                             # Read link and normalize
@@ -1128,13 +1177,13 @@ class Deployer:
                                 orphan_links.append(path)
                         except: pass
                     else:
-                        # Check for copy metadata
+                        # Check for copy metadata (Legacy/External fallback)
                         meta = self._get_copy_metadata(path)
                         if meta:
                             if self._normalize_path(meta.get('source', '')).startswith(source_root_norm):
                                 orphan_links.append(path)
                 
-                # Track empty folders for later cleanup (except the search root itself)
+                # Track empty folders for later cleanup
                 if root != root_dir:
                     empty_dirs.append(root)
         
@@ -1143,6 +1192,11 @@ class Deployer:
         if orphan_links:
             def _unlink_safe(path):
                 try:
+                    if os.name == 'nt':
+                        path_key = path.replace('\\', '/').lower()
+                    else:
+                        path_key = path
+                        
                     if os.path.islink(path):
                         os.unlink(path)
                         self.logger.debug(f"[Sweep] Unlinked symlink: {path}")
@@ -1152,14 +1206,25 @@ class Deployer:
                     else:
                         os.remove(path)
                         self.logger.debug(f"[Sweep] Removed file: {path}")
+                    
+                    # Phase 42: Clear DB entry
+                    if hasattr(self, '_db'):
+                        self._db.remove_deployed_file_entry(path_key)
+                        
                     return True
                 except Exception as e:
                     self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
                     return False
             
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                results = list(executor.map(_unlink_safe, orphan_links))
-                removed_count = sum(results)
+                # Use wait to get results in order and match with paths
+                futures = {executor.submit(_unlink_safe, p): p for p in orphan_links}
+                failed_paths = []
+                for future in as_completed(futures):
+                    if not future.result():
+                        failed_paths.append(futures[future])
+                    else:
+                        removed_count += 1
         
         # Phase 3: Cleanup empty folders (sequential, as order matters)
         dirs_removed = 0
@@ -1173,7 +1238,7 @@ class Deployer:
         elapsed = time.perf_counter() - t0
         self.logger.info(f"Sweep completed: Removed {removed_count} orphaned links, {dirs_removed} empty dirs in {elapsed:.3f}s")
         
-        return removed_count > 0, orphan_links if removed_count < len(orphan_links) else []
+        return removed_count > 0, failed_paths
 
 
 

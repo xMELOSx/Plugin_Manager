@@ -253,12 +253,10 @@ class LMDeploymentOpsMixin:
         
         return None
 
-    def _deploy_single(self, rel_path, update_ui=True, show_result=False):
+    def _deploy_single(self, rel_path, update_ui=True, show_result=False, force_sweep=False):
         """Deploy a single item by relative path. Core method for all deploy operations."""
         app_data = self.app_combo.currentData()
         if not app_data: return False
-        target_root = app_data.get(self.current_target_key)
-        if not target_root: return False
         
         # Reset cancellation flag
         self._last_deploy_cancelled = False
@@ -270,12 +268,8 @@ class LMDeploymentOpsMixin:
             self.logger.error(f"Deployment blocked: relative path is empty ({rel_path}).")
             return False
         
-        # Phase 28: Optimization - DO NOT call _unlink_single (sweepy) before every deploy.
-        # self._unlink_single(rel_path, update_ui=False, _cascade=False)
-        
         # Phase 5: Reverse Swap Check (Package -> Category)
-        # If deploying a package and its parent category is currently deployed,
-        # ask to unlink the category first.
+        # ... [omitting logic for brevity in ReplacementContent but it stays in file] ...
         try:
             parent_rel = os.path.dirname(rel_path).replace('\\', '/')
             if parent_rel and parent_rel != '.':
@@ -311,7 +305,6 @@ class LMDeploymentOpsMixin:
         # 🚨 Safety Check: Prevent deployment if folder_name is empty or whitespace-only
         if not folder_name or not folder_name.strip():
             self.logger.error(f"Safety Block: Deployment blocked due to empty folder name. rel_path={rel_path}")
-            from PyQt6.QtWidgets import QMessageBox
             msg = QMessageBox(self.window() if hasattr(self, 'window') else self)
             msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle(_("Safety Block"))
@@ -360,43 +353,13 @@ class LMDeploymentOpsMixin:
         if c_policy == "default":
              c_policy = app_data.get('conflict_policy', 'backup')
 
-        # Phase: Unlink then Deploy (Transition Handling)
-        # If already linked OR if we suspect a configuration change, perform a sweep.
-        # This handles property changes (e.g. target_override or rule change) even if
-        # the scanner already updated last_status to 'none'.
-        last_status = config.get('last_known_status')
-        self.logger.debug(f"[Transition-Check] '{folder_name}' last_status={last_status}, current_rule={deploy_rule}")
-        
-        # PROACTIVE: Always attempt sweep if we are deploying a registered mod to be safe,
-        # UNLESS it's already correctly linked (which is checked later).
-        # We trigger sweep for 'none' as well to clean up leftovers from mode changes.
-        if last_status in ('linked', 'partial', 'none'):
-            self.logger.info(f"[Transition-Start] Sweeping existing deployment before re-deploy: {rel_path}")
-            try:
-                # Sweep all targets for this app
-                target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
-                self.logger.debug(f"[Transition-Debug] Target roots for sweep: {target_roots}")
-                self.deployer.remove_links_pointing_to(target_roots, full_src)
-                self.logger.debug(f"[Transition-End] Sweep completed for {rel_path}")
-            except Exception as e:
-                self.logger.warning(f"Exhaustive cleanup during transition failed: {e}")
-                # Non-blocking notification
-                if hasattr(self, 'window'):
-                    msg_box = QMessageBox(self.window())
-                    msg_box.setIcon(QMessageBox.Icon.Warning)
-                    msg_box.setWindowTitle(_("Cleanup Warning"))
-                    msg_box.setText(_("Could not fully clean up previous deployment for '{name}'.\n\nError: {err}\n\nContinuing with new deployment...").format(name=folder_name, err=str(e)))
-                    apply_common_dialog_style(msg_box)
-                    msg_box.exec()
-
         # Determine Target Link Path
         target_link = config.get('target_override')
+        target_root = app_data.get(target_key)
         if not target_link:
             if deploy_rule == 'files':
-                # 'files' (formerly flatten): Deploy contents directly into target_root
                 target_link = target_root
             elif deploy_rule == 'tree':
-                # Reconstruct hierarchy from storage root (Phase 7 fix)
                 import json
                 rules_json = config.get('deployment_rules')
                 skip_val = 0
@@ -413,38 +376,32 @@ class LMDeploymentOpsMixin:
                 else:
                     target_link = target_root
             else:
-                # 'folder': Create a subfolder with the package name
                 target_link = os.path.join(target_root, folder_name)
 
-        # 🚨 Safety Check: Prevent replacing any target root in 'folder' mode
-        if deploy_rule == 'folder' and target_link:
-            t_roots_map = {k: os.path.normpath(app_data.get(k)).lower() for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)}
-            target_norm = os.path.normpath(target_link).lower()
-            
-            matched_root_key = None
-            for k, root_path in t_roots_map.items():
-                if target_norm == root_path:
-                    matched_root_key = k
-                    break
-            
-            if matched_root_key:
-                # Use FramelessMessageBox for unified UI
-                msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
-                msg_box.setIcon(FramelessMessageBox.Icon.Critical)
-                msg_box.setWindowTitle(_("Safety Block"))
-                msg_box.setText(_("Deployment blocked: Destination matches a configured Target Root!\n\n"
-                              "Target: {target}\n"
-                              "Matched Root: {root_key}\n\n"
-                              "Deploying here in 'folder' mode would replace the target root directory itself.\n"
-                              "Please use 'files' (Flatten) mode or check your path settings.").format(
-                                  target=target_link, root_key=matched_root_key
-                              ))
-                msg_box.exec()
-                self.logger.error(f"Safety Block: Prevented 'folder' mode deployment targeting search root: {target_link} (Matches {matched_root_key})")
-                return False
+        # 🚨 Phase 42: Proactive Exhaustive transition sweep BEFORE deployment.
+        # This ensures old physical files (e.g. from Flat mode) are cleared before we deploy the new state.
+        # We trigger this if force_sweep is requested OR if link-level status is suspect.
+        last_status = config.get('last_known_status')
+        should_proactive_sweep = force_sweep or last_status in ('linked', 'partial', 'none')
+        
+        if should_proactive_sweep:
+            self.logger.info(f"[Deploy-Sweep] Transitioning {rel_path} (Rule: {deploy_rule}, Force: {force_sweep}). Performing cleanup.")
+            try:
+                target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+                sweep_occured, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                
+                if sweep_occured:
+                    self.logger.info(f"[Deploy-Sweep] Cleaned up legacy files/links for {rel_path}")
+                    from src.ui.toast import Toast
+                    active_win = QApplication.activeWindow() or (self.window() if hasattr(self, 'window') else self)
+                    Toast.show_toast(active_win, _("Transition sync: Legacy files cleaned up"), preset="info")
+                
+                if failed_paths:
+                    self._show_cleanup_failure_dialog(failed_paths)
+            except Exception as e:
+                self.logger.warning(f"Transition sweep failed: {e}")
 
-        # --- PROACTIVE LINK CHECK (Fix: Infinite .bak generation) ---
-        # Phase 1: Pre-check Conflict and Existing Link
+        # --- PROACTIVE LINK CHECK ---
         # Check if already deployed correctly (mode-aware)
         status_info = self.deployer.get_link_status(
             target_link, 
@@ -458,7 +415,6 @@ class LMDeploymentOpsMixin:
         if current_status == 'linked':
             self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
             if update_ui:
-                # Use standard LMScanHandlerMixin refresh methods instead of non-existent _refresh_ui
                 if hasattr(self, '_refresh_package_cards'): self._refresh_package_cards()
                 if hasattr(self, '_refresh_category_cards'): self._refresh_category_cards()
             
@@ -472,21 +428,9 @@ class LMDeploymentOpsMixin:
                 if deps_to_deploy:
                     for lib_rel in deps_to_deploy:
                         if lib_rel != rel_path:
-                            self._deploy_single(lib_rel, update_ui=True)
+                            self._deploy_single(lib_rel, update_ui=True, force_sweep=force_sweep)
             return True
         # -------------------------------------------------------------
-        
-        # 🚨 Phase 28: Proactive Exhaustive transition sweep BEFORE deployment.
-        # This ensures old physical files (e.g. from Flat mode) are cleared before we deploy the new state.
-        # We only do this if we are not skipping (if current_status != 'linked').
-        self.logger.info(f"[Deploy-Sweep] Transitioning {rel_path} to {target_link} (Rule: {deploy_rule}). Performing cleanup.")
-        try:
-            target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
-            _, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
-            if failed_paths:
-                self._show_cleanup_failure_dialog(failed_paths)
-        except Exception as e:
-            self.logger.warning(f"Transition sweep failed: {e}")
 
         rules = config.get('deployment_rules')
 
@@ -743,8 +687,8 @@ class LMDeploymentOpsMixin:
                     target_link = os.path.join(search_root, folder_name)
             
             # Use unified undeploy with transfer_mode
-            # For Tree/Files/Custom modes, we need file-by-file deletion to avoid deleting unrelated content
-            if deploy_rule in ('tree', 'files', 'custom'):
+            # For Files/Custom modes, we need file-by-file deletion to avoid deleting unrelated content
+            if deploy_rule in ('files', 'custom'):
                  # Safe Batch Undeploy: delete source-matched files only, then prune empty dirs
                  # We use search_root as base because _safe_batch_undeploy handles mirroring/overrides internally
                  deleted_count = self._safe_batch_undeploy(full_src, search_root, deploy_rule, rules_json=rules_json)

@@ -897,18 +897,23 @@ class PreviewWindow(FramelessDialog):
             }
             
             logging.info(f"[PreviewWindow] Saving properties for {rel_path}: {update_kwargs}")
-            # Save using correct method
-            self.db.update_folder_display_config(rel_path, **update_kwargs)
             
-            # Handle deploy/unlink based on checkbox state
-            is_linked_requested = self.deploy_check.isChecked()
+            # Find main window instance to use centralized logic
             parent = self.parent()
             window = parent
-            while window and not hasattr(window, '_deploy_single'):
+            while window and not hasattr(window, '_apply_folder_config_updates'):
                 window = window.parent()
 
             if window:
-                # Check current status
+                # 🚨 Phase 42: Use Unified Property Saving (Centralized in LMFileOpsMixin)
+                original_cfg_map = { self.folder_path: original_config }
+                window._apply_folder_config_updates([self.folder_path], update_kwargs, original_configs=original_cfg_map)
+                
+                # Check current link status to handle explicit toggle request
+                is_linked_requested = self.deploy_check.isChecked()
+                
+                # We need to re-detect status after apply_folder_config_updates might have refreshed DB/UI
+                # (Actual detect is more robust)
                 current_status = 'unlinked'
                 if self.deployer and self.target_dir:
                     # Resolve deploy_rule specifically for detection
@@ -924,22 +929,23 @@ class PreviewWindow(FramelessDialog):
                         
                     status_info = self.deployer.get_link_status(target_link, expected_source=self.folder_path, deploy_rule=deploy_rule)
                     current_status = status_info.get('status', 'unlinked')
-                
+                    
                 currently_linked = current_status in ['linked', 'conflict']
-                
+
                 if is_linked_requested and not currently_linked:
+                    self.logger.info(f"[PreviewWindow] Explicit Deploy requested for {rel_path}")
                     window._deploy_single(rel_path, update_ui=True)
                 elif not is_linked_requested and currently_linked:
+                    self.logger.info(f"[PreviewWindow] Explicit Unlink requested for {rel_path}")
                     window._unlink_single(rel_path, update_ui=True)
+            else:
+                # Fallback if window not found (should not happen)
+                self.db.update_folder_display_config(rel_path, **update_kwargs)
             
             # Emit signal
             self.property_changed.emit(update_kwargs)
-            
-            from src.ui.toast import Toast
-            toast_parent = parent if parent else self
-            Toast.show_toast(toast_parent, _("Properties Saved"), preset="success")
-            
             self._changes_saved = True # Flag to avoid "Cancelled" toast
+
             # Close without dialog (as requested)
             self.close()
         except Exception as e:

@@ -64,41 +64,14 @@ class LMFileManagementMixin:
             
         new_rules = diag.get_rules_json()
         try:
-            self.db.update_folder_display_config(rel_path, deployment_rules=new_rules)
-            self.logger.info(f"Updated file deployment rules for {rel_path}")
-            
-            # Targeted UI Update (Phase 28 optimization)
-            # Normalize path for lookup (ScannerWorker uses forward slashes)
+            # 🚨 Phase 42: Use Unified Property Saving (Centralized in LMFileOpsMixin)
             abs_path = os.path.join(self.storage_root, rel_path)
-            abs_path_norm = abs_path.replace('\\', '/')
-            card = self._get_active_card_by_path(abs_path_norm)
-            if card:
-                # Re-calculate is_partial for the card border
-                # Check both 'exclude' and 'overrides' (new name for 'rename')
-                is_partial = False
-                try:
-                    import json
-                    rules = json.loads(new_rules)
-                    # Transition rename -> overrides if needed (migration)
-                    if 'rename' in rules and 'overrides' not in rules:
-                        rules['overrides'] = rules.pop('rename')
-                    
-                    if (rules.get('exclude') and len(rules['exclude']) > 0) or \
-                       (rules.get('overrides') and len(rules['overrides']) > 0):
-                        is_partial = True
-                except: pass
-                
-                card.update_data(deployment_rules=new_rules, is_partial=is_partial)
-                card.update_link_status()
-                self.logger.info(f"Updated ItemCard in-place: {rel_path} (is_partial={is_partial})")
-                
-                # Phase 3.5: Auto-sync if currently linked
-                if card.link_status == 'linked':
-                    self.logger.info(f"Auto-syncing deployment for {rel_path} after rule change...")
-                    # LinkMasterWindow inherits LMFileManagementMixin and LMBatchOpsMixin
-                    # So _deploy_single is available on self.
-                    self._deploy_single(rel_path)
+            if hasattr(self, '_apply_folder_config_updates'):
+                self._apply_folder_config_updates([abs_path], {'deployment_rules': new_rules})
             else:
-                self.logger.info(f"Card not currently visible for update: {abs_path_norm}")
+                # Fallback if not mixed into window
+                self.db.update_folder_display_config(rel_path, deployment_rules=new_rules)
+                self.logger.warning(f"LMFileManagementMixin: _apply_folder_config_updates not found on self. Minimal save performed.")
+
         except Exception as e:
             self.logger.error(f"Failed to save deployment rules: {e}")

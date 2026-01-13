@@ -251,18 +251,100 @@ class LMFileOpsMixin:
         
         dialog.show()
 
-    def _on_property_edit_accepted(self, dialog, is_batch, target_paths, original_config):
-        """Handle saving and UI updates after non-modal property dialog is accepted."""
-        data = dialog.get_data()
+    LINK_AFFECTING_KEYS = {
+        'folder_type', 'deploy_type', 'deploy_rule', 'transfer_mode', 
+        'conflict_policy', 'deployment_rules', 'inherit_tags', 
+        'conflict_tag', 'conflict_scope', 'target_selection', 'target_override'
+    }
+    TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+
+    def _apply_folder_config_updates(self, target_paths, data, original_configs=None, is_batch=False):
+        """
+        Unified method to save folder properties, update UI, and trigger sweeps if needed.
+        target_paths: list of absolute paths.
+        data: dict of new property values.
+        original_configs: dict of {abs_path: current_config_dict} for impact checking.
+        """
         app_data = self.app_combo.currentData()
         if not app_data: return
         storage_root = app_data.get('storage_root')
         
-        LINK_AFFECTING_KEYS = {
-            'folder_type', 'deploy_type', 'conflict_policy', 
-            'deployment_rules', 'inherit_tags', 'conflict_tag', 'conflict_scope'
-        }
-        TAG_AFFECTING_KEYS = {'conflict_tag', 'conflict_scope', 'is_library', 'lib_name'}
+        # 1. Determine changes and impacted items
+        updates_to_apply = data
+        if is_batch:
+            updates_to_apply = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
+            if not updates_to_apply: return
+
+        from PyQt6.QtWidgets import QApplication
+        from src.ui.toast import Toast
+        active_win = QApplication.activeWindow() or self
+        Toast.show_toast(active_win, _("Folder properties saved successfully"), preset="success")
+
+        for abs_path in target_paths:
+            try:
+                rel = os.path.relpath(abs_path, storage_root).replace('\\', '/')
+                if rel == ".": rel = ""
+                
+                # Check impact
+                impacts_link = False
+                if original_configs and abs_path in original_configs:
+                    orig = original_configs[abs_path]
+                    impacts_link = any(k in updates_to_apply and updates_to_apply[k] != orig.get(k) for k in self.LINK_AFFECTING_KEYS)
+                else:
+                    # If no original provided, assume impact if any affecting key is in updates (Safe default)
+                    impacts_link = any(k in updates_to_apply for k in self.LINK_AFFECTING_KEYS)
+                
+                # Special Case: is_partial calculation for deployment_rules
+                if 'deployment_rules' in updates_to_apply:
+                    is_partial = False
+                    try:
+                        import json
+                        rules = json.loads(updates_to_apply['deployment_rules'])
+                        # Migration: rename -> overrides
+                        if 'rename' in rules and 'overrides' not in rules:
+                            rules['overrides'] = rules.pop('rename')
+                        
+                        if (rules.get('exclude') and len(rules['exclude']) > 0) or \
+                           (rules.get('overrides') and len(rules['overrides']) > 0):
+                            is_partial = True
+                    except: pass
+                    updates_to_apply['is_partial'] = is_partial
+
+                # DB Update
+                self.db.update_folder_display_config(rel, **updates_to_apply)
+                
+                # UI Update (Card)
+                card = self._get_active_card_by_path(abs_path.replace('\\', '/'))
+                if card:
+                    card.update_data(**updates_to_apply)
+                    
+                    # Trigger Sweep/Deploy if already linked and configuration changed
+                    # (Phase 42: force_sweep=True ensures transition cleanup)
+                    if impacts_link and card.link_status == 'linked':
+                        self.logger.info(f"[Property-Sync] Config changed for linked item {rel}. Triggering forceful sweep.")
+                        self._deploy_single(rel, update_ui=True, force_sweep=True)
+                    else:
+                        # Even if not link-impacting, we might need a status refresh (e.g. metadata only)
+                        card.update_link_status()
+                
+                # If no card but impacts_link, we should still sweep if we suspect it's linked
+                elif impacts_link:
+                    # Fetch fresh config to check last_status
+                    cfg = self.db.get_folder_config(rel)
+                    if cfg and cfg.get('last_known_status') == 'linked':
+                         self.logger.info(f"[Property-Sync] No card found but linked item {rel} changed. Sweeping.")
+                         self._deploy_single(rel, update_ui=False, force_sweep=True)
+
+            except Exception as e:
+                self.logger.error(f"Failed to apply update for {abs_path}: {e}")
+
+        # Final UI Refreshes
+        if any(k in updates_to_apply for k in self.TAG_AFFECTING_KEYS):
+            self._refresh_tag_visuals()
+
+    def _on_property_edit_accepted(self, dialog, is_batch, target_paths, original_config):
+        """Handle saving and UI updates after non-modal property dialog is accepted."""
+        data = dialog.get_data()
         
         # Check if anything actually changed
         has_real_changes = False
@@ -281,53 +363,13 @@ class LMFileOpsMixin:
             Toast.show_toast(self, _("変更はありません"), preset="warning")
             return
 
-        from src.ui.toast import Toast
-        Toast.show_toast(self, _("Folder properties saved successfully"), preset="success")
-
+        # Map original_config to dictionary of {path: config} for the unified method
+        original_configs_map = {}
         if not is_batch:
-            # Single Mode Update
-            path = target_paths[0]
-            try:
-                rel = os.path.relpath(path, storage_root).replace('\\', '/')
-                if rel == ".": rel = ""
-            except: rel = ""
-            
-            impacts_link = any(k in data and data[k] != original_config.get(k) for k in LINK_AFFECTING_KEYS)
-            self.db.update_folder_display_config(rel, **data)
-            
-            abs_norm = path.replace('\\', '/')
-            card = self._get_active_card_by_path(abs_norm)
-            if card:
-                card.update_data(**data)
-                if card.link_status == 'linked' and impacts_link:
-                    self.logger.info(f"Auto-syncing {rel} after link-impacting property change...")
-                    self._deploy_single(rel)
-        else:
-            # Batch Mode Update
-            batch_updates = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
-            # Already checked has_real_changes above
-            
-            for path in target_paths:
-                try:
-                    rel = os.path.relpath(path, storage_root).replace('\\', '/')
-                    if rel == ".": rel = ""
-                    self.db.update_folder_display_config(rel, **batch_updates)
-                    
-                    abs_norm = path.replace('\\', '/')
-                    card = self._get_active_card_by_path(abs_norm)
-                    if card:
-                        card.update_data(**batch_updates)
-                        if card.link_status == 'linked' and any(k in batch_updates for k in {'deploy_type', 'conflict_policy', 'deployment_rules'}):
-                            self.logger.info(f"Auto-syncing batch item {rel}...")
-                            self._deploy_single(rel)
-                except Exception as e:
-                    self.logger.error(f"Batch update failed for {path}: {e}")
-            
-            # Refresh visuals
-            self._refresh_tag_visuals()
+            original_configs_map[target_paths[0]] = original_config
         
-        if any(k in data for k in TAG_AFFECTING_KEYS):
-             self._refresh_tag_visuals()
+        # Call consolidated method
+        self._apply_folder_config_updates(target_paths, data, original_configs=original_configs_map, is_batch=is_batch)
 
     def _set_visibility_single(self, rel_path, visible: bool, update_ui=True):
         """Set visibility for a single item."""
