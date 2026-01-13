@@ -874,11 +874,6 @@ class LMDeploymentOpsMixin:
                         if os.path.islink(target_file):
                             os.unlink(target_file)
                         else:
-                            # Also remove metadata for copied files (Phase X)
-                            meta_file = target_file + ".lm_deploy_info"
-                            if os.path.exists(meta_file):
-                                try: os.remove(meta_file)
-                                except: pass
                             os.remove(target_file)
                         
                         # Phase 42: Clear DB tracking

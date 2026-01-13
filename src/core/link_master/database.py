@@ -1072,6 +1072,15 @@ class LinkMasterDB:
             cursor.execute("SELECT 1 FROM lm_deployed_files WHERE target_path = ?", (target_path,))
             return cursor.fetchone() is not None
 
+    def get_deployed_file_source(self, target_path: str) -> str:
+        """Get the original source path for a registered deployment."""
+        target_path = target_path.replace('\\', '/').lower() if target_path else target_path
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT source_path FROM lm_deployed_files WHERE target_path = ?", (target_path,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
 # Singletons / Helpers
 _registry_instance = None
 def get_lm_registry():

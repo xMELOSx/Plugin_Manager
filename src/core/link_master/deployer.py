@@ -264,10 +264,6 @@ class Deployer:
                 shutil.copy2(source_path, target_path)
                 self.logger.info(f"File copied: {source_path} -> {target_path}")
             
-            # Save deploy metadata for tracking (Phase X: Copy mode detection)
-            # Legacy hidden file (for older scanners) - keeping as backup signal
-            self._save_copy_metadata(target_path, source_path)
-            
             # Phase 42: Register in DB (New standard)
             if hasattr(self, '_pkg_rel'):
                 self._db.register_deployed_file(target_path, source_path, self._pkg_rel, deploy_type='copy')
@@ -277,33 +273,6 @@ class Deployer:
             self.logger.error(f"Copy failed: {e}")
             return False
     
-    def _save_copy_metadata(self, target_path: str, source_path: str):
-        """Save metadata for copy deployment to enable detection and cleanup."""
-        import json
-        import time
-        
-        # Determine metadata file location  
-        if os.path.isdir(target_path):
-            meta_file = os.path.join(target_path, ".lm_deploy_info.json")
-        else:
-            meta_file = target_path + ".lm_deploy_info"
-        
-        metadata = {
-            "type": "copy",
-            "source": source_path,
-            "deployed_at": time.time()
-        }
-        
-        try:
-            with open(meta_file, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2)
-            # Make the metadata file hidden on Windows
-            try:
-                import ctypes
-                ctypes.windll.kernel32.SetFileAttributesW(meta_file, 0x02)  # FILE_ATTRIBUTE_HIDDEN
-            except: pass
-        except Exception as e:
-            self.logger.warning(f"Failed to save deploy metadata: {e}")
 
     def _handle_conflict(self, path: str, policy: str) -> str:
         """Handles existing path according to policy. Returns action taken: 'backup', 'overwrite', 'skip', 'error', 'none'."""
@@ -392,10 +361,6 @@ class Deployer:
         # Handle copied files (not symlinks)
         if os.path.isfile(target_link_path):
             try:
-                # Remove copy metadata if exists (Phase X)
-                meta_file = target_link_path + ".lm_deploy_info"
-                if os.path.exists(meta_file):
-                    os.remove(meta_file)
                 
                 os.unlink(target_link_path)
                 self.logger.info(f"Copied file removed: {target_link_path}")
@@ -415,12 +380,6 @@ class Deployer:
                 return False
 
         if os.path.isdir(target_link_path):
-            # Remove copy metadata if exists (Phase X) - for copy-deployed directories
-            meta_file = os.path.join(target_link_path, ".lm_deploy_info.json")
-            if os.path.exists(meta_file):
-                try:
-                    os.remove(meta_file)
-                except: pass
             
             if source_path_hint:
                 self.logger.info(f"Cleaning up directory-based (Partial) deployment: {target_link_path}")
@@ -568,13 +527,6 @@ class Deployer:
                      # If it's the search root but no files found, it's none.
                      return {"status": "none", "type": "search_root"}
 
-                 # Check for metadata
-                 copy_meta = self._get_copy_metadata(target_link_path)
-                 if copy_meta and expected_source:
-                     norm_meta = self._normalize_path(copy_meta.get('source', ''))
-                     norm_exp = self._normalize_path(expected_source)
-                     if norm_meta == norm_exp:
-                         return {"status": "linked", "type": "copy"}
                  
                  if os.path.isfile(target_link_path):
                      # If it's a file, we can't easily verify source without metadata, 
@@ -630,40 +582,24 @@ class Deployer:
                                     return {"status": "linked", "type": "partial"}
                 except: pass
             
-            # Check for copy deployment metadata (Phase X)
-            copy_meta = self._get_copy_metadata(target_link_path)
-            if copy_meta and expected_source:
-                if self._normalize_path(copy_meta.get('source', '')) == self._normalize_path(expected_source):
+            # Phase 42: Check DB for registration (Supersedes sidecar files)
+            db_source = self._db.get_deployed_file_source(target_link_path)
+            if db_source and expected_source:
+                if self._normalize_path(db_source) == self._normalize_path(expected_source):
                     return {"status": "linked", "type": "copy"}
             
             # If expected_source is specified but no link to it was found, treat as 'none' (not deployed) rather than conflict
             # This is important for Flatten mode where target_dir itself is the check target
             return {"status": "none", "type": "dir_no_match"}
         
-        # Check for copy deployment metadata for files (Phase X)
-        copy_meta = self._get_copy_metadata(target_link_path)
-        if copy_meta and expected_source:
-            if self._normalize_path(copy_meta.get('source', '')) == self._normalize_path(expected_source):
+        # Check DB for copy deployment (Phase 42)
+        db_source = self._db.get_deployed_file_source(target_link_path)
+        if db_source and expected_source:
+            if self._normalize_path(db_source) == self._normalize_path(expected_source):
                 return {"status": "linked", "type": "copy"}
              
         return {"status": "conflict", "type": "file"}
     
-    def _get_copy_metadata(self, target_path: str) -> dict:
-        """Get copy deployment metadata if exists."""
-        import json
-        
-        # Check for metadata file
-        if os.path.isdir(target_path):
-            meta_file = os.path.join(target_path, ".lm_deploy_info.json")
-        else:
-            meta_file = target_path + ".lm_deploy_info"
-        
-        if os.path.exists(meta_file):
-            try:
-                with open(meta_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except: pass
-        return None
     
     def undeploy_copy(self, target_path: str, force: bool = False) -> bool:
         """Remove a copy deployment and its metadata.
@@ -684,21 +620,29 @@ class Deployer:
              self.logger.warning(f"Target is a symlink, use _cleanup_link instead: {target_path}")
              return self._cleanup_link(target_path)
         
-        # Check metadata (optional for force mode)
-        meta = self._get_copy_metadata(target_path)
-        if not meta and not force:
-            self.logger.warning(f"No copy metadata found for: {target_path}")
-            return False
+        # Check DB tracking (Phase 42)
+        is_ours = self._db.is_file_ours(target_path)
+        if not is_ours and not force:
+            # Final fallback: Check Legacy sidecar for transition
+            if os.path.isdir(target_path):
+                meta_file = os.path.join(target_path, ".lm_deploy_info.json")
+            else:
+                meta_file = target_path + ".lm_deploy_info"
+            
+            if not os.path.exists(meta_file):
+                self.logger.warning(f"No copy registration (DB or Legacy) found for: {target_path}")
+                return False
         
         try:
-            # Remove metadata file first (if exists)
+            # Cleanup Legacy metadata if exists
             if os.path.isdir(target_path):
                 meta_file = os.path.join(target_path, ".lm_deploy_info.json")
             else:
                 meta_file = target_path + ".lm_deploy_info"
             
             if os.path.exists(meta_file):
-                os.remove(meta_file)
+                try: os.remove(meta_file)
+                except: pass
             
             # Phase 42: Clear DB tracking
             try: self._db.remove_deployed_file_entry(target_path)
@@ -920,9 +864,6 @@ class Deployer:
                 # Phase X: Save metadata to facilitate unlinking and status check
                 # Check for overall success in results
                 any_success = any(r['status'] == 'success' for r in results)
-                if any_success and resolved_rule != 'files':
-                     self._save_copy_metadata(target_link_path, source_path)
-                
                 # Phase 42: Register all successful files in DB
                 for res in results:
                     if res.get('status') == 'success' and package_rel_path:
@@ -1180,13 +1121,11 @@ class Deployer:
                         except: pass
                     else:
                         # Check for copy metadata (Legacy/External fallback)
-                        meta = self._get_copy_metadata(path)
-                        if meta:
-                            source_meta = meta.get('source', '')
-                            if source_meta:
-                                meta_norm = self._normalize_path(source_meta)
-                                if meta_norm == source_root_norm or meta_norm.startswith(source_root_norm + "/"):
-                                    orphan_links.add(path)
+                        source_meta = self._db.get_deployed_file_source(path)
+                        if source_meta:
+                            meta_norm = self._normalize_path(source_meta)
+                            if meta_norm == source_root_norm or meta_norm.startswith(source_root_norm + "/"):
+                                orphan_links.add(path)
                 
                 # Track empty folders for later cleanup
                 if root != root_dir:
