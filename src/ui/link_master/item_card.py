@@ -209,39 +209,42 @@ class ItemCard(QFrame):
             from src.ui.common_widgets import FramelessMessageBox
             msg = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
             msg.setWindowTitle(_("Partial Deployment"))
-            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setIcon("Warning")
+            
+            # Phase 51: Improved Partial Deployment Dialog with Ratio and Japanese snippets
+            base_txt = _("This item is partially deployed (some files missing).")
+            
+            # Show the deployment ratio (e.g. "12 / 15 items deployed")
+            counts_txt = _("{found} / {total} items deployed").format(
+                found=getattr(self, 'files_found', 0), total=getattr(self, 'files_total', 0)
+            )
+            
+            msg_content = f"{base_txt}\n\n{counts_txt}"
+            
+            missing_samples = getattr(self, 'missing_samples', [])
+            if missing_samples:
+                # Japanese translation fallback for the missing items label
+                missing_label = _("Missing items:")
+                samples = "\n".join([f"- {s}" for s in missing_samples])
+                msg_content += f"\n\n{missing_label}\n{samples}"
+            
+            msg.setText(msg_content)
+            
             # Safe codes to prevent "X" (0) from triggering redeploy
             REDEPLOY = 10
             UNLINK = 20
             CANCEL = 30
             
-            msg.addButton(_("Redeploy"), REDEPLOY, "Blue")
-            msg.addButton(_("Unlink"), UNLINK, "Gray")
+            msg.addButton(_("⚠ Re-deploy (Repair)"), REDEPLOY, "Blue")
+            msg.addButton(_("🔗 Unlink (Remove Safe)"), UNLINK, "Red")
             msg.addButton(_("Cancel"), CANCEL, "Gray")
-            
-            # Basic message
-            base_txt = _("This item is partially deployed (some files missing).")
-            
-            # Phase 51: Show missing files if available
-            samples = getattr(self, 'missing_samples', [])
-            if samples:
-                file_list = ", ".join(str(s) for s in samples)
-                msg.setText(base_txt + "\n\n" + _("不足アイテム: {files}").format(files=file_list) + "\n\n" + _("What would you like to do?"))
-            else:
-                msg.setText(base_txt + "\n\n" + _("What would you like to do?"))
             
             res = msg.exec()
             if res == REDEPLOY:
-                # Redeploy
-                target_path = path if path else self.path
-                self.request_redeploy.emit(target_path)
-                return
+                self.request_redeploy.emit(self.path)
             elif res == UNLINK:
-                # Proceed to unlink (fall through will handle it since status != none)
-                pass
-            else:
-                # Cancel or Windows "X" close
-                return
+                self.request_deployment_toggle.emit(self.path, self.is_package)
+            return
         
         # If this is a category (folder) but we are in Package View, 
         # it might be allowed to deploy as a package via debug flag.
@@ -325,6 +328,8 @@ class ItemCard(QFrame):
         self.is_partial = kwargs.get('is_partial', getattr(self, 'is_partial', False))
         self.is_trash_view = kwargs.get('is_trash_view', getattr(self, 'is_trash_view', False))
         self.missing_samples = kwargs.get('missing_samples', getattr(self, 'missing_samples', []))
+        self.files_found = kwargs.get('files_found', getattr(self, 'files_found', 0))
+        self.files_total = kwargs.get('files_total', getattr(self, 'files_total', 0))
 
         # Support 'is_visible' (0/1) mapping to 'is_hidden'
         if 'is_visible' in kwargs:
@@ -356,6 +361,7 @@ class ItemCard(QFrame):
         # Child Status Flags (Folders)
         self.has_linked_children = kwargs.get('has_linked', getattr(self, 'has_linked_children', False))
         self.has_unlinked_children = kwargs.get('has_unlinked', getattr(self, 'has_unlinked_children', False))
+        self.has_partial = kwargs.get('has_partial', getattr(self, 'has_partial_children', False)) # This is for children, not self.is_partial
         self.has_favorite = kwargs.get('has_favorite', getattr(self, 'has_favorite', False))
         self.has_conflict_children = kwargs.get('has_conflict_children', getattr(self, 'has_conflict_children', False))
         
@@ -578,6 +584,8 @@ class ItemCard(QFrame):
         )
         self.link_status = status.get('status', 'none')
         self.missing_samples = status.get('missing_samples', [])
+        self.files_found = status.get('files_found', 0)
+        self.files_total = status.get('files_total', 0)
 
         # Phase 35: Multi-root Fallback
         # If not found in primary target, check target_root_2 and target_root_3
@@ -601,6 +609,8 @@ class ItemCard(QFrame):
                                 self.link_status = 'linked'
                                 status = alt_status
                                 self.missing_samples = []
+                                self.files_found = status.get('files_found', 0)
+                                self.files_total = status.get('files_total', 0)
                                 break
             except: pass
         # status is already updated if fallback succeeded
@@ -675,7 +685,8 @@ class ItemCard(QFrame):
 
     def set_children_status(self, has_linked: bool = False, has_conflict: bool = False, 
                             has_unlinked_children: bool = False, has_partial: bool = False,
-                            has_category_conflict: bool = False):
+                            has_category_conflict: bool = False, missing_samples: list = None,
+                            files_found: int = 0, files_total: int = 0):
         """Set child status flags for parent folder color logic.
         Also updates link_status for category cards to enable Unlink button.
         """
@@ -684,6 +695,9 @@ class ItemCard(QFrame):
         self.has_unlinked_children = has_unlinked_children
         self.has_partial_children = has_partial
         self.has_category_conflict = has_category_conflict
+        self.missing_samples = missing_samples if missing_samples else []
+        self.files_found = files_found
+        self.files_total = files_total
         
         # Phase 14 Fix: For categories, update link_status based on children
         # This enables the Unlink button to appear when children are linked

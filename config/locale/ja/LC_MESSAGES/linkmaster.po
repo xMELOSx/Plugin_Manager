@@ -301,6 +301,30 @@ msgstr "デプロイ済み（リンク正常）"
 msgid "Not Deployed (Inactive)"
 msgstr "未デプロイ（非アクティブ）"
 
+msgid "Partial Deployment (Repair)"
+msgstr "物理的に一部デプロイ済み（修復が必要）"
+
+msgid "⚠ Re-deploy (Repair)"
+msgstr "⚠ 再デプロイ (修復)"
+
+msgid "Partial Deployment"
+msgstr "一部デプロイ"
+
+msgid "This item is partially deployed (some files missing)."
+msgstr "アイテムが一部デプロイされています（ファイル欠落）。"
+
+msgid "Missing items: {found} / {total}"
+msgstr "不足アイテム: {found} / {total}"
+
+msgid "Missing items:"
+msgstr "不足しているアイテム:"
+
+msgid "Items deployed: {found} / {total}"
+msgstr "デプロイ済みアイテム: {found} / {total}"
+
+msgid "{found} / {total} items deployed"
+msgstr "{found} / {total} 件が現在デプロイ済み"
+
 msgid "🔄 Latest"
 msgstr "🔄 最新"
 

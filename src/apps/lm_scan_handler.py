@@ -307,6 +307,10 @@ class LMScanHandlerMixin:
             has_linked=r.get('has_linked', False),
             has_unlinked=r.get('has_unlinked', False),
             has_favorite=r.get('has_favorite', False),
+            is_partial=r.get('is_partial', False),
+            missing_samples=r.get('missing_samples', []),
+            files_found=r.get('files_found', 0),
+            files_total=r.get('files_total', 0),
             has_conflict_children=r.get('has_conflict', False),
             link_status=r.get('link_status', 'none'),
             has_logical_conflict=r.get('has_logical_conflict', False),
@@ -324,7 +328,6 @@ class LMScanHandlerMixin:
             app_conflict_default=configs['app_conflict_default'],
             app_cat_style_default=configs['app_cat_style_default'],
             app_pkg_style_default=configs['app_pkg_style_default'],
-            is_partial=r.get('is_partial', False),
             conflict_tag=item_config.get('conflict_tag'),
             conflict_scope=item_config.get('conflict_scope'),
             is_favorite=r.get('is_favorite', 0),
@@ -337,8 +340,7 @@ class LMScanHandlerMixin:
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=self._calculate_show_deploy(is_package, use_pkg_settings, settings),
             deploy_button_opacity=settings['opacity'],
-            category_deploy_status=item_config.get('category_deploy_status'),
-            missing_samples=r.get('missing_samples', [])
+            category_deploy_status=item_config.get('category_deploy_status')
         )
         card.context = context
         card.rel_path = item_rel

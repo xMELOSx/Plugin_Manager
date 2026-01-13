@@ -303,9 +303,20 @@ class ScannerWorker(QObject):
                 rules_dict = json.loads(item_config['deployment_rules'])
             except: pass
             
+        # Hierarchy-Aware Path Checking
+        # 1. Try flat path (Standard for packages)
         check_path = effective_target_base if deploy_rule == 'files' else os.path.join(effective_target_base, item['name'])
         status_res = self.deployer.get_link_status(check_path, expected_source=item_abs_path, deploy_rule=deploy_rule, rules=rules_dict)
         
+        # 2. If 'none', and we are in a subfolder, try the mirrored hierarchical path
+        if status_res.get('status') == 'none' and item_rel and '/' in item_rel:
+             # Calculate mirrored path: storage_root/A/B -> target_root/A/B
+             mirrored_path = os.path.normpath(os.path.join(effective_target_base, item_rel))
+             alt_res = self.deployer.get_link_status(mirrored_path, expected_source=item_abs_path, deploy_rule=deploy_rule, rules=rules_dict)
+             if alt_res.get('status') != 'none':
+                  status_res = alt_res
+                  check_path = mirrored_path
+
         # 3. Child Status Check (Folders only) - Restored for Phase 4 markers
         has_linked_children = False
         has_child_conflict = False
@@ -328,6 +339,8 @@ class ScannerWorker(QObject):
             'has_unlinked': status_res.get('status') == 'none',
             'is_partial': status_res.get('status') == 'partial',
             'missing_samples': status_res.get('missing_samples', []),
+            'files_found': status_res.get('files_found', 0),
+            'files_total': status_res.get('files_total', 0),
             'has_conflict': status_res.get('status') == 'conflict' or has_child_conflict,
             'is_misplaced': status_res.get('status') == 'misplaced',
             'has_favorite': self._favorite_ancestors and item_rel in self._favorite_ancestors,

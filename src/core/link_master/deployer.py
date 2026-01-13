@@ -490,8 +490,8 @@ class Deployer:
                  
                  try:
                      import fnmatch
-                     if deploy_rule == 'tree':
-                         # Recursive check for tree mode
+                     if deploy_rule in ('tree', 'custom'):
+                         # Recursive check for tree and custom modes
                          for root, dirs, files in os.walk(expected_source):
                              rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
                              for name in files + dirs:
@@ -520,7 +520,7 @@ class Deployer:
                                  if not is_valid and len(missing_samples) < 3:
                                      missing_samples.append(rel_path)
                      else:
-                         # Flat check for 'files' and 'custom'
+                         # Flat check for 'files'
                          for f in os.listdir(expected_source):
                              if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
                                  continue
@@ -543,21 +543,26 @@ class Deployer:
                              
                              if not is_valid and len(missing_samples) < 3:
                                  missing_samples.append(f)
-
+ 
                  except Exception as e:
                      # self.logger.warning(f"Detection error for {deploy_rule}: {e}")
                      pass
                  
-                 res = {"status": "none", "type": "none", "missing_samples": missing_samples}
+                 res = {
+                     "status": "none", 
+                     "type": expected_transfer_mode if expected_transfer_mode else "dir",
+                     "missing_samples": missing_samples,
+                     "files_found": files_found,
+                     "files_total": files_total
+                 }
                  if files_total == 0:
                       # If all items are excluded, it's effectively linked if target root exists
-                      res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
+                      res["status"] = "linked"
                  elif files_found > 0:
                      if files_found >= files_total:
-                         res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
+                         res["status"] = "linked"
                      else:
-                         res = {"status": "partial", "type": expected_transfer_mode if expected_transfer_mode else "dir", 
-                                "missing_samples": missing_samples}
+                         res["status"] = "partial"
                  
                  return res
 
@@ -568,21 +573,39 @@ class Deployer:
                 norm_real = self._normalize_path(real_target)
                 norm_exp = self._normalize_path(expected_source)
                 if norm_real == norm_exp:
-                    return {"status": "linked", "type": "symlink"}
+                    return {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1}
                 else:
                     return {"status": "conflict", "type": "symlink", "target": real_target}
             
             if os.path.isdir(target_link_path) and expected_transfer_mode == 'copy':
-                # Phase 51: Verify Folder Copy Completion
+                # Phase 51: Verify Folder Copy Completion (Recursive)
                 try:
-                    src_list = os.listdir(expected_source)
-                    tgt_list = os.listdir(target_link_path)
+                    files_found = 0
+                    files_total = 0
+                    missing_samples = []
                     
-                    missing = [f for f in src_list if f not in tgt_list]
-                    if missing:
-                         return {"status": "partial", "type": "copy", "missing_samples": missing[:3]}
+                    for root, dirs, files in os.walk(expected_source):
+                        rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
+                        for name in files + dirs:
+                            rel_path = name if rel_dir == "." else f"{rel_dir}/{name}"
+                            files_total += 1
+                            
+                            item_tgt = os.path.join(target_link_path, rel_path)
+                            if os.path.exists(item_tgt):
+                                files_found += 1
+                            elif len(missing_samples) < 3:
+                                missing_samples.append(rel_path)
                     
-                    return {"status": "linked", "type": "copy"}
+                    if files_found < files_total:
+                         return {
+                             "status": "partial", 
+                             "type": "copy", 
+                             "missing_samples": missing_samples,
+                             "files_found": files_found,
+                             "files_total": files_total
+                         }
+                    
+                    return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total}
                 except:
                     return {"status": "linked", "type": "copy"}
 

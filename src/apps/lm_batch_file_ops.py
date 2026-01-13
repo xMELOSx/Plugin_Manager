@@ -315,10 +315,10 @@ class LMFileOpsMixin:
                 was_linked = False
                 card = self._get_active_card_by_path(abs_path.replace('\\', '/'))
                 if card:
-                    was_linked = (card.link_status == 'linked')
+                    was_linked = (card.link_status in ('linked', 'partial'))
                 else:
                     cfg = self.db.get_folder_config(rel)
-                    was_linked = (cfg and cfg.get('last_known_status') == 'linked')
+                    was_linked = (cfg and cfg.get('last_known_status') in ('linked', 'partial'))
 
                 # DB Update
                 self.db.update_folder_display_config(rel, **updates_to_apply)
