@@ -14,32 +14,100 @@ class DeploymentCollisionError(Exception):
 
 # ...
 
-    def deploy_with_rules(self, source_path: str, rule: str, target_root: str,
-                          app_info: dict, deployment_rule: str = "inherit",
-                          conflict_policy: str = "backup") -> bool:
+    def deploy_with_rules(self, source_path: str, target_link_path: str, rules: dict, 
+                          deploy_rule: str = "inherit", transfer_mode: str = "symlink",
+                          conflict_policy: str = "backup", package_rel_path: str = None) -> bool:
         """
-        Deploys using rules (folder/symlink/copy).
-        deployment_rule: 'folder', 'inherit', 'symlink', 'copy', 'custom'
-        
-        FIX: Only load/use rules (JSON) if deployment_rule is explicitly 'custom'.
+        Deploys source to target using specified rules.
+        Supports 'custom' mode which allows mixed symlink/copy based on JSON rules.
         """
         import json
         
-        # 1. Prepare Rules
-        # Should we load rules? Only if 'custom' is selected.
-        rules_path = os.path.join(source_path, f"lm_deploy_rules_{app_info['id']}.json")
-        rules = {}
-        
-        if deployment_rule == "custom":
-            if core_handler.path_exists(rules_path):
-                try:
-                    with open(rules_path, 'r', encoding='utf-8') as f:
-                        rules = json.load(f)
-                except:
-                    self.logger.error(f"Invalid rules JSON at {rules_path}")
-        # IF NOT custom, we DO NOT load rules, ensuring 'symlink' or 'copy' takes precedence.
-        
-        # ... (Rest of logic) ...
+        # 1. Custom Mode Logic
+        if deploy_rule == 'custom':
+            if not os.path.exists(source_path): return False
+            if not os.path.isdir(source_path):
+                # If source is file, just deploy it using default mode
+                if transfer_mode == 'copy':
+                    return self.deploy_copy(source_path, target_link_path, conflict_policy)
+                else:
+                    return self.deploy_link(source_path, target_link_path, conflict_policy)
+
+            # Ensure target root directory exists (for the flat items)
+            # Custom implies we might be deploying children directly into target_link_path
+            # OR we might be deploying the folder itself? 
+            # Usually 'custom' works like 'files' (flat) but with overrides.
+            # User said: "separate symlink and Copy... according to JSON rules"
+            # This implies iterating children.
+            
+            try:
+                if not os.path.exists(target_link_path):
+                    os.makedirs(target_link_path, exist_ok=True)
+            except: pass
+
+            success_all = True
+            
+            # Iterate source files
+            for item_name in os.listdir(source_path):
+                src_item = os.path.join(source_path, item_name)
+                dst_item = os.path.join(target_link_path, item_name)
+                
+                # Check Rule for this item
+                # JSON Format expected: {"mapping": {"filename.txt": "copy", "folder": "symlink"}} ??
+                # Or just simple key-value? 
+                # Let's assume rules dict has keys matching filenames for specific overrides
+                # OR specialized 'overrides' key. 
+                # For now, simplistic approach: rules.get(item_name) -> mode
+                
+                item_mode = transfer_mode # Default to App Default
+                
+                # Check granular rules if available
+                if rules and isinstance(rules, dict):
+                    # Direct match: "file.txt": "copy"
+                    if item_name in rules:
+                         val = rules[item_name]
+                         if val in ['copy', 'symlink']: item_mode = val
+                    # 'overrides' dict support
+                    elif 'overrides' in rules and item_name in rules['overrides']:
+                         val = rules['overrides'][item_name]
+                         if val in ['copy', 'symlink']: item_mode = val
+                
+                # Execute Deployment
+                res = False
+                if item_mode == 'copy':
+                    res = self.deploy_copy(src_item, dst_item, conflict_policy)
+                else:
+                    res = self.deploy_link(src_item, dst_item, conflict_policy)
+                
+                if not res: success_all = False
+                
+            return success_all
+
+        # 2. Flat (Files) Mode
+        if deploy_rule == 'files':
+             if not os.path.exists(source_path) or not os.path.isdir(source_path): return False
+             try:
+                 if not os.path.exists(target_link_path): os.makedirs(target_link_path, exist_ok=True)
+             except: pass
+             
+             success_all = True
+             for item_name in os.listdir(source_path):
+                 src_item = os.path.join(source_path, item_name)
+                 dst_item = os.path.join(target_link_path, item_name)
+                 
+                 res = False
+                 if transfer_mode == 'copy':
+                     res = self.deploy_copy(src_item, dst_item, conflict_policy)
+                 else:
+                     res = self.deploy_link(src_item, dst_item, conflict_policy)
+                 if not res: success_all = False
+             return success_all
+
+        # 3. Default Folder/Tree Mode (Standard single link/copy)
+        if transfer_mode == 'copy':
+            return self.deploy_copy(source_path, target_link_path, conflict_policy)
+        else:
+            return self.deploy_link(source_path, target_link_path, conflict_policy)
 
 
 class DeploymentCollisionError(Exception):

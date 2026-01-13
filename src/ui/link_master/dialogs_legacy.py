@@ -2008,14 +2008,21 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             self._update_lib_display()
 
     def _update_tree_skip_visibility(self):
-        """Show/Hide Tree Skip Levels based on Deploy Rule."""
+        """Show/Hide Tree Skip Levels based on Deploy Rule. Also handles Transfer Mode state."""
         rule = self.deploy_rule_override_combo.currentData()
         is_tree = rule == "tree"
         self.skip_levels_spin.setVisible(is_tree)
         self.skip_levels_label.setVisible(is_tree)
-        if is_tree:
-            # Do NOT reset value here - trust __init__ or user input
-            pass
+        
+        # New Logic: Disable Transfer Mode for 'custom' rule
+        is_custom = rule == "custom"
+        # If custom, we disable the manual transfer mode override because the JSON rules should dictate it (mixed mode)
+        self.transfer_mode_override_combo.setEnabled(not is_custom)
+        if is_custom:
+            from src.core.lang_manager import _ # Ensure localization
+            self.transfer_mode_override_combo.setToolTip(_("Transfer mode is determined by JSON rules in Custom mode."))
+        else:
+             self.transfer_mode_override_combo.setToolTip("")
 
     def _browse_target_override(self):
         """Browse for a custom target destination path."""
