@@ -436,7 +436,14 @@ class LMDeploymentOpsMixin:
             return True
         # -------------------------------------------------------------
 
-        rules = config.get('deployment_rules')
+        rules_str = config.get('deployment_rules')
+        rules = {}
+        if rules_str:
+            try:
+                import json
+                rules = json.loads(rules_str)
+            except:
+                self.logger.warning(f"Failed to parse deployment_rules for {rel_path}: {rules_str}")
 
         # Library Version Conflict Check
         if config.get('is_library', 0):
