@@ -162,7 +162,7 @@ class AppRegistrationDialog(FramelessDialog):
         
         # Tree Skip (Relocated to top of group)
         self.default_skip_levels_spin = StyledSpinBox()
-        self.default_skip_levels_spin.setRange(0, 5)
+        self.default_skip_levels_spin.setRange(0, 5) # Default config defines the 'default', so 0-5 is appropriate
         self.default_skip_levels_spin.setSuffix(_(" levels"))
         defaults_form.addRow(_("Tree Skip:"), self.default_skip_levels_spin)
 
@@ -494,13 +494,22 @@ class AppRegistrationDialog(FramelessDialog):
                 self.preview_label.setPixmap(pixmap.scaled(160, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
                 self.preview_label.setText("")
                 
+                
                 # Ask to crop immediately
-                reply = QMessageBox.question(self, _("Crop Image?"), _("Do you want to crop the pasted image?"), 
-                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.Yes:
+                msg = FramelessMessageBox(self)
+                msg.setWindowTitle(_("Crop Image?"))
+                msg.setText(_("Do you want to crop the pasted image?"))
+                msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+                msg.setIcon(FramelessMessageBox.Icon.Question)
+                
+                if msg.exec() == FramelessMessageBox.StandardButton.Yes:
                     self._crop_clipboard_cover()
         else:
-            QMessageBox.warning(self, _("No Image"), _("No image found in clipboard."))
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("No Image"))
+            msg.setText(_("No image found in clipboard."))
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.exec()
 
     def _crop_clipboard_cover(self):
         """Crop the pending clipboard image."""
@@ -531,35 +540,63 @@ class AppRegistrationDialog(FramelessDialog):
         
         # Required field checks
         if not self.name_edit.text().strip():
-            FramelessMessageBox.warning(self, _("Validation Error"), _("Application name is required."))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Validation Error"))
+            msg.setText(_("Application name is required."))
+            msg.exec()
             return
         if not self.storage_edit.text().strip():
-            FramelessMessageBox.warning(self, _("Validation Error"), _("Storage path is required."))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Validation Error"))
+            msg.setText(_("Storage path is required."))
+            msg.exec()
             return
         if not self.target_edit.text().strip():
-            FramelessMessageBox.warning(self, _("Validation Error"), _("Primary target install path is required."))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Validation Error"))
+            msg.setText(_("Primary target install path is required."))
+            msg.exec()
             return
         
         # Path existence checks
         storage_path = self.storage_edit.text().strip()
         if not os.path.exists(storage_path):
-            FramelessMessageBox.warning(self, _("Path Error"), _("Storage path does not exist:\n{path}").format(path=storage_path))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Path Error"))
+            msg.setText(_("Storage path does not exist:\n{path}").format(path=storage_path))
+            msg.exec()
             return
         
         target_path = self.target_edit.text().strip()
         if not os.path.exists(target_path):
-            FramelessMessageBox.warning(self, _("Path Error"), _("Primary target path does not exist:\n{path}").format(path=target_path))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Path Error"))
+            msg.setText(_("Primary target path does not exist:\n{path}").format(path=target_path))
+            msg.exec()
             return
         
         # Optional target paths - only check if specified
         target_path_2 = self.target_edit_2.text().strip()
         if target_path_2 and not os.path.exists(target_path_2):
-            FramelessMessageBox.warning(self, _("Path Error"), _("Secondary target path does not exist:\n{path}").format(path=target_path_2))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Path Error"))
+            msg.setText(_("Secondary target path does not exist:\n{path}").format(path=target_path_2))
+            msg.exec()
             return
             
         target_path_3 = self.target_edit_3.text().strip()
         if target_path_3 and not os.path.exists(target_path_3):
-            FramelessMessageBox.warning(self, _("Path Error"), _("Tertiary target path does not exist:\n{path}").format(path=target_path_3))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.setWindowTitle(_("Path Error"))
+            msg.setText(_("Tertiary target path does not exist:\n{path}").format(path=target_path_3))
+            msg.exec()
             return
         
         self.accept()
@@ -1438,19 +1475,20 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         
         # Skip Levels for TREE mode (Moved below Deploy Rule)
         self.skip_levels_spin = StyledSpinBox()
-        self.skip_levels_spin.setRange(0, 5)
+        self.skip_levels_spin.setRange(-1, 5) # -1 = Default
+        self.skip_levels_spin.setSpecialValueText(_("Default"))
         self.skip_levels_spin.setSuffix(_(" levels"))
         
-        # Extract skip_levels from rules JSON if exists
+        # Extract skip_levels from rules JSON if exists, otherwise Default (-1)
         rules_json = self.current_config.get('deployment_rules', '') or ''
         try:
             import json
             current_rules = json.loads(rules_json) if rules_json else {}
-            # Use rules value, or fallback to app default if it's a new config or specifically requested?
-            # Actually, usually 0 is fine if not set.
-            self.skip_levels_spin.setValue(int(current_rules.get('skip_levels', self.app_skip_levels_default)))
+            # Use rules value, or fallback to -1 (Default)
+            val = int(current_rules.get('skip_levels', -1))
+            self.skip_levels_spin.setValue(val)
         except:
-            self.skip_levels_spin.setValue(self.app_skip_levels_default)
+            self.skip_levels_spin.setValue(-1)
             
         self.skip_levels_label = QLabel(_("Tree Skip Levels:"))
         adv_form.addRow(self.skip_levels_label, self.skip_levels_spin)
@@ -1832,12 +1870,20 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
                 self.preview_label.setText("")
                 
                 # Phase 28: Ask to crop immediately
-                reply = QMessageBox.question(self, _("Crop Image?"), _("Do you want to crop the pasted image?"), 
-                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.Yes:
+                msg = FramelessMessageBox(self)
+                msg.setWindowTitle(_("Crop Image?"))
+                msg.setText(_("Do you want to crop the pasted image?"))
+                msg.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
+                msg.setIcon(FramelessMessageBox.Icon.Question)
+                
+                if msg.exec() == FramelessMessageBox.StandardButton.Yes:
                     self._crop_image()
         else:
-            QMessageBox.warning(self, _("No Image"), _("No image found in clipboard."))
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("No Image"))
+            msg.setText(_("No image found in clipboard."))
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.exec()
 
     def _get_thumbnail_root(self):
         """Get the app-specific thumbnail storage path."""
@@ -1865,7 +1911,11 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
                 self.pending_icon_path = full_path
                 self.image_edit.setText(full_path)
             else:
-                QMessageBox.warning(self, _("Error"), _("Failed to save clipboard image."))
+                msg = FramelessMessageBox(self)
+                msg.setIcon(FramelessMessageBox.Icon.Warning)
+                msg.setWindowTitle(_("Error"))
+                msg.setText(_("Failed to save clipboard image."))
+                msg.exec()
                 return
 
         super().accept()

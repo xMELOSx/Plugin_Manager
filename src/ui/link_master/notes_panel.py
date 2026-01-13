@@ -252,7 +252,11 @@ class NotesPanel(QWidget):
             new_path = os.path.join(self.storage_path, new_name)
             
             if os.path.exists(new_path):
-                FramelessMessageBox.warning(self, _("Rename"), _("A note with that name already exists."))
+                msg = FramelessMessageBox(self)
+                msg.setIcon(FramelessMessageBox.Icon.Warning)
+                msg.setWindowTitle(_("Rename"))
+                msg.setText(_("A note with that name already exists."))
+                msg.exec()
                 return
                 
             try:
@@ -265,7 +269,11 @@ class NotesPanel(QWidget):
                         self._on_item_clicked(self.list_widget.item(i))
                         break
             except Exception as e:
-                FramelessMessageBox.critical(self, _("Error"), _("Failed to rename note: {e}").format(e=e))
+                msg = FramelessMessageBox(self)
+                msg.setIcon(FramelessMessageBox.Icon.Critical)
+                msg.setWindowTitle(_("Error"))
+                msg.setText(_("Failed to rename note: {e}").format(e=e))
+                msg.exec()
 
     def _on_item_clicked(self, item):
         if not item: return
@@ -293,7 +301,11 @@ class NotesPanel(QWidget):
             # Save last selected note
             self._save_last_note(self.current_note)
         except Exception as e:
-            FramelessMessageBox.critical(self, _("Error"), _("Failed to read note: {e}").format(e=e))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Critical)
+            msg.setWindowTitle(_("Error"))
+            msg.setText(_("Failed to read note: {e}").format(e=e))
+            msg.exec()
 
     def _save_current_note(self):
         if not hasattr(self, 'current_note') or not self.current_note: return False
@@ -309,7 +321,11 @@ class NotesPanel(QWidget):
             Toast.show_toast(self, _("Note Saved!"), preset="success")
             return True
         except Exception as e:
-            FramelessMessageBox.critical(self, _("Error"), _("Failed to save note: {e}").format(e=e))
+            msg = FramelessMessageBox(self)
+            msg.setIcon(FramelessMessageBox.Icon.Critical)
+            msg.setWindowTitle(_("Error"))
+            msg.setText(_("Failed to save note: {e}").format(e=e))
+            msg.exec()
             return False
 
     def _open_external(self):
@@ -342,7 +358,11 @@ class NotesPanel(QWidget):
         elif action == act_rename:
             self._rename_note(item)
         elif action == act_del:
-            if FramelessMessageBox.question(self, _("Delete"), _("Delete '{item.text()}'?").format(item=item)) == FramelessMessageBox.StandardButton.Ok:
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Delete"))
+            msg.setText(_("Delete '{item_text}'?").format(item_text=item.text()))
+            msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok | FramelessMessageBox.StandardButton.Cancel)
+            if msg.exec() == FramelessMessageBox.StandardButton.Ok:
                 os.remove(path)
                 self.refresh()
         elif action == act_top:

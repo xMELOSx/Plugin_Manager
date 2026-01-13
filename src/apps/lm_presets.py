@@ -58,11 +58,15 @@ class LMPresetsMixin:
             self.logger.error(f"Failed to scan target for links: {e}")
 
         if count == 0:
-            FramelessMessageBox.warning(self, "Empty", "No active links found to save.")
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Empty"))
+            msg.setText(_("No active links found to save."))
+            msg.setIcon(FramelessMessageBox.Icon.Warning)
+            msg.exec()
             return
 
         # UI for Name only (Folder and Description skipped for now)
-        name, ok = FramelessInputDialog.getText(self, "プリセット保存", "プリセット名:")
+        name, ok = FramelessInputDialog.getText(self, _("Save Preset"), _("Preset Name:"))
         if not ok or not name: return
         
         item_ids = []
@@ -72,10 +76,19 @@ class LMPresetsMixin:
             
         try:
             self.db.create_preset(name, item_ids)
-            FramelessMessageBox.information(self, "成功", f"プリセット '{name}' を {count} アイテムで作成しました！")
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Success"))
+            msg.setText(_("Preset '{name}' created with {count} items!").format(name=name, count=count))
+            msg.setIcon(FramelessMessageBox.Icon.Information)
+            msg.exec()
+            
             self.presets_panel.refresh()
         except Exception as e:
-            FramelessMessageBox.critical(self, "エラー", str(e))
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Error"))
+            msg.setText(str(e))
+            msg.setIcon(FramelessMessageBox.Icon.Critical)
+            msg.exec()
 
     def _load_preset(self, preset_id):
         items = self.db.get_preset_items(preset_id)
@@ -232,7 +245,11 @@ class LMPresetsMixin:
             self.db.delete_preset(preset_id)
             self.presets_panel.refresh()
         except Exception as e:
-            FramelessMessageBox.critical(self, "Error", f"Failed to delete: {e}")
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Error"))
+            msg.setText(_("Failed to delete: {e}").format(e=e))
+            msg.setIcon(FramelessMessageBox.Icon.Critical)
+            msg.exec()
 
     def _clear_preset_filter(self):
         """Clear preset filter mode and show all items."""

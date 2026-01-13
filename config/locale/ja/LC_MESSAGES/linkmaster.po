@@ -2727,3 +2727,88 @@ msgstr "競合ポリシー:"
 
 msgid "Other Default Settings"
 msgstr "その他のデフォルト設定"
+
+# Missing Dialog Translations
+msgid "Delete folder '{folder_name}'?\n(Presets inside will be moved to root)"
+msgstr "'{folder_name}' フォルダを削除しますか？\n(中のプリセットはルートに移動されます)"
+
+msgid "Delete Preset"
+msgstr "プリセット削除"
+
+msgid "Delete '{preset_name}'?"
+msgstr "'{preset_name}' を削除しますか？"
+
+msgid "Confirm Bulk Reset"
+msgstr "一括リセット確認"
+
+msgid "⚠ Bulk delete all folder attributes for this app?"
+msgstr "⚠ このアプリの全フォルダ属性を一括削除しますか？"
+
+msgid "・All folder types will return to default\n・All display settings and tags will be removed\n・This action cannot be undone."
+msgstr "・全てのフォルダタイプがデフォルトに戻ります\n・全ての表示設定とタグが削除されます\n・この操作は取り消せません"
+
+msgid "Crop Image?"
+msgstr "画像を切り抜きますか？"
+
+msgid "Do you want to crop the pasted image?"
+msgstr "貼り付けた画像を切り抜きますか？"
+
+msgid "Validation Error"
+msgstr "入力エラー"
+
+msgid "Application name is required."
+msgstr "アプリケーション名は必須です。"
+
+msgid "Storage path is required."
+msgstr "ストレージパスは必須です。"
+
+msgid "Primary target install path is required."
+msgstr "プライマリターゲットパスは必須です。"
+
+msgid "Path Error"
+msgstr "パスエラー"
+
+msgid "Storage path does not exist:\n{path}"
+msgstr "ストレージパスが存在しません:\n{path}"
+
+msgid "Primary target path does not exist:\n{path}"
+msgstr "プライマリターゲットパスが存在しません:\n{path}"
+
+msgid "Secondary target path does not exist:\n{path}"
+msgstr "セカンダリターゲットパスが存在しません:\n{path}"
+
+msgid "Tertiary target path does not exist:\n{path}"
+msgstr "ターシャリターゲットパスが存在しません:\n{path}"
+
+msgid "Confirm Unregister"
+msgstr "登録解除の確認"
+
+msgid "Are you sure you want to completely remove this application registration?\nThis will NOT delete physical folders, but will delete all custom names, tags, and settings."
+msgstr "本当にこのアプリケーション登録を完全に削除しますか？\n物理フォルダは削除されませんが、カスタム名、タグ、設定は全て削除されます。"
+
+msgid "Failed to save clipboard image."
+msgstr "クリップボード画像の保存に失敗しました。"
+
+msgid "Default"
+msgstr "デフォルト"
+
+msgid "Tree Skip:"
+msgstr "ツリースキップ:"
+
+msgid "Tree Skip Levels:"
+msgstr "ツリー階層スキップ:"
+
+msgid "Save Preset"
+msgstr "プリセット保存"
+
+msgid "Preset Name:"
+msgstr "プリセット名:"
+
+msgid "No active links found to save."
+msgstr "保存するアクティブなリンクが見つかりません。"
+
+msgid "Preset '{name}' created with {count} items!"
+msgstr "プリセット '{name}' を {count} アイテムで作成しました！"
+
+msgid "Failed to delete: {e}"
+msgstr "削除に失敗しました: {e}"
