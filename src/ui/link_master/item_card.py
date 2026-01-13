@@ -207,30 +207,41 @@ class ItemCard(QFrame):
         # Phase 51: Handle Partial Status with Warning Dialog
         if self.link_status == 'partial':
             from src.ui.common_widgets import FramelessMessageBox
-            msg = FramelessMessageBox(self)
+            msg = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
             msg.setWindowTitle(_("Partial Deployment"))
-            msg.setText(_("This item is partially deployed (some files missing).\nWhat would you like to do?"))
             msg.setIcon(FramelessMessageBox.Icon.Warning)
+            # Safe codes to prevent "X" (0) from triggering redeploy
+            REDEPLOY = 10
+            UNLINK = 20
+            CANCEL = 30
             
-            # Custom buttons returns index: 0=Redeploy, 1=Unlink
-            msg.addButton(_("Redeploy"), 0, "Blue")
-            msg.addButton(_("Unlink"), 1, "Gray")
+            msg.addButton(_("Redeploy"), REDEPLOY, "Blue")
+            msg.addButton(_("Unlink"), UNLINK, "Gray")
+            msg.addButton(_("Cancel"), CANCEL, "Gray")
+            
+            # Basic message
+            base_txt = _("This item is partially deployed (some files missing).")
             
             # Phase 51: Show missing files if available
-            if getattr(self, 'missing_samples', []):
-                file_list = ", ".join(self.missing_samples)
-                msg.setText(_("This item is partially deployed.\nMissing: {files}\n\nWhat would you like to do?").format(files=file_list))
+            samples = getattr(self, 'missing_samples', [])
+            if samples:
+                file_list = ", ".join(str(s) for s in samples)
+                msg.setText(base_txt + "\n\n" + _("不足アイテム: {files}").format(files=file_list) + "\n\n" + _("What would you like to do?"))
+            else:
+                msg.setText(base_txt + "\n\n" + _("What would you like to do?"))
             
-            if msg.exec() == 0:
+            res = msg.exec()
+            if res == REDEPLOY:
                 # Redeploy
                 target_path = path if path else self.path
                 self.request_redeploy.emit(target_path)
                 return
-            else:
-                # Unlink (Fall through to standard toggle, which will see 'partial' and treat as 'unlink' attempt? 
-                # Or we explicitly ask for unlink?
-                # Usually toggle unlinks if status != none. Partial is != none, so it should unlink.
+            elif res == UNLINK:
+                # Proceed to unlink (fall through will handle it since status != none)
                 pass
+            else:
+                # Cancel or Windows "X" close
+                return
         
         # If this is a category (folder) but we are in Package View, 
         # it might be allowed to deploy as a package via debug flag.

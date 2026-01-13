@@ -119,7 +119,7 @@ class LMDeploymentOpsMixin:
         try:
             rel_path = os.path.relpath(abs_path, self.storage_root)
             self.logger.info(f"Redeploy requested for {rel_path}")
-            self._deploy_single(rel_path, update_ui=True)
+            self._deploy_single(rel_path, update_ui=True, force_sweep=True)
         except ValueError:
             self.logger.warning(f"Could not relativize path for redeploy: {abs_path}")
 

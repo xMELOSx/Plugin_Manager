@@ -66,8 +66,16 @@ class LMFileManagementMixin:
         try:
             # 🚨 Phase 42: Use Unified Property Saving (Centralized in LMFileOpsMixin)
             abs_path = os.path.join(self.storage_root, rel_path)
+            
+            # Fetch original config for impact checking in _apply_folder_config_updates
+            orig_config = self.db.get_folder_config(rel_path) or {}
+            
             if hasattr(self, '_apply_folder_config_updates'):
-                self._apply_folder_config_updates([abs_path], {'deployment_rules': new_rules})
+                self._apply_folder_config_updates(
+                    [abs_path], 
+                    {'deployment_rules': new_rules}, 
+                    original_configs={abs_path: orig_config}
+                )
             else:
                 # Fallback if not mixed into window
                 self.db.update_folder_display_config(rel_path, deployment_rules=new_rules)

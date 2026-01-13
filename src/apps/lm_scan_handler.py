@@ -337,7 +337,8 @@ class LMScanHandlerMixin:
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=self._calculate_show_deploy(is_package, use_pkg_settings, settings),
             deploy_button_opacity=settings['opacity'],
-            category_deploy_status=item_config.get('category_deploy_status')
+            category_deploy_status=item_config.get('category_deploy_status'),
+            missing_samples=r.get('missing_samples', [])
         )
         card.context = context
         card.rel_path = item_rel

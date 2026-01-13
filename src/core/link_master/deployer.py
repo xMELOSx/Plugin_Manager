@@ -474,59 +474,84 @@ class Deployer:
         # This block handles BOTH Copy and Symlink detection for 'files' mode identically.
         # It relies on strict source-file enumeration to avoid ghost detection in target roots.
         # -------------------------------------------------------------------------
-        if (deploy_rule == 'files' or deploy_rule == 'custom') and expected_source and os.path.isdir(expected_source):
-             # Ensure target directory exists (it might be the root itself)
-             if os.path.isdir(target_link_path):
+        if (deploy_rule in ('files', 'custom', 'tree')) and expected_source and os.path.isdir(expected_source):
+             # -------------------------------------------------------------------------
+             # 🚨 UNIFIED MIRROR/FLATTEN CHECK (Multi-mode aware)
+             # This block handles detection for 'files', 'custom', and 'tree' modes.
+             # -------------------------------------------------------------------------
+             if os.path.exists(target_link_path):
                  files_found = 0
                  files_total = 0
+                 missing_samples = []
                  
-                 # Prepare Excludes ONLY if Custom Mode
                  excludes = []
                  if deploy_rule == 'custom' and rules:
                      excludes = rules.get('exclude', [])
-
-                 missing_samples = []
+                 
                  try:
                      import fnmatch
-                     # Get list of all items in source (files and dirs)
-                     all_items = os.listdir(expected_source)
-                     for f in all_items:
-                         f_path = os.path.join(expected_source, f)
-                         
-                         # Exclude Check (Apply to both files and dirs)
-                         if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
-                             continue
+                     if deploy_rule == 'tree':
+                         # Recursive check for tree mode
+                         for root, dirs, files in os.walk(expected_source):
+                             rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
+                             for name in files + dirs:
+                                 rel_path = name if rel_dir == "." else f"{rel_dir}/{name}"
+                                 
+                                 # Exclude Check
+                                 if excludes and any(fnmatch.fnmatch(rel_path, pat) for pat in excludes):
+                                     continue
+                                     
+                                 files_total += 1
+                                 item_src = os.path.join(root, name)
+                                 item_tgt = os.path.normpath(os.path.join(target_link_path, rel_path))
+                                 
+                                 is_valid = False
+                                 if os.path.islink(item_tgt):
+                                     real = os.readlink(item_tgt)
+                                     if not os.path.isabs(real):
+                                         real = os.path.join(os.path.dirname(item_tgt), real)
+                                     if self._normalize_path(real) == self._normalize_path(item_src):
+                                         files_found += 1
+                                         is_valid = True
+                                 elif os.path.exists(item_tgt):
+                                     files_found += 1
+                                     is_valid = True
+                                 
+                                 if not is_valid and len(missing_samples) < 3:
+                                     missing_samples.append(rel_path)
+                     else:
+                         # Flat check for 'files' and 'custom'
+                         for f in os.listdir(expected_source):
+                             if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
+                                 continue
+                                 
+                             files_total += 1
+                             item_src = os.path.join(expected_source, f)
+                             item_tgt = os.path.join(target_link_path, f)
                              
-                         files_total += 1
-                         target_file = os.path.join(target_link_path, f)
-                         
-                         is_valid = False
-                         if os.path.islink(target_file):
-                             # Link Verification
-                             real = os.readlink(target_file)
-                             if not os.path.isabs(real):
-                                 real = os.path.join(os.path.dirname(target_file), real)
-                             
-                             if self._normalize_path(real) == self._normalize_path(f_path):
+                             is_valid = False
+                             if os.path.islink(item_tgt):
+                                 real = os.readlink(item_tgt)
+                                 if not os.path.isabs(real):
+                                     real = os.path.join(os.path.dirname(item_tgt), real)
+                                 if self._normalize_path(real) == self._normalize_path(item_src):
+                                     files_found += 1
+                                     is_valid = True
+                             elif os.path.exists(item_tgt):
                                  files_found += 1
                                  is_valid = True
-                         elif os.path.exists(target_file):
-                             # Physical existence check (for Copy mode)
-                             # Note: We take existence as "linked" for simplicity in copy mode
-                             files_found += 1
-                             is_valid = True
-                         
-                         if not is_valid and len(missing_samples) < 3:
-                             missing_samples.append(f)
+                             
+                             if not is_valid and len(missing_samples) < 3:
+                                 missing_samples.append(f)
 
                  except Exception as e:
-                     # self.logger.warning(f"Flat check error: {e}")
+                     # self.logger.warning(f"Detection error for {deploy_rule}: {e}")
                      pass
                  
-                 res = {"status": "none", "type": "none"}
+                 res = {"status": "none", "type": "none", "missing_samples": missing_samples}
                  if files_total == 0:
-                     # If all items are excluded, it's effectively linked if target root exists
-                     res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
+                      # If all items are excluded, it's effectively linked if target root exists
+                      res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
                  elif files_found > 0:
                      if files_found >= files_total:
                          res = {"status": "linked", "type": expected_transfer_mode if expected_transfer_mode else "dir"}
@@ -535,6 +560,31 @@ class Deployer:
                                 "missing_samples": missing_samples}
                  
                  return res
+
+        # Standard Folder Symlink Check (for 'folder' mode)
+        if deploy_rule == 'folder' and expected_source and os.path.isdir(expected_source):
+            if os.path.islink(target_link_path):
+                real_target = os.readlink(target_link_path)
+                norm_real = self._normalize_path(real_target)
+                norm_exp = self._normalize_path(expected_source)
+                if norm_real == norm_exp:
+                    return {"status": "linked", "type": "symlink"}
+                else:
+                    return {"status": "conflict", "type": "symlink", "target": real_target}
+            
+            if os.path.isdir(target_link_path) and expected_transfer_mode == 'copy':
+                # Phase 51: Verify Folder Copy Completion
+                try:
+                    src_list = os.listdir(expected_source)
+                    tgt_list = os.listdir(target_link_path)
+                    
+                    missing = [f for f in src_list if f not in tgt_list]
+                    if missing:
+                         return {"status": "partial", "type": "copy", "missing_samples": missing[:3]}
+                    
+                    return {"status": "linked", "type": "copy"}
+                except:
+                    return {"status": "linked", "type": "copy"}
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
@@ -581,28 +631,7 @@ class Deployer:
         if os.path.isdir(target_link_path):
             if expected_source:
                 exp_norm = self._normalize_path(expected_source)
-                try:
-                    # 1. Symlink-based partial detection (Standard Tree/Folder Fallback)
-                    # Note: We skip this if we already handled 'files' mode to avoid double counting or inefficiency
-                    # But for tree mode, we still need it? 
-                    # If deploy_rule was 'files', we returned above (if >0 found). 
-                    # If deploy_rule was 'files' and found 0, we fall through.
-                    # 🚨 FIX: For 'files' mode, we should NOT scan recursively. 
-                    # If we didn't find the specific files above, we shouldn't hunt for ghosts in subdirs.
-                    
-                    if deploy_rule != 'files':
-                        for root, dirs, files in os.walk(target_link_path):
-                            for name in files + dirs:
-                                path = os.path.join(root, name)
-                                if os.path.islink(path):
-                                    real = os.readlink(path)
-                                    if not os.path.isabs(real):
-                                        real = os.path.join(os.path.dirname(path), real)
-                                    
-                                    real_norm = self._normalize_path(real)
-                                    if real_norm.startswith(exp_norm):
-                                        return {"status": "linked", "type": "partial"}
-                except: pass
+            pass
             
             # 2. DB-based directory detection (Phase 43)
             # This handles physical "tree" deployments where files are registered but the root folder is not.

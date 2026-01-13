@@ -284,7 +284,27 @@ class LMFileOpsMixin:
                 impacts_link = False
                 if original_configs and abs_path in original_configs:
                     orig = original_configs[abs_path]
-                    impacts_link = any(k in updates_to_apply and updates_to_apply[k] != orig.get(k) for k in self.LINK_AFFECTING_KEYS)
+                    import json
+                    
+                    def normalize_json(s):
+                        if not s: return None
+                        try:
+                            return json.dumps(json.loads(s), sort_keys=True)
+                        except: return s
+                        
+                    for k in self.LINK_AFFECTING_KEYS:
+                        if k not in updates_to_apply: continue
+                        v = updates_to_apply[k]
+                        orig_v = orig.get(k)
+                        if v == orig_v: continue
+                        
+                        # JSON normalization for deployment_rules
+                        if k == 'deployment_rules':
+                            if normalize_json(v) == normalize_json(orig_v):
+                                continue
+                            
+                        impacts_link = True
+                        break
                 else:
                     # If no original provided, assume impact if any affecting key is in updates (Safe default)
                     impacts_link = any(k in updates_to_apply for k in self.LINK_AFFECTING_KEYS)
@@ -300,27 +320,12 @@ class LMFileOpsMixin:
                     cfg = self.db.get_folder_config(rel)
                     was_linked = (cfg and cfg.get('last_known_status') == 'linked')
 
-                # Special Case: is_partial calculation for deployment_rules
-                if 'deployment_rules' in updates_to_apply:
-                    is_partial = False
-                    try:
-                        import json
-                        rules = json.loads(updates_to_apply['deployment_rules'])
-                        # Migration: rename -> overrides
-                        if 'rename' in rules and 'overrides' not in rules:
-                            rules['overrides'] = rules.pop('rename')
-                        
-                        if (rules.get('exclude') and len(rules['exclude']) > 0) or \
-                           (rules.get('overrides') and len(rules['overrides']) > 0):
-                            is_partial = True
-                    except: pass
-                    updates_to_apply['is_partial'] = is_partial
-
                 # DB Update
                 self.db.update_folder_display_config(rel, **updates_to_apply)
                 
                 # UI Update (Card)
                 if card:
+                    # Update card data (includes is_partial calculation removal)
                     card.update_data(**updates_to_apply)
                     
                     # Trigger Sweep/Deploy if WAS linked and configuration changed.
@@ -357,10 +362,23 @@ class LMFileOpsMixin:
         has_real_changes = False
         if not is_batch:
             # Single: compare with original
+            import json
+            def normalize_json(s):
+                if not s: return None
+                try: return json.dumps(json.loads(s), sort_keys=True)
+                except: return s
+                
             for k, v in data.items():
-                if v != original_config.get(k):
-                    has_real_changes = True
-                    break
+                orig_v = original_config.get(k)
+                if v == orig_v: continue
+                
+                # JSON normalization for deployment_rules
+                if k == 'deployment_rules':
+                    if normalize_json(v) == normalize_json(orig_v):
+                        continue
+                
+                has_real_changes = True
+                break
         else:
             # Batch: if any value is not "KEEP" and not None
             has_real_changes = any(v is not None and v != "KEEP" for v in data.values())
