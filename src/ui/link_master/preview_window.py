@@ -933,10 +933,10 @@ class PreviewWindow(FramelessDialog):
                 currently_linked = current_status in ['linked', 'conflict']
 
                 if is_linked_requested and not currently_linked:
-                    self.logger.info(f"[PreviewWindow] Explicit Deploy requested for {rel_path}")
+                    logging.info(f"[PreviewWindow] Explicit Deploy requested for {rel_path}")
                     window._deploy_single(rel_path, update_ui=True)
                 elif not is_linked_requested and currently_linked:
-                    self.logger.info(f"[PreviewWindow] Explicit Unlink requested for {rel_path}")
+                    logging.info(f"[PreviewWindow] Explicit Unlink requested for {rel_path}")
                     window._unlink_single(rel_path, update_ui=True)
             else:
                 # Fallback if window not found (should not happen)
