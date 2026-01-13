@@ -460,10 +460,7 @@ class Deployer:
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
             return {"status": "none", "type": "none"}
         
-        # Phase 42: Declarative State Check
-        # If registered in DB, it's ours.
-        if self._db.is_file_ours(target_link_path):
-             return {"status": "linked", "type": expected_transfer_mode}
+        # Phase 42: Declarative State Check - Removed premature return to ensure disk verification
 
         # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
         # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
@@ -555,14 +552,23 @@ class Deployer:
                      "files_found": files_found,
                      "files_total": files_total
                  }
-                 if files_total == 0:
-                      # If all items are excluded, it's effectively linked if target root exists
-                      res["status"] = "linked"
-                 elif files_found > 0:
+                 
+                 # Logic for mirrored modes (files, tree, custom)
+                 if files_total > 0:
                      if files_found >= files_total:
                          res["status"] = "linked"
-                     else:
+                     elif files_found > 0:
                          res["status"] = "partial"
+                     else:
+                         # No files from the source are present in the target
+                         res["status"] = "none"
+                 else:
+                     # No items found in source to check (empty or all excluded)
+                     # Only consider 'linked' if the target directory exists and we had something to exclude
+                     if excludes and os.path.exists(target_link_path):
+                          res["status"] = "linked" # Effectively linked if all content excluded
+                     else:
+                          res["status"] = "none"
                  
                  return res
 
@@ -596,18 +602,22 @@ class Deployer:
                             elif len(missing_samples) < 3:
                                 missing_samples.append(rel_path)
                     
-                    if files_found < files_total:
-                         return {
-                             "status": "partial", 
-                             "type": "copy", 
-                             "missing_samples": missing_samples,
-                             "files_found": files_found,
-                             "files_total": files_total
-                         }
+                    if files_total > 0:
+                        if files_found >= files_total:
+                             return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total}
+                        elif files_found > 0:
+                             return {
+                                 "status": "partial", 
+                                 "type": "copy", 
+                                 "missing_samples": missing_samples,
+                                 "files_found": files_found,
+                                 "files_total": files_total
+                             }
                     
-                    return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total}
+                    # No files matched or empty source
+                    return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total}
                 except:
-                    return {"status": "linked", "type": "copy"}
+                    return {"status": "linked", "type": "copy"} # Legacy fallback
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
