@@ -453,7 +453,9 @@ class LMDeploymentOpsMixin:
         
         if current_status == 'linked':
             self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
-            if update_ui: self._refresh_ui()
+            if update_ui:
+                if hasattr(self, '_refresh_package_cards'): self._refresh_package_cards()
+                if hasattr(self, '_refresh_category_cards'): self._refresh_category_cards()
             # Update DB status if it was not 'linked' before
             if config.get('last_known_status') != 'linked':
                 self.db.update_folder_display_config(rel_path, last_known_status='linked')
@@ -746,6 +748,16 @@ class LMDeploymentOpsMixin:
                  if self.deployer.undeploy(target_link, transfer_mode=transfer_mode, source_path_hint=full_src):
                       self.logger.info(f"Unlinked/Undeployed: {target_link}")
 
+        # Phase: Exhaustive Transition Sweep for Manual Unlink
+        # If the user clicks Unlink, we want to make sure it's REALLY unlinked even if rules changed.
+        if config.get('last_known_status') == 'linked' or config.get('last_known_status') == 'partial':
+             self.logger.info(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
+             try:
+                 target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+                 self.deployer.remove_links_pointing_to(target_roots, full_src)
+             except Exception as e:
+                 self.logger.warning(f"Exhaustive cleanup during unlink failed: {e}")
+
         # Phase 28: Optimization - Stop exhaustive sweeping of all targets on every deploy/unlink.
         # This was causing "Target not found" warnings and massive filesystem overhead.
         # self.deployer.remove_links_pointing_to(search_roots, full_src) 
@@ -887,6 +899,11 @@ class LMDeploymentOpsMixin:
                         if os.path.islink(target_file):
                             os.unlink(target_file)
                         else:
+                            # Also remove metadata for copied files (Phase X)
+                            meta_file = target_file + ".lm_deploy_info"
+                            if os.path.exists(meta_file):
+                                try: os.remove(meta_file)
+                                except: pass
                             os.remove(target_file)
                         deleted_count += 1
                         # Mark parent for pruning

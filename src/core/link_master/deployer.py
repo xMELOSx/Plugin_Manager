@@ -1,6 +1,9 @@
 import os
 import logging
 import ctypes
+import copy
+import time
+import shutil
 from src.core import core_handler
 from concurrent.futures import ThreadPoolExecutor, as_completed
 # FIX: Import safety_block directly as module
@@ -1087,14 +1090,16 @@ class Deployer:
         removed_count = 0
         if orphan_links:
             def _unlink_safe(path):
-                import shutil
                 try:
                     if os.path.islink(path):
                         os.unlink(path)
+                        self.logger.debug(f"[Sweep] Unlinked symlink: {path}")
                     elif os.path.isdir(path):
                         shutil.rmtree(path)
+                        self.logger.info(f"[Sweep] Removed physical directory (copy): {path}")
                     else:
                         os.remove(path)
+                        self.logger.debug(f"[Sweep] Removed file: {path}")
                     return True
                 except Exception as e:
                     self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
