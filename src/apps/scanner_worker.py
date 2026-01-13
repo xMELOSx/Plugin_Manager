@@ -23,6 +23,7 @@ class ScannerWorker(QObject):
         # Search Params
         self.search_config = None # {query, logic, selected_tags, is_global, non_inheritable_tags}
         self.app_data = None # Phase 43: Store app data snapshot
+        self.target_key = None # Ensure target_key is initialized
         self.app_id = ""
         self.generation_id = 0
 

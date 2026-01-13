@@ -2812,3 +2812,15 @@ msgstr "プリセット '{name}' を {count} アイテムで作成しました�
 
 msgid "Failed to delete: {e}"
 msgstr "削除に失敗しました: {e}"
+
+msgid "Storage path does not exist:\n{path}"
+msgstr "ストレージパスが存在しません:\n{path}"
+
+msgid "Primary target path does not exist:\n{path}"
+msgstr "プライマリターゲットパスが存在しません:\n{path}"
+
+msgid "Secondary target path does not exist:\n{path}"
+msgstr "セカンダリターゲットパスが存在しません:\n{path}"
+
+msgid "Tertiary target path does not exist:\n{path}"
+msgstr "ターシャリターゲットパスが存在しません:\n{path}"

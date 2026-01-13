@@ -509,41 +509,78 @@ class LMDeploymentOpsMixin:
                 self._last_deploy_cancelled = True
                 return False
 
-        try:
-            success = self.deployer.deploy_with_rules(
-                full_src, target_link, rules, 
-                deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
-                conflict_policy=c_policy,
-                package_rel_path=rel_path # Phase 42 Tracking
-            )
-        except DeploymentCollisionError as e:
-            self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
-            
-            # Show Dialog
-            detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
-            
-            # Limit display to first 10
-            display_limit = 10
-            count = 0
-            for item in e.collisions:
-                if count >= display_limit:
-                    detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
-                    break
+
+        # Phase 50: Explicit Handling for 'files' (Flatten) + 'symlink'
+        # To avoid any ambiguity in deployer.py's recursion or parallel rules, we handle this case explicitly here.
+        if deploy_rule == 'files' and transfer_mode == 'symlink':
+            self.logger.info(f"[DeploySingle] Explicit Flat Symlink deployment for: {folder_name}")
+            try:
+                if not os.path.exists(target_link):
+                    os.makedirs(target_link, exist_ok=True)
                 
-                # item is dict: target, source_existing, source_conflicting
-                tgt = item['target']
-                src_exist = os.path.basename(item['source_existing'])
-                src_new = os.path.basename(item['source_conflicting'])
-                detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
-                count += 1
+                items_deployed = 0
+                errors = []
                 
-            msg_box = QMessageBox(self.window())
-            msg_box.setIcon(QMessageBox.Icon.Critical)
-            msg_box.setWindowTitle(_("Deployment Collision"))
-            msg_box.setText(detail_txt)
-            apply_common_dialog_style(msg_box)
-            msg_box.exec()
-            return False
+                # Recursive walk to find all files
+                for root, dirs, files in os.walk(full_src):
+                    for name in files:
+                        src_path = os.path.join(root, name)
+                        # Flat mode: Target is directly in target_link (root)
+                        # Collision check is implied (deploy_link handles conflict policy)
+                        tgt_path = os.path.join(target_link, name)
+                        
+                        if self.deployer.deploy_link(src_path, tgt_path, conflict_policy=c_policy):
+                            items_deployed += 1
+                        else:
+                            errors.append(name)
+                
+                if items_deployed > 0:
+                    self.logger.info(f"[DeploySingle] Successfully flat-linked {items_deployed} files.")
+                    success = True
+                else:
+                    self.logger.warning(f"[DeploySingle] No files were linked. Errors: {errors}")
+                    success = False
+                    
+            except Exception as e:
+                self.logger.error(f"[DeploySingle] Flat Symlink failed: {e}")
+                success = False
+        else:
+            # Standard Delegation
+            try:
+                success = self.deployer.deploy_with_rules(
+                    full_src, target_link, rules, 
+                    deploy_rule=deploy_rule, transfer_mode=transfer_mode, 
+                    conflict_policy=c_policy,
+                    package_rel_path=rel_path # Phase 42 Tracking
+                )
+            except DeploymentCollisionError as e:
+                self.logger.warning(f"Deployment aborted due to collisions: {full_src}")
+                
+                # Show Dialog
+                detail_txt = _("The following file collisions were detected. Deployment aborted.\n\n")
+                
+                # Limit display to first 10
+                display_limit = 10
+                count = 0
+                for item in e.collisions:
+                    if count >= display_limit:
+                        detail_txt += _("...and {n} others.").format(n=len(e.collisions) - count)
+                        break
+                    
+                    # item is dict: target, source_existing, source_conflicting
+                    tgt = item['target']
+                    src_exist = os.path.basename(item['source_existing'])
+                    src_new = os.path.basename(item['source_conflicting'])
+                    detail_txt += f"Target: {tgt}\n  - Existing: {src_exist}\n  - Conflict: {src_new}\n\n"
+                    count += 1
+                    
+                msg_box = FramelessMessageBox(self.window() if hasattr(self, 'window') else self)
+                msg_box.setIcon(FramelessMessageBox.Icon.Critical)
+                msg_box.setWindowTitle(_("Deployment Collision"))
+                msg_box.setText(detail_txt)
+                # apply_common_dialog_style(msg_box)
+                msg_box.exec()
+                return False
         
         try:
             if success:
@@ -720,6 +757,7 @@ class LMDeploymentOpsMixin:
         current_status = config.get('last_known_status')
         if current_status == 'linked' or current_status == 'partial':
              self.logger.info(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
+             failed_paths = []
              try:
                  target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
                  _, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
@@ -794,25 +832,93 @@ class LMDeploymentOpsMixin:
         all_configs = self.db.get_all_folder_configs()
         
         for rel_path, cfg in all_configs.items():
-            if cfg.get('is_library', 0):
-                continue
-            if cfg.get('last_known_status') != 'linked':
-                continue
             
-            lib_deps_json = cfg.get('lib_deps', '[]')
-            try:
-                lib_deps = json.loads(lib_deps_json) if lib_deps_json else []
-            except:
-                lib_deps = []
+            # If flattening is requested (files mode), we MUST iterate, regardless of transfer mode
+            if is_flat or (transfer_mode == 'copy' and deploy_rule != 'tree'): # 'tree' handled by shutil.copytree usually? No, copy uses recursion too.
+                # Recursive File Deployment Logic
+                items_deployed = 0
+                
+                # Check target root existence
+                target_base = target_root
+                if target_override:
+                    target_base = target_override
+                
+                if not os.path.exists(target_base):
+                    os.makedirs(target_base, exist_ok=True)
+
+                for root, dirs, files in os.walk(full_src):
+                    rel_root = os.path.relpath(root, full_src).replace('\\', '/')
+                    if rel_root == ".": rel_root = ""
+                    
+                    # Calculate depth for Skip Levels
+                    current_depth = 0
+                    if rel_root:
+                        current_depth = len(rel_root.split('/'))
+                    
+                    # Logic for Skip Levels (Standardized)
+                    # If this depth is skipped, we don't process files, but we continue walking?
+                    # os.walk is recursive.
+                    
+                    for name in files:
+                        file_rel = os.path.join(rel_root, name).replace('\\', '/')
+                        # Determine final target name/rel path
+                        if deploy_rule == 'files':
+                            # Flatten: Target is just the filename in the root
+                            status_key = file_rel # We track by source relative path
+                            final_target_rel = name
+                        else:
+                            # Folder mode recursion (shouldn't happen here usually, but for consistency)
+                            if transfer_mode == 'symlink' and not is_flat:
+                                # If symlink and NOT flat, we shouldn't be here (handled by top-level link)
+                                continue
+                            final_target_rel = file_rel
+
+                        target_path = os.path.join(target_base, final_target_rel)
+                        source_path = os.path.join(root, name)
+                        
+                        # Actual deployment
+                        if transfer_mode == 'symlink':
+                            if self.deployer.deploy_link(source_path, target_path, conflict_policy):
+                                items_deployed += 1
+                        else: # copy
+                            if self.deployer.deploy_copy(source_path, target_path, conflict_policy):
+                                items_deployed += 1
+                                
+                if items_deployed > 0:
+                    # Update status for the PACKAGE (Parent)
+                    # Even if we linked files, the package status is "linked"
+                     self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                     if show_result:
+                        self.logger.info(f"Deployed {items_deployed} files (Flat/Recursive) for {rel_path}")
+                     return True
+                else:
+                     return False
+
+            # Standard Logic (Folder Link or Tree Copy or Single Folder Copy)
+            # If we are here, it means [Symlink + Folder] OR [Tree Copy via shutil?]
             
-            # Handle both string and dict formats
-            for dep in lib_deps:
-                dep_name = dep.get('name', '') if isinstance(dep, dict) else dep
-                if dep_name == lib_name:
-                    dependent_packages.append(rel_path)
-                    break 
-        
-        return dependent_packages
+            target_base = target_root
+            if target_override:
+                target_base = target_override
+                
+            # If Folder deployment (standard), we link/copy the root folder into target_base
+            # BUT wait, target_base is the root (e.g. Mods). We want Mods/PackageName.
+            
+            final_target_path = os.path.join(target_base, os.path.basename(rel_path))
+            
+            if transfer_mode == 'symlink':
+                # Folder Symlink
+                if self.deployer.deploy_link(full_src, final_target_path, conflict_policy):
+                     self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                     return True
+            else:
+                 # Folder Copy (Non-recursive single call if supported, otherwise...)
+                 # Actually deployer.deploy_copy uses shutil.copytree for directories?
+                 if self.deployer.deploy_copy(full_src, final_target_path, conflict_policy):
+                     self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                     return True
+
+            return False
 
     def _safe_batch_undeploy(self, source_path: str, target_base: str, deploy_rule: str, rules_json: str = None) -> int:
         """
