@@ -74,7 +74,7 @@ def get_card_stylesheet(status_color, bg_color, radius="8px"):
     """
 
 # Color Constants
-SHOW_UNREGISTERED_BORDER = True  # Phase 42: Toggleable from debug window
+SHOW_UNREGISTERED_BORDER = False  # Phase 42: Toggleable from debug window
 COLOR_RED = "#e74c3c"
 COLOR_GREEN = "#27ae60"
 COLOR_ORANGE = "#e67e22"

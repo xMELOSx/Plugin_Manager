@@ -531,7 +531,11 @@ class ScannerWorker(QObject):
                 link_status = 'none'
             status_info = {'status': link_status}
         else:
-            status_info = self.deployer.get_link_status(target_link, expected_source=item_abs_path)
+            status_info = self.deployer.get_link_status(
+                target_link, 
+                expected_source=item_abs_path,
+                deploy_rule=deploy_rule
+            )
             link_status = status_info.get('status', 'none')
         
         # Phase 28: Sync status to DB if changed (for optimized conflict checks)

@@ -364,12 +364,17 @@ class LMDeploymentOpsMixin:
         # If already linked, perform a sweep to remove existing links/copies 
         # specifically pointing to this source across all app targets.
         # This handles property changes (e.g. target_override or rule change).
-        if config.get('last_known_status') == 'linked':
-            self.logger.info(f"[Transition] Sweeping existing deployment before re-deploy: {rel_path}")
+        last_status = config.get('last_known_status')
+        self.logger.debug(f"[Transition-Check] '{folder_name}' last_status={last_status}, current_rule={deploy_rule}")
+        
+        if last_status == 'linked' or last_status == 'partial':
+            self.logger.info(f"[Transition-Start] Sweeping existing deployment before re-deploy: {rel_path}")
             try:
                 # Sweep all targets for this app
                 target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+                self.logger.debug(f"[Transition-Debug] Target roots for sweep: {target_roots}")
                 self.deployer.remove_links_pointing_to(target_roots, full_src)
+                self.logger.debug(f"[Transition-End] Sweep completed for {rel_path}")
             except Exception as e:
                 self.logger.warning(f"Exhaustive cleanup during transition failed: {e}")
                 # Non-blocking notification
@@ -435,10 +440,21 @@ class LMDeploymentOpsMixin:
                 return False
 
         # --- PROACTIVE LINK CHECK (Fix: Infinite .bak generation) ---
-        # If already linked correctly, we don't need to deploy again.
-        status_info = self.deployer.get_link_status(target_link, full_src, transfer_mode)
-        if status_info['status'] == 'linked':
-            self.logger.info(f"[Skip] Already linked correctly: {rel_path} -> {target_link}")
+        # Phase 1: Pre-check Conflict and Existing Link
+        # Check if already deployed correctly (mode-aware)
+        status_info = self.deployer.get_link_status(
+            target_link, 
+            expected_source=full_src, 
+            expected_transfer_mode=transfer_mode,
+            deploy_rule=deploy_rule
+        )
+        current_status = status_info.get('status', 'none')
+        self.logger.debug(f"[Deploy-Check] '{folder_name}' target_link={target_link}, current_status={current_status}")
+        
+        if current_status == 'linked':
+            self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
+            if update_ui: self._refresh_ui()
+            # Update DB status if it was not 'linked' before
             if config.get('last_known_status') != 'linked':
                 self.db.update_folder_display_config(rel_path, last_known_status='linked')
             

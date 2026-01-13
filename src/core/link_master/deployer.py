@@ -467,7 +467,8 @@ class Deployer:
         
         return None
 
-    def get_link_status(self, target_link_path: str, expected_source: str = None, expected_transfer_mode: str = 'symlink') -> dict:
+    def get_link_status(self, target_link_path: str, expected_source: str = None, 
+                        expected_transfer_mode: str = 'symlink', deploy_rule: str = 'folder') -> dict:
         """
         Checks if the target_link_path is a valid link to expected_source.
         Returns {'status': 'linked'|'conflict'|'none', 'type': 'symlink'|'junction'|'file'|'dir'}
@@ -476,6 +477,7 @@ class Deployer:
             target_link_path: The path where the link should be.
             expected_source: The source path it should point to.
             expected_transfer_mode: 'symlink' or 'copy'. If 'copy', physical files are valid links.
+            deploy_rule: 'folder', 'files', 'tree', etc. used for specialized checks.
         """
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
             return {"status": "none", "type": "none"}
@@ -488,6 +490,29 @@ class Deployer:
              exists = os.path.exists(target_link_path)
              
              if exists and not is_link:
+                 # Special Case: Flatten (files) mode check
+                 if deploy_rule == 'files' and expected_source and os.path.isdir(expected_source):
+                     # Check if at least one file from source exists in target_link_path
+                     files_found = 0
+                     files_total = 0
+                     try:
+                         for f in os.listdir(expected_source):
+                             f_path = os.path.join(expected_source, f)
+                             if os.path.isfile(f_path):
+                                 files_total += 1
+                                 target_file = os.path.join(target_link_path, f)
+                                 if os.path.exists(target_file) or os.path.islink(target_file):
+                                     files_found += 1
+                     except: pass
+                     
+                     if files_found > 0:
+                         if files_found >= files_total:
+                             return {"status": "linked", "type": "copy"}
+                         else:
+                             return {"status": "partial", "type": "copy"}
+                     # If it's the search root but no files found, it's none.
+                     return {"status": "none", "type": "search_root"}
+
                  # Check for metadata
                  copy_meta = self._get_copy_metadata(target_link_path)
                  if copy_meta and expected_source:
@@ -1062,10 +1087,17 @@ class Deployer:
         removed_count = 0
         if orphan_links:
             def _unlink_safe(path):
+                import shutil
                 try:
-                    os.unlink(path)
+                    if os.path.islink(path):
+                        os.unlink(path)
+                    elif os.path.isdir(path):
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
                     return True
-                except:
+                except Exception as e:
+                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
                     return False
             
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
