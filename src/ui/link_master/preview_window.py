@@ -1218,9 +1218,6 @@ class PreviewWindow(FramelessDialog):
         
         menu.addSeparator()
         
-        open_folder_act = menu.addAction(_("📁 Open folder"))
-        open_folder_act.triggered.connect(self._open_in_explorer) # Assuming _open_folder should map to _open_in_explorer
-        
         menu.addAction(_("🚀 Open with external app")).triggered.connect(self._open_external)
         menu.addAction(_("📂 Open in Explorer")).triggered.connect(self._open_in_explorer)
         menu.addSeparator()
