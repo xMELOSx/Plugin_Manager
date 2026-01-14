@@ -183,8 +183,8 @@ def _draw_spinbox_arrows(painter, rect):
 
 class StyledLineEdit(QLineEdit):
     """Standardized QLineEdit with project dark theme."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("""
             QLineEdit {
                 background-color: #3b3b3b;
@@ -207,12 +207,11 @@ class ProtectedLineEdit(StyledLineEdit):
     def contextMenuEvent(self, event):
         menu = StandardEditMenu(self)
         menu.exec(event.globalPos())
-
-from PyQt6.QtWidgets import QTextEdit
+from PyQt6.QtWidgets import QTextEdit, QPlainTextEdit
 class ProtectedTextEdit(QTextEdit):
     """QTextEdit with standardized dark context menu."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("""
             QTextEdit {
                 background-color: #3b3b3b;
@@ -233,34 +232,38 @@ class ProtectedTextEdit(QTextEdit):
     def contextMenuEvent(self, event):
         menu = StandardEditMenu(self)
         menu.exec(event.globalPos())
-    """
-    StyledLineEdit that prevents startup right-click selection 
-    and forces a dark theme on its context menu.
-    """
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.RightButton:
-            # Show context menu directly instead of blocking the event
-            # This prevents selection changes while still showing the menu
-            self.showDarkContextMenu(event.globalPosition().toPoint())
-            event.accept()
-            return
-        super().mousePressEvent(event)
 
-    def showDarkContextMenu(self, pos):
-        """Show custom dark-themed context menu with Japanese translations."""
-        menu = StandardEditMenu(self)
-        menu.exec(pos)
+class ProtectedPlainTextEdit(QPlainTextEdit):
+    """QPlainTextEdit with standardized dark context menu."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #3b3b3b;
+                color: #ffffff;
+                border: 1px solid #555;
+                padding: 4px;
+                border-radius: 4px;
+            }
+            QPlainTextEdit:hover {
+                border-color: #3498db;
+            }
+            QPlainTextEdit:focus {
+                border-color: #3498db;
+                background-color: #444;
+            }
+        """)
 
     def contextMenuEvent(self, event):
-        # Override to use our custom dark context menu
-        self.showDarkContextMenu(event.globalPos())
+        menu = StandardEditMenu(self)
+        menu.exec(event.globalPos())
 
 
 
 class StyledComboBox(QComboBox):
     """Premium QComboBox with a dedicated dropdown indicator area."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("""
             QComboBox {
                 background-color: #3b3b3b;
@@ -334,8 +337,8 @@ class StyledComboBox(QComboBox):
 
 class StyledSpinBox(QSpinBox):
     """Standardized QSpinBox with project dark theme."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("""
             QSpinBox {
                 background-color: #3b3b3b;
@@ -357,8 +360,7 @@ class StyledSpinBox(QSpinBox):
             QSpinBox::up-button:hover, QSpinBox::down-button:hover {
                 background-color: #444;
             }
-            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: none; background: transparent; }
-            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: none; background: transparent; }
+            QSpinBox::up-arrow, QSpinBox::down-arrow { image: none; background: transparent; }
         """)
 
     def paintEvent(self, event):
@@ -370,90 +372,18 @@ class StyledSpinBox(QSpinBox):
             _draw_spinbox_arrows(painter, self.rect())
             painter.end()
 
-
-    def mousePressEvent(self, event):
-        """Handle right-click to show dark context menu."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._showDarkContextMenu(event.globalPosition().toPoint())
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def _showDarkContextMenu(self, pos):
-        """Show custom dark-themed context menu with Japanese translations."""
-        from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QPalette, QColor
-        from src.core.lang_manager import _
-        
+    def contextMenuEvent(self, event):
+        """Show standardized dark context menu via internal lineEdit."""
         line_edit = self.lineEdit()
-        if not line_edit:
-            return
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2b2b2b;
-                color: #eeeeee;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                background-color: transparent;
-                padding: 4px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #3d5a80;
-                color: #ffffff;
-            }
-            QMenu::item:disabled {
-                color: #666666;
-            }
-        """)
-        
-        # Create translated actions
-        undo_action = menu.addAction(_("元に戻す"))
-        undo_action.triggered.connect(line_edit.undo)
-        undo_action.setEnabled(line_edit.isUndoAvailable())
-        
-        redo_action = menu.addAction(_("やり直し"))
-        redo_action.triggered.connect(line_edit.redo)
-        redo_action.setEnabled(line_edit.isRedoAvailable())
-        
-        menu.addSeparator()
-        
-        cut_action = menu.addAction(_("切り取り"))
-        cut_action.triggered.connect(line_edit.cut)
-        cut_action.setEnabled(line_edit.hasSelectedText())
-        
-        copy_action = menu.addAction(_("コピー"))
-        copy_action.triggered.connect(line_edit.copy)
-        copy_action.setEnabled(line_edit.hasSelectedText())
-        
-        paste_action = menu.addAction(_("貼り付け"))
-        paste_action.triggered.connect(line_edit.paste)
-        
-        delete_action = menu.addAction(_("削除"))
-        delete_action.triggered.connect(lambda: line_edit.insert(""))
-        delete_action.setEnabled(line_edit.hasSelectedText())
-        
-        menu.addSeparator()
-        
-        select_all_action = menu.addAction(_("すべて選択"))
-        select_all_action.triggered.connect(line_edit.selectAll)
-        select_all_action.setEnabled(len(line_edit.text()) > 0)
-        
-        # Apply dark palette
-        palette = menu.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#2b2b2b"))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor("#eeeeee"))
-        menu.setPalette(palette)
-        
-        menu.exec(pos)
+        if line_edit:
+            menu = StandardEditMenu(line_edit, self)
+            menu.exec(event.globalPos())
 
 
 class StyledDoubleSpinBox(QDoubleSpinBox):
     """Standardized QDoubleSpinBox with project dark theme."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("""
             QDoubleSpinBox {
                 background-color: #3b3b3b;
@@ -481,89 +411,17 @@ class StyledDoubleSpinBox(QDoubleSpinBox):
     def paintEvent(self, event):
         """Draw custom arrows if buttons are visible."""
         super().paintEvent(event)
-        # ONLY draw arrows if not hidden (Fix for overlap in Card Settings)
         if self.buttonSymbols() != QSpinBox.ButtonSymbols.NoButtons:
             painter = QPainter(self)
             _draw_spinbox_arrows(painter, self.rect())
             painter.end()
 
-    def mousePressEvent(self, event):
-        """Handle right-click to show dark context menu."""
-        if event.button() == Qt.MouseButton.RightButton:
-            self._showDarkContextMenu(event.globalPosition().toPoint())
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def _showDarkContextMenu(self, pos):
-        """Show custom dark-themed context menu with Japanese translations."""
-        from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QPalette, QColor
-        from src.core.lang_manager import _
-        
+    def contextMenuEvent(self, event):
+        """Show standardized dark context menu via internal lineEdit."""
         line_edit = self.lineEdit()
-        if not line_edit:
-            return
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2b2b2b;
-                color: #eeeeee;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                background-color: transparent;
-                padding: 4px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #3d5a80;
-                color: #ffffff;
-            }
-            QMenu::item:disabled {
-                color: #666666;
-            }
-        """)
-        
-        # Create translated actions
-        undo_action = menu.addAction(_("元に戻す"))
-        undo_action.triggered.connect(line_edit.undo)
-        undo_action.setEnabled(line_edit.isUndoAvailable())
-        
-        redo_action = menu.addAction(_("やり直し"))
-        redo_action.triggered.connect(line_edit.redo)
-        redo_action.setEnabled(line_edit.isRedoAvailable())
-        
-        menu.addSeparator()
-        
-        cut_action = menu.addAction(_("切り取り"))
-        cut_action.triggered.connect(line_edit.cut)
-        cut_action.setEnabled(line_edit.hasSelectedText())
-        
-        copy_action = menu.addAction(_("コピー"))
-        copy_action.triggered.connect(line_edit.copy)
-        copy_action.setEnabled(line_edit.hasSelectedText())
-        
-        paste_action = menu.addAction(_("貼り付け"))
-        paste_action.triggered.connect(line_edit.paste)
-        
-        delete_action = menu.addAction(_("削除"))
-        delete_action.triggered.connect(lambda: line_edit.insert(""))
-        delete_action.setEnabled(line_edit.hasSelectedText())
-        
-        menu.addSeparator()
-        
-        select_all_action = menu.addAction(_("すべて選択"))
-        select_all_action.triggered.connect(line_edit.selectAll)
-        select_all_action.setEnabled(len(line_edit.text()) > 0)
-        
-        # Apply dark palette
-        palette = menu.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#2b2b2b"))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor("#eeeeee"))
-        menu.setPalette(palette)
-        
-        menu.exec(pos)
+        if line_edit:
+            menu = StandardEditMenu(line_edit, self)
+            menu.exec(event.globalPos())
 
 
 class StyledButton(QPushButton):

@@ -18,6 +18,7 @@ from PyQt6.QtMultimediaWidgets import QVideoWidget
 from src.ui.flow_layout import FlowLayout
 from src.ui.frameless_window import FramelessDialog
 from src.ui.link_master.compact_dial import CompactDial
+from src.ui.common_widgets import ProtectedLineEdit, ProtectedTextEdit
 from src.core.lang_manager import _
 import shutil
 import logging

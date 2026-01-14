@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QTextCursor
 from src.ui.frameless_window import FramelessDialog
-from src.ui.common_widgets import StyledButton, StandardEditMenu
+from src.ui.common_widgets import StyledButton, StandardEditMenu, ProtectedPlainTextEdit
 from src.core.lang_manager import _
 
 
@@ -62,7 +62,7 @@ class DebugConsoleDialog(FramelessDialog):
         layout.addLayout(header)
         
         # ===== Log Output Area =====
-        self.log_text = QPlainTextEdit()
+        self.log_text = ProtectedPlainTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 9))
         self.log_text.setStyleSheet("""
@@ -86,11 +86,6 @@ class DebugConsoleDialog(FramelessDialog):
         # Auto-scroll flag
         self._autoscroll = True
 
-    def contextMenuEvent(self, event):
-        """Show standardized dark context menu for log text selection."""
-        menu = StandardEditMenu(self.log_text)
-        menu.exec(event.globalPos())
-        
     def _setup_log_handler(self):
         """Pythonロギングシステムからログを受信するハンドラーを設定"""
         self.log_handler = DebugConsoleHandler(self)
@@ -141,7 +136,7 @@ class DebugConsoleDialog(FramelessDialog):
         if self._autoscroll:
             self.log_text.moveCursor(QTextCursor.MoveOperation.End)
             
-        self.status_label.setText(f"Marker #{self._marker_count} inserted")
+        self.status_label.setText(_("Marker #{0} inserted").format(self._marker_count))
         
     def _clear_log(self):
         """ログをクリア"""
