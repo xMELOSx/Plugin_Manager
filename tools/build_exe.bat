@@ -43,7 +43,6 @@ pyinstaller --noconsole ^
             --icon "src\resource\icon\icon.ico" ^
             --add-data "src/resource/icon;src/resource/icon" ^
             --add-data "src/resource/se;src/resource/se" ^
-            --add-data "config/locale;config/locale" ^
             --name "Dionys Control" ^
             src\main.py
 
@@ -51,6 +50,9 @@ if %ERRORLEVEL% neq 0 (
     echo Error: PyInstaller build failed.
     exit /b 1
 )
+
+echo [2.5/3] Copying external resources...
+xcopy "config\locale" "dist\config\locale" /E /I /Y >nul
 
 echo [3/3] Build completed!
 echo Executable is located in: dist\Dionys Control.exe

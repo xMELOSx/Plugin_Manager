@@ -35,9 +35,12 @@ class LangManager(QObject):
         
         # Get paths (Support for PyInstaller sys._MEIPASS)
         import sys
-        if hasattr(sys, '_MEIPASS'):
-            # Path inside EXE
-            project_root = sys._MEIPASS
+        # Get paths (Support for PyInstaller sys._MEIPASS / External Config)
+        import sys
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Phase 58: Use external directory next to EXE for config/locale
+            # This allows user to modify translations without rebuilding EXE
+            project_root = os.path.dirname(sys.executable)
         else:
             # Development path
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
