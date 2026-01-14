@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFontMetrics
+from PyQt6.QtGui import QFontMetrics, QAction
+from src.ui.common_widgets import StandardEditMenu
 
 
 class ElidedLabel(QLabel):
@@ -48,3 +49,7 @@ class ElidedLabel(QLabel):
     def fullText(self) -> str:
         """Return the full (non-elided) text."""
         return self._full_text
+    def contextMenuEvent(self, event):
+        """Show context menu with copy option."""
+        menu = StandardEditMenu(self)
+        menu.exec(event.globalPos())

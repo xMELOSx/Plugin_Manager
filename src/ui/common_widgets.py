@@ -46,48 +46,109 @@ class StandardEditMenu(QMenu):
         self._setup_actions()
 
     def _setup_actions(self):
-        # Determine the effective editor (for SpinBoxes, it's the internal lineEdit)
+        # Determine the effective editor
         editor = self.target
         if hasattr(self.target, 'lineEdit') and callable(self.target.lineEdit):
             editor = self.target.lineEdit()
             
         if not editor: return
 
-        # Undo/Redo
-        undo_action = self.addAction(_("元に戻す"))
-        undo_action.triggered.connect(editor.undo)
-        undo_action.setEnabled(editor.isUndoAvailable())
+        # Compatibility checks
+        is_read_only = False
+        if hasattr(editor, 'isReadOnly'):
+            is_read_only = editor.isReadOnly()
         
-        redo_action = self.addAction(_("やり直し"))
-        redo_action.triggered.connect(editor.redo)
-        redo_action.setEnabled(editor.isRedoAvailable())
+        # Undo/Redo (Disabled for read-only)
+        if hasattr(editor, 'undo'):
+            undo_action = self.addAction(_("元に戻す"))
+            undo_action.triggered.connect(editor.undo)
+            # Check availability
+            avail = False
+            if hasattr(editor, 'isUndoAvailable'): # QLineEdit
+                avail = editor.isUndoAvailable()
+            elif hasattr(editor, 'document') and hasattr(editor.document(), 'isUndoAvailable'): # QTextEdit
+                avail = editor.document().isUndoAvailable()
+            undo_action.setEnabled(not is_read_only and avail)
+            
+        if hasattr(editor, 'redo'):
+            redo_action = self.addAction(_("やり直し"))
+            redo_action.triggered.connect(editor.redo)
+            # Check availability
+            avail = False
+            if hasattr(editor, 'isRedoAvailable'):
+                avail = editor.isRedoAvailable()
+            elif hasattr(editor, 'document') and hasattr(editor.document(), 'isRedoAvailable'):
+                avail = editor.document().isRedoAvailable()
+            redo_action.setEnabled(not is_read_only and avail)
         
-        self.addSeparator()
+        if hasattr(editor, 'undo') or hasattr(editor, 'redo'):
+            self.addSeparator()
         
         # Cut/Copy/Paste/Delete
-        cut_action = self.addAction(_("切り取り"))
-        cut_action.triggered.connect(editor.cut)
-        cut_action.setEnabled(editor.hasSelectedText())
+        if hasattr(editor, 'cut'):
+            cut_action = self.addAction(_("切り取り"))
+            cut_action.triggered.connect(editor.cut)
+            has_sel = False
+            if hasattr(editor, 'hasSelectedText'):
+                has_sel = editor.hasSelectedText()
+            elif hasattr(editor, 'textCursor'):
+                has_sel = editor.textCursor().hasSelection()
+            cut_action.setEnabled(not is_read_only and has_sel)
         
-        copy_action = self.addAction(_("コピー"))
-        copy_action.triggered.connect(editor.copy)
-        copy_action.setEnabled(editor.hasSelectedText())
+        if hasattr(editor, 'copy'):
+            copy_action = self.addAction(_("コピー"))
+            copy_action.triggered.connect(editor.copy)
+            has_sel = False
+            if hasattr(editor, 'hasSelectedText'):
+                has_sel = editor.hasSelectedText()
+            elif hasattr(editor, 'textCursor'):
+                has_sel = editor.textCursor().hasSelection()
+            copy_action.setEnabled(has_sel)
+        elif hasattr(editor, 'text'): # QLabel / ElidedLabel support
+            def do_copy():
+                txt = editor.text()
+                # If ElidedLabel, it might have fullText()
+                if hasattr(editor, 'fullText'):
+                    txt = editor.fullText()
+                from PyQt6.QtWidgets import QApplication
+                QApplication.clipboard().setText(txt)
+            copy_action = self.addAction(_("コピー"))
+            copy_action.triggered.connect(do_copy)
+            copy_action.setEnabled(len(editor.text()) > 0)
         
-        paste_action = self.addAction(_("貼り付け"))
-        paste_action.triggered.connect(editor.paste)
+        if hasattr(editor, 'paste'):
+            paste_action = self.addAction(_("貼り付け"))
+            paste_action.triggered.connect(editor.paste)
+            paste_action.setEnabled(not is_read_only)
         
-        delete_action = self.addAction(_("削除"))
-        delete_action.triggered.connect(lambda: editor.insert(""))
-        delete_action.setEnabled(editor.hasSelectedText())
+        if not is_read_only:
+            delete_action = self.addAction(_("削除"))
+            def do_delete():
+                if hasattr(editor, 'insert'):
+                    editor.insert("")
+                elif hasattr(editor, 'textCursor'):
+                    editor.textCursor().removeSelectedText()
+            delete_action.triggered.connect(do_delete)
+            has_sel = False
+            if hasattr(editor, 'hasSelectedText'):
+                has_sel = editor.hasSelectedText()
+            elif hasattr(editor, 'textCursor'):
+                has_sel = editor.textCursor().hasSelection()
+            delete_action.setEnabled(has_sel)
         
         self.addSeparator()
         
         # Select All
-        select_all_action = self.addAction(_("すべて選択"))
-        select_all_action.triggered.connect(editor.selectAll)
-        # Check if it has text (QLineEdit has .text(), but SpinBox editor is also a QLineEdit)
-        if hasattr(editor, 'text'):
-            select_all_action.setEnabled(len(editor.text()) > 0)
+        if hasattr(editor, 'selectAll'):
+            select_all_action = self.addAction(_("すべて選択"))
+            select_all_action.triggered.connect(editor.selectAll)
+            # Enable if not empty
+            has_content = False
+            if hasattr(editor, 'text'):
+                has_content = len(editor.text()) > 0
+            elif hasattr(editor, 'toPlainText'):
+                has_content = len(editor.toPlainText()) > 0
+            select_all_action.setEnabled(has_content)
 
 def _draw_spinbox_arrows(painter, rect):
     """Common logic for drawing up/down arrows in spinboxes."""
@@ -142,6 +203,36 @@ class StyledLineEdit(QLineEdit):
         """)
 
 class ProtectedLineEdit(StyledLineEdit):
+    """LineEdit with standardized dark context menu."""
+    def contextMenuEvent(self, event):
+        menu = StandardEditMenu(self)
+        menu.exec(event.globalPos())
+
+from PyQt6.QtWidgets import QTextEdit
+class ProtectedTextEdit(QTextEdit):
+    """QTextEdit with standardized dark context menu."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QTextEdit {
+                background-color: #3b3b3b;
+                color: #ffffff;
+                border: 1px solid #555;
+                padding: 4px;
+                border-radius: 4px;
+            }
+            QTextEdit:hover {
+                border-color: #3498db;
+            }
+            QTextEdit:focus {
+                border-color: #3498db;
+                background-color: #444;
+            }
+        """)
+
+    def contextMenuEvent(self, event):
+        menu = StandardEditMenu(self)
+        menu.exec(event.globalPos())
     """
     StyledLineEdit that prevents startup right-click selection 
     and forces a dark theme on its context menu.

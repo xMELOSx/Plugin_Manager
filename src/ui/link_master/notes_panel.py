@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QListWidgetItem, 
-                             QPushButton, QHBoxLayout, QTextEdit, QLabel, QMenu, QSplitter)
+                             QPushButton, QHBoxLayout, QLabel, QMenu, QSplitter)
 from PyQt6.QtGui import QKeySequence, QShortcut
-from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
+from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog, ProtectedTextEdit
 from PyQt6.QtCore import pyqtSignal, Qt
 from src.core.lang_manager import _
 import os
@@ -76,7 +76,7 @@ class NotesPanel(QWidget):
         ec_layout.setContentsMargins(0, 5, 0, 0)
         
         # Track changes for dirty state
-        self.editor = QTextEdit(self)
+        self.editor = ProtectedTextEdit(self)
         self.editor.textChanged.connect(self._on_editor_text_changed)
         self.editor.setPlaceholderText(_("Select a note to edit..."))
         self.editor.setStyleSheet("background-color: #222; color: #eee; border: 1px solid #444;")

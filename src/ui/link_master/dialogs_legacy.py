@@ -17,7 +17,7 @@ from src.core.link_master.utils import format_size
 from src.ui.slide_button import SlideButton
 from src.core.lang_manager import _
 from src.ui.window_mixins import OptionsMixin
-from src.ui.common_widgets import ProtectedLineEdit, StyledComboBox, StyledSpinBox, StyledButton
+from src.ui.common_widgets import ProtectedLineEdit, ProtectedTextEdit, StyledComboBox, StyledSpinBox, StyledButton
 import os
 import subprocess
 import shutil
@@ -837,9 +837,12 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             btn_open_folder.clicked.connect(self._open_actual_folder)
             folder_row.addWidget(btn_open_folder)
             
-            orig_label = QLabel(self.original_name)
-            orig_label.setStyleSheet("color: #888; font-style: italic;")
-            folder_row.addWidget(orig_label)
+            self.orig_edit = ProtectedLineEdit()
+            self.orig_edit.setText(self.original_name)
+            self.orig_edit.setReadOnly(True)
+            self.orig_edit.setFrame(False) # Make it look like a label
+            self.orig_edit.setStyleSheet("color: #888; font-style: italic; background: transparent;")
+            folder_row.addWidget(self.orig_edit)
             folder_row.addStretch()
             
             folder_widget = QWidget()
@@ -856,9 +859,12 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             
             self.set_content_widget(content_widget)
             
-            size_label = QLabel(size_text)
-            size_label.setStyleSheet("color: #aaa; font-size: 11px;")
-            display_form.addRow(_("Package Size:"), size_label)
+            self.size_edit = ProtectedLineEdit()
+            self.size_edit.setText(size_text)
+            self.size_edit.setReadOnly(True)
+            self.size_edit.setFrame(False)
+            self.size_edit.setStyleSheet("color: #aaa; font-size: 11px; background: transparent;")
+            display_form.addRow(_("Package Size:"), self.size_edit)
         
         # Display Name (Alias)
         self.name_edit = ProtectedLineEdit()
@@ -976,7 +982,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.preview_label.setStyleSheet("background-color: #222; border: 1px solid #444; border-radius: 4px;")
         display_form.addRow(_("Effective Icon:"), self.preview_label)
         
-        self.description_edit = QTextEdit()
+        self.description_edit = ProtectedTextEdit()
         self.description_edit.setPlaceholderText(_("Folder description..."))
         self.description_edit.setText(self.current_config.get('description', '') or '')
         self.description_edit.setMaximumHeight(80)
@@ -1558,7 +1564,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.json_help_panel.setVisible(False)
         json_v_layout.addWidget(self.json_help_panel)
 
-        self.rules_edit = QTextEdit()
+        self.rules_edit = ProtectedTextEdit()
         self.rules_edit.setPlaceholderText('{"exclude": ["*.txt"], "rename": {"old": "new"}}')
         self.rules_edit.setMinimumHeight(100)
         self.rules_edit.setText(self.current_config.get('deployment_rules', '') or '')
@@ -3067,7 +3073,7 @@ class FrequentTagEditDialog(FramelessDialog):
         self.label.setStyleSheet("background: transparent; color: #ffffff; border: none;")
         layout.addWidget(self.label)
         
-        self.text_edit = QTextEdit()
+        self.text_edit = ProtectedTextEdit()
         self.text_edit.setPlaceholderText(_("Tag1,Symbol1\nTag2,Symbol2..."))
         self.text_edit.setStyleSheet("background-color: #1e1e1e; color: #ffffff; font-family: Consolas, monospace;")
         layout.addWidget(self.text_edit)
@@ -3593,7 +3599,7 @@ class PresetPropertiesDialog(FramelessDialog):
         form.addRow(_("Preset Name:"), self.name_edit)
         
         from PyQt6.QtWidgets import QTextEdit
-        self.desc_edit = QTextEdit()
+        self.desc_edit = ProtectedTextEdit()
         self.desc_edit.setPlainText(description or "")
         self.desc_edit.setPlaceholderText(_("Optional description..."))
         form.addRow(_("Description:"), self.desc_edit)

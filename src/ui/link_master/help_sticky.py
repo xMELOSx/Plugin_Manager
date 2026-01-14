@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QMenu, QColorDialog, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMenu, QColorDialog, QApplication
+from src.ui.common_widgets import ProtectedTextEdit
 from src.core.lang_manager import _
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, pyqtSignal, QEvent, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QPolygon, QPen, QBrush, QPainterPath, QPolygonF, QMouseEvent
@@ -60,7 +61,7 @@ class StickyHelpWidget(QWidget):
         
     def _init_ui(self):
         # レイアウトは使わず、手動でQTextEditの位置を管理する
-        self.text_edit = QTextEdit(self)
+        self.text_edit = ProtectedTextEdit(self)
         self.text_edit.setPlainText(self.text_content)
         self._update_text_style()
         self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

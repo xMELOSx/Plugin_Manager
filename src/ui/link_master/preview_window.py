@@ -401,27 +401,29 @@ class PreviewWindow(FramelessDialog):
         
         prop_layout.addLayout(folder_row)
         
-        self.folder_name_label = QLabel("-")
+        self.folder_name_label = ProtectedLineEdit("-")
+        self.folder_name_label.setReadOnly(True)
+        self.folder_name_label.setFrame(False)
         self.folder_name_label.setObjectName("readOnlyField")
-        self.folder_name_label.setWordWrap(True)
+        # self.folder_name_label.setWordWrap(True) # QLineEdit doesn't support word wrap, but usually folder names are fine
         prop_layout.addWidget(self.folder_name_label)
         
         # Display Name
         prop_layout.addWidget(QLabel(_("Display Name:")))
-        self.display_name_edit = QLineEdit()
+        self.display_name_edit = ProtectedLineEdit()
         self.display_name_edit.setPlaceholderText(_("Enter display name..."))
         prop_layout.addWidget(self.display_name_edit)
         
         # Description
         prop_layout.addWidget(QLabel(_("Description:")))
-        self.description_edit = QTextEdit()
+        self.description_edit = ProtectedTextEdit()
         self.description_edit.setPlaceholderText(_("Enter description..."))
         self.description_edit.setMaximumHeight(80)
         prop_layout.addWidget(self.description_edit)
 
         # Author
         prop_layout.addWidget(QLabel(_("Author:")))
-        self.author_edit = QLineEdit()
+        self.author_edit = ProtectedLineEdit()
         self.author_edit.setPlaceholderText(_("Author name..."))
         prop_layout.addWidget(self.author_edit)
 
@@ -459,7 +461,7 @@ class PreviewWindow(FramelessDialog):
         tag_v_layout.addWidget(self.tag_panel)
         
         tag_v_layout.addWidget(QLabel(_("Additional Tags:")))
-        self.tags_edit = QLineEdit()
+        self.tags_edit = ProtectedLineEdit()
         self.tags_edit.setMaxLength(100) # Phase 28: Add character limit
         self.tags_edit.setPlaceholderText(_("Enter tags separated by comma..."))
         tag_v_layout.addWidget(self.tags_edit)
