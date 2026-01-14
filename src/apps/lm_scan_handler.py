@@ -340,7 +340,8 @@ class LMScanHandlerMixin:
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=self._calculate_show_deploy(is_package, use_pkg_settings, settings),
             deploy_button_opacity=settings['opacity'],
-            category_deploy_status=item_config.get('category_deploy_status')
+            category_deploy_status=item_config.get('category_deploy_status'),
+            is_intentional=r.get('is_intentional', False)
         )
         card.context = context
         card.rel_path = item_rel
@@ -506,59 +507,42 @@ class LMScanHandlerMixin:
         # Get app data for storage_root
         app_data = self.app_combo.currentData()
         storage_root = app_data.get('storage_root')
-        if not storage_root: return False, False, False, False
+        if not storage_root: return False, False, False, False, False, False
         
         # Get folder_path relative to storage_root
         try:
             folder_rel = os.path.relpath(folder_path, storage_root).replace('\\', '/')
             if folder_rel == ".": folder_rel = ""
-        except: 
-            return False, False, False, False
+        except Exception: 
+            return False, False, False, False, False, False
         
-        # Phase 28: Fetch all configs
-        if cached_configs is not None:
-            folder_configs = cached_configs
-        else:
-            all_configs_raw = self.db.get_all_folder_configs()
-            folder_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
-
-        # Iterate all configs to find children of this folder
-        folder_prefix = folder_rel + "/" if folder_rel else ""
-        
+        # Standard status crawler for categories: linked, conflict, partial, unlinked, intentional.
+        has_linked = has_conflict = has_partial = has_unlinked = has_internal_conflict = has_intentional = False
         child_tags = set()
         child_libs = set()
         
-        for rel_path, cfg in folder_configs.items():
-            # Check if this is a DIRECT child of folder_path
-            if not rel_path.startswith(folder_prefix):
-                continue
-            
-            # Get the part after the prefix
-            child_part = rel_path[len(folder_prefix):]
-            
-            # Skip if not direct child (has subdirectories)
-            if "/" in child_part:
-                continue
-            
-            # Skip if it's the folder itself
-            if not child_part:
-                continue
-            
-            # Check DB status
+        from src.core.file_handler import FileHandler # This import is not used here, but kept for consistency if it was intended elsewhere.
+        
+        children = self.db.get_direct_children_configs(folder_rel) if cached_configs is None else []
+        if cached_configs:
+            for rel, cfg in cached_configs.items():
+                if os.path.dirname(rel) == folder_rel and rel != folder_rel:
+                    children.append((rel, cfg))
+        
+        for rel, cfg in children:
             status = cfg.get('last_known_status', 'none')
+            is_intentional = bool(cfg.get('is_intentional', 0))
             
             if status == 'linked':
                 has_linked = True
-                # Check if partial (custom rules)
-                if cfg.get('deploy_type') == 'custom' or cfg.get('deploy_rule') == 'custom':
-                    import json
-                    try:
-                        rules_json = cfg.get('deployment_rules')
-                        if rules_json:
-                            ro = json.loads(rules_json)
-                            if ro.get('exclude') or ro.get('overrides') or ro.get('rename'):
-                                has_partial = True
-                    except: pass
+                if is_intentional:
+                    has_intentional = True
+            elif status == 'partial':
+                has_linked = True
+                if is_intentional:
+                    has_intentional = True
+                else:
+                    has_partial = True # Accidental loss (Yellow)
             elif status == 'conflict':
                 has_conflict = True
                 has_unlinked = True # Conflict is also unlinked in terms of "not successfully linked"
@@ -592,11 +576,11 @@ class LMScanHandlerMixin:
                     has_internal_conflict = True
                 child_libs.add(lib_name)
             
-            # Early exit if all found
-            if has_linked and has_conflict and has_partial and has_unlinked:
+            # Early exit if all worst statuses found
+            if has_conflict and has_partial:
                 break
             
-        return has_linked, has_conflict, has_partial, has_unlinked, has_internal_conflict
+        return has_linked, has_conflict, has_partial, has_unlinked, has_internal_conflict, has_intentional
 
 
     def _refresh_category_cards(self):
@@ -622,13 +606,14 @@ class LMScanHandlerMixin:
                     if isinstance(card, ItemCard) and card.is_package is False:
                             cat_count += 1
                             # Pass cache
-                            has_linked, has_conflict, has_partial, has_unlinked, has_int_conf = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                            h_l, h_c, h_p, h_u, h_ic, h_i = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
                             card.set_children_status(
-                                has_linked=has_linked, 
-                                has_conflict=has_conflict, 
-                                has_partial=has_partial, 
-                                has_unlinked_children=has_unlinked,
-                                has_category_conflict=has_int_conf
+                                has_linked=h_l, 
+                                has_conflict=h_c, 
+                                has_partial=h_p, 
+                                has_unlinked_children=h_u,
+                                has_category_conflict=h_ic,
+                                has_intentional=h_i
                             )
         
         t_cat_end = time.perf_counter()
@@ -794,7 +779,11 @@ class LMScanHandlerMixin:
                     
                     # Update cache selectively (ignore 'none' to save writes if we cleared)
                     if status != 'none':
-                        self.db.update_folder_display_config(rel, last_known_status=status)
+                        self.db.update_folder_display_config(
+                            rel, 
+                            last_known_status=status,
+                            is_intentional=1 if res.get('is_intentional') else 0
+                        )
             
             self.logger.info("Manual rebuild complete.")
             self._update_total_link_count()

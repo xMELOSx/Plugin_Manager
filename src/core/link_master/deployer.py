@@ -550,23 +550,30 @@ class Deployer:
                      "type": expected_transfer_mode if expected_transfer_mode else "dir",
                      "missing_samples": missing_samples,
                      "files_found": files_found,
-                     "files_total": files_total
+                     "files_total": files_total,
+                     "is_intentional": False # Default
                  }
                  
                  # Logic for mirrored modes (files, tree, custom)
                  if files_total > 0:
                      if files_found >= files_total:
                          res["status"] = "linked"
+                         # Phase 51: If we used rules (Custom/Tree) and it's linked, check if it's intentional partial
+                         # (meaning it's not a full mirror of the source but it IS a full link of the rules)
+                         if deploy_rule in ('custom', 'tree'):
+                              # We need to know if total files in source > files_total
+                              # For simplicity, if deploy_rule is custom/tree, we consider it intentional partial
+                              # if it's 'linked' at the rule level.
+                              res["is_intentional"] = True
                      elif files_found > 0:
-                         res["status"] = "partial"
+                         res["status"] = "partial" # Accidental loss relative to rules
                      else:
-                         # No files from the source are present in the target
                          res["status"] = "none"
                  else:
                      # No items found in source to check (empty or all excluded)
-                     # Only consider 'linked' if the target directory exists and we had something to exclude
                      if excludes and os.path.exists(target_link_path):
-                          res["status"] = "linked" # Effectively linked if all content excluded
+                          res["status"] = "linked"
+                          res["is_intentional"] = True # All excluded = intentional partial
                      else:
                           res["status"] = "none"
                  
@@ -579,7 +586,7 @@ class Deployer:
                 norm_real = self._normalize_path(real_target)
                 norm_exp = self._normalize_path(expected_source)
                 if norm_real == norm_exp:
-                    return {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1}
+                    return {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
                 else:
                     return {"status": "conflict", "type": "symlink", "target": real_target}
             
@@ -604,20 +611,21 @@ class Deployer:
                     
                     if files_total > 0:
                         if files_found >= files_total:
-                             return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total}
+                             return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total, "is_intentional": False}
                         elif files_found > 0:
                              return {
                                  "status": "partial", 
                                  "type": "copy", 
                                  "missing_samples": missing_samples,
                                  "files_found": files_found,
-                                 "files_total": files_total
+                                 "files_total": files_total,
+                                 "is_intentional": False
                              }
                     
                     # No files matched or empty source
-                    return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total}
+                    return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
                 except:
-                    return {"status": "linked", "type": "copy"} # Legacy fallback
+                    return {"status": "linked", "type": "copy", "is_intentional": False}
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)

@@ -571,8 +571,14 @@ class LMDeploymentOpsMixin:
                 return False
             
             if success:
-                 self.logger.info(f"[DeploySingle] Success. Updating DB for {rel_path}")
-                 self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                 self.logger.info(f"[DeploySingle] Success. Syncing state to DB for {rel_path}")
+                 # Phase 51: Re-check status to get correct is_intentional flag
+                 post_res = self.deployer.get_link_status(target_link, expected_source=full_src, deploy_rule=deploy_rule)
+                 self.db.update_folder_display_config(
+                     rel_path, 
+                     last_known_status=post_res.get('status', 'linked'),
+                     is_intentional=1 if post_res.get('is_intentional') else 0
+                 )
                  
                  if show_result and hasattr(self.deployer, 'last_actions') and self.deployer.last_actions:
                     actions = self.deployer.last_actions
@@ -1170,13 +1176,14 @@ class LMDeploymentOpsMixin:
                 if item and item.widget():
                     card = item.widget()
                     if hasattr(card, 'path') and hasattr(card, 'set_children_status'):
-                        has_linked, has_conflict, has_partial, has_unlinked, has_int_conf = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
+                        h_l, h_c, h_p, h_u, h_ic, h_i = self._scan_children_status(card.path, target_root, cached_configs=cached_configs)
                         card.set_children_status(
-                            has_linked=has_linked, 
-                            has_conflict=has_conflict, 
-                            has_unlinked_children=has_unlinked, 
-                            has_partial=has_partial,
-                            has_category_conflict=has_int_conf
+                            has_linked=h_l, 
+                            has_conflict=h_c, 
+                            has_partial=h_p, 
+                            has_unlinked_children=h_u,
+                            has_category_conflict=h_ic,
+                            has_intentional=h_i
                         )
 
     def _on_card_deployment_requested(self, path, is_package=True):

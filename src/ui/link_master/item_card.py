@@ -79,8 +79,9 @@ class ItemCard(QFrame):
                  deploy_type: str = 'folder', conflict_policy: str = 'backup',
                  app_deploy_default: str = 'folder', app_conflict_default: str = 'backup',
                  app_cat_style_default: str = 'image', app_pkg_style_default: str = 'image',
-                 show_link: bool = True, show_deploy: bool = True, deploy_button_opacity: float = 0.8,
-                 is_library: int = 0, lib_name: str = '', **kwargs):
+                 show_link: bool = True, show_deploy: bool = True,
+                 deploy_button_opacity: float = 0.8,
+                 is_library: int = 0, lib_name: str = '', is_intentional: bool = False, **kwargs):
         super().__init__(parent)
         self.setObjectName("ItemCard")
         self.path = path # Source Path (Absolute)
@@ -116,6 +117,7 @@ class ItemCard(QFrame):
         self.is_trash_view = is_trash_view # Phase 18.11
         self.is_hidden = is_hidden  # Phase 18.14: Hidden folder (gray text)
         self.is_partial = is_partial # Feature 6: Yellow mark if True
+        self.is_intentional = is_intentional
         self.link_status = 'none' # 'none', 'linked', 'conflict'
         self.has_linked_children = False  # True if any child is linked
         self.has_unlinked_children = False # NEW: True if any child is unlinked
@@ -131,6 +133,8 @@ class ItemCard(QFrame):
         self.lib_name = lib_name   # Phase 30: Library name for grouping
         self.has_category_conflict = False # Phase 35: Category deployment blocked by logic conflict
         self.missing_samples = [] # Phase 51: Sampled missing files for Partial status
+        self.is_intentional = False # Phase 51: Intentional partial (Custom/Tree)
+        self.has_intentional_children = False # Hierarchy variant
 
         # Phase 31: Visibility Toggles (Per mode)
         self.show_link_overlay = show_link
@@ -330,6 +334,7 @@ class ItemCard(QFrame):
         self.missing_samples = kwargs.get('missing_samples', getattr(self, 'missing_samples', []))
         self.files_found = kwargs.get('files_found', getattr(self, 'files_found', 0))
         self.files_total = kwargs.get('files_total', getattr(self, 'files_total', 0))
+        self.is_intentional = kwargs.get('is_intentional', getattr(self, 'is_intentional', False))
 
         # Support 'is_visible' (0/1) mapping to 'is_hidden'
         if 'is_visible' in kwargs:
@@ -686,7 +691,8 @@ class ItemCard(QFrame):
     def set_children_status(self, has_linked: bool = False, has_conflict: bool = False, 
                             has_unlinked_children: bool = False, has_partial: bool = False,
                             has_category_conflict: bool = False, missing_samples: list = None,
-                            files_found: int = 0, files_total: int = 0):
+                            files_found: int = 0, files_total: int = 0, 
+                            has_intentional: bool = False):
         """Set child status flags for parent folder color logic.
         Also updates link_status for category cards to enable Unlink button.
         """
@@ -694,6 +700,7 @@ class ItemCard(QFrame):
         self.has_conflict_children = has_conflict
         self.has_unlinked_children = has_unlinked_children
         self.has_partial_children = has_partial
+        self.has_intentional_children = has_intentional
         self.has_category_conflict = has_category_conflict
         self.missing_samples = missing_samples if missing_samples else []
         self.files_found = files_found
@@ -862,6 +869,8 @@ class ItemCard(QFrame):
             getattr(self, 'has_linked_children', False),
             getattr(self, 'has_unlinked_children', False),
             getattr(self, 'has_partial_children', False),
+            getattr(self, 'has_intentional_children', False),
+            getattr(self, 'is_intentional', False),
             getattr(self, 'is_hidden', False), # Phase 33: Track visibility for immediate color change
             getattr(self, 'category_deploy_status', None), # Phase 5: Ensure deep blue border updates
             mode
@@ -894,6 +903,8 @@ class ItemCard(QFrame):
             has_linked_children=getattr(self, 'has_linked_children', False),
             has_unlinked_children=getattr(self, 'has_unlinked_children', False),
             has_partial_children=getattr(self, 'has_partial_children', False),
+            has_intentional_children=getattr(self, 'has_intentional_children', False),
+            is_intentional=getattr(self, 'is_intentional', False),
             category_deploy_status=getattr(self, 'category_deploy_status', None),
             context=getattr(self, 'context', None)
         )

@@ -399,6 +399,11 @@ class LinkMasterDB:
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_visible INTEGER DEFAULT 1")
             except: pass
+            
+            try:
+                # Phase 51: Differentiate accidental vs intentional partial deployment
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_intentional INTEGER DEFAULT 0")
+            except: pass
             try:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN display_style_package TEXT DEFAULT 'image'")
             except: pass

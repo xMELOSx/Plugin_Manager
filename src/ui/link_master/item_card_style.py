@@ -2,53 +2,71 @@ def get_card_colors(link_status, is_misplaced, is_partial, has_logical_conflict,
                     has_conflict_children, is_library_alt_version, is_registered,
                     is_package, is_selected, is_focused, has_name_conflict=False, 
                     has_target_conflict=False, has_linked_children=False, has_unlinked_children=False, 
-                    has_partial_children=False, category_deploy_status=None, context=None):
-    """Calculate status and background colors for ItemCard."""
+                    has_partial_children=False, category_deploy_status=None, context=None,
+                    is_intentional=False, has_intentional_children=False):
+    """Calculate status and background colors for ItemCard based on Priority.
+    
+    Priority Order (User Requested):
+    1. RED (Conflict)
+    2. YELLOW (Accidental Partial / File Loss)
+    3. ORANGE (Intentional Partial / Custom Rules)
+    4. GREEN (Linked)
+    5. BLUE (Category Deployed via Folder mode)
+    6. Others (Misplaced, Lib Alt, Unregistered)
+    """
     status_color = "#444"
     bg_color = "#333"
     
-    # Priority 1: Conflicts (Red border)
-    # Only physical link conflict, target conflict, or logical conflict trigger red
-    # NOTE: has_name_conflict REMOVED - it was unwanted functionality
+    # Priority 1: Conflicts (Red)
     if link_status == 'conflict' or \
          has_logical_conflict or \
          has_target_conflict or \
-         (not is_package and has_conflict_children):  # Categories with conflict children
+         (not is_package and has_conflict_children):
         status_color = COLOR_RED
         bg_color = "#3d2a2a"
-    # Priority 2: Library Alt Version
-    elif is_library_alt_version:
-        status_color = COLOR_LIB_ALT
-        bg_color = "#2d3d2a"
-    # Priority 3: Misplaced
+
+    # Priority 2: Accidental Partial / File Loss (Yellow)
+    # Triggered if status is 'partial' OR if it's 'linked' but NOT 'is_intentional' (though that shouldn't happen)
+    elif (link_status == 'partial' and not is_intentional) or \
+         (not is_package and has_partial_children):
+        status_color = COLOR_YELLOW
+        bg_color = "#3d3d2a"
+
+    # Priority 3: Intentional Partial / Custom Rules (Orange)
+    elif (is_intentional and (link_status == 'linked' or link_status == 'partial')) or \
+         (not is_package and has_intentional_children):
+        status_color = COLOR_ORANGE
+        bg_color = "#3d322a"
+
+    # Priority 4: Misplaced (Pink)
     elif is_misplaced:
         status_color = COLOR_PINK
         bg_color = "#3d2a35"
-    # Priority 4: Partial Link
-    elif is_partial and (link_status == 'linked' or link_status == 'partial'):
-        status_color = COLOR_YELLOW
-        bg_color = "#3d3d2a"
-    # Priority 5: Category Deploy Status (ONLY in Category View, not Package View)
+
+    # Priority 5: Library Alt Version (Lime)
+    elif is_library_alt_version:
+        status_color = COLOR_LIB_ALT
+        bg_color = "#2d3d2a"
+
+    # Priority 6: Category Deploy Status (Blue)
     elif not is_package and category_deploy_status == 'deployed' and context != 'contents':
         status_color = COLOR_CATEGORY_DEPLOYED
         bg_color = "#1a2a3d"
-    # Priority 6: Linked
+
+    # Priority 7: Linked (Green)
     elif link_status == 'linked':
         status_color = COLOR_GREEN
         bg_color = "#2a332a"
-    # Priority 7: Unregistered (Toggleable via SHOW_UNREGISTERED_BORDER)
+        
+    # Priority 8: Unregistered (Purple)
     elif not is_registered and SHOW_UNREGISTERED_BORDER:
         status_color = COLOR_PURPLE
         bg_color = "#322a3d"
-    # Priority 8: Category hierarchical status (ONLY for categories, not packages)
-    elif not is_package:
-        # Categories: Check children status
-        if has_partial_children:
-            status_color = COLOR_YELLOW
-            bg_color = "#3d3d2a"
-        elif has_linked_children:
-            status_color = COLOR_GREEN
-            bg_color = "#2a332a"
+
+    # Category Priority Fallback for Linked Children
+    elif not is_package and has_linked_children:
+        status_color = COLOR_GREEN
+        bg_color = "#2a332a"
     
     return status_color, bg_color
 

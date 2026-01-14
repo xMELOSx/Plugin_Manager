@@ -329,24 +329,32 @@ class ScannerWorker(QObject):
             has_unlinked_children = h_u
             has_cat_conflict = h_ic
 
+        # Extract results for return
+        deployed_status = status_res.get('status', 'none')
+        files_found = status_res.get('files_found', 0)
+        files_total = status_res.get('files_total', 0)
+        missing_samples = status_res.get('missing_samples', [])
+        is_intentional = status_res.get('is_intentional', False)
+
         return {
             'item': item,
             'abs_path': item_abs_path,
             'is_package': is_actually_package,
             'config': item_config,
-            'link_status': status_res.get('status', 'none'),
-            'has_linked': status_res.get('status') in ('linked', 'partial'),
-            'has_unlinked': status_res.get('status') == 'none',
-            'is_partial': status_res.get('status') == 'partial',
-            'missing_samples': status_res.get('missing_samples', []),
-            'files_found': status_res.get('files_found', 0),
-            'files_total': status_res.get('files_total', 0),
-            'has_conflict': status_res.get('status') == 'conflict' or has_child_conflict,
-            'is_misplaced': status_res.get('status') == 'misplaced',
+            'link_status': deployed_status,
+            'has_linked': deployed_status in ('linked', 'partial'),
+            'has_unlinked': deployed_status == 'none',
+            'is_partial': deployed_status == 'partial',
+            'missing_samples': missing_samples,
+            'files_found': files_found,
+            'files_total': files_total,
+            'has_conflict': deployed_status == 'conflict' or has_child_conflict,
+            'is_misplaced': deployed_status == 'misplaced',
             'has_favorite': self._favorite_ancestors and item_rel in self._favorite_ancestors,
             'has_linked_children': has_linked_children or (self._linked_ancestors and item_rel in self._linked_ancestors),
             'has_unlinked_children': has_unlinked_children,
-            'has_category_conflict': has_cat_conflict
+            'has_category_conflict': has_cat_conflict,
+            'is_intentional': is_intentional
         }
 
     def _get_inherited_tags_static(self, folder_path, storage_root, folder_configs, non_inheritable):
