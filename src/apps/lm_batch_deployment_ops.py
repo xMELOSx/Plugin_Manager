@@ -398,6 +398,7 @@ class LMDeploymentOpsMixin:
             self.logger.info(f"[Deploy-Sweep] Transitioning {rel_path} (Rule: {deploy_rule}, Force: {force_sweep}). Performing cleanup.")
             try:
                 target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
+                failed_paths = []
                 sweep_occured, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
                 
                 if sweep_occured:
@@ -444,7 +445,11 @@ class LMDeploymentOpsMixin:
             
             # Update DB status if it was not 'linked' before
             if config.get('last_known_status') != 'linked':
-                self.db.update_folder_display_config(rel_path, last_known_status='linked')
+                self.db.update_folder_display_config(
+                    rel_path, 
+                    last_known_status='linked',
+                    is_intentional=1 if status_info.get('is_intentional') else 0
+                )
             
             # Still process dependencies if any
             if config.get('lib_deps'):
@@ -573,7 +578,8 @@ class LMDeploymentOpsMixin:
             if success:
                  self.logger.info(f"[DeploySingle] Success. Syncing state to DB for {rel_path}")
                  # Phase 51: Re-check status to get correct is_intentional flag
-                 post_res = self.deployer.get_link_status(target_link, expected_source=full_src, deploy_rule=deploy_rule)
+                 # Pass rules_dict for accurate intentionality detection
+                 post_res = self.deployer.get_link_status(target_link, expected_source=full_src, deploy_rule=deploy_rule, rules=rules_dict)
                  self.db.update_folder_display_config(
                      rel_path, 
                      last_known_status=post_res.get('status', 'linked'),

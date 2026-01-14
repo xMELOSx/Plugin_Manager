@@ -297,7 +297,7 @@ class ScannerWorker(QObject):
         
         # Phase 51: Pass JSON rules from config to status check for proper 'partial' detection (Custom mode)
         rules_dict = {}
-        if item_config.get('deployment_rules'):
+        if deploy_rule == 'custom' and item_config.get('deployment_rules'):
             try:
                 import json
                 rules_dict = json.loads(item_config['deployment_rules'])
@@ -320,14 +320,18 @@ class ScannerWorker(QObject):
         # 3. Child Status Check (Folders only) - Restored for Phase 4 markers
         has_linked_children = False
         has_child_conflict = False
+        has_partial_children = False
         has_unlinked_children = False
         has_cat_conflict = False
-        if os.path.isdir(item_abs_path):
-            h_l, h_c, h_u, h_p, h_ic = self._scan_children_status_sn(item_abs_path, sn_storage_root, folder_configs)
+        has_intentional_children = False
+        if os.path.isdir(item_abs_path) and not is_actually_package:
+            h_l, h_c, h_p, h_u, h_ic, h_i = self._scan_children_status_sn(item_abs_path, sn_storage_root, folder_configs)
             has_linked_children = h_l
             has_child_conflict = h_c
+            has_partial_children = h_p
             has_unlinked_children = h_u
             has_cat_conflict = h_ic
+            has_intentional_children = h_i
 
         # Extract results for return
         deployed_status = status_res.get('status', 'none')
@@ -336,13 +340,26 @@ class ScannerWorker(QObject):
         missing_samples = status_res.get('missing_samples', [])
         is_intentional = status_res.get('is_intentional', False)
 
+        # Update DB if status or intentionality changed (Sync with physical reality)
+        if sn_db and item_rel:
+            old_db_status = item_config.get('last_known_status', 'none')
+            old_db_intentional = bool(item_config.get('is_intentional', 0))
+            if deployed_status != old_db_status or is_intentional != old_db_intentional:
+                try:
+                    sn_db.update_folder_display_config(
+                        item_rel, 
+                        last_known_status=deployed_status,
+                        is_intentional=1 if is_intentional else 0
+                    )
+                except: pass
+
         return {
             'item': item,
             'abs_path': item_abs_path,
             'is_package': is_actually_package,
             'config': item_config,
             'link_status': deployed_status,
-            'has_linked': deployed_status in ('linked', 'partial'),
+            'has_linked': deployed_status in ('linked', 'partial') or has_linked_children,
             'has_unlinked': deployed_status == 'none',
             'is_partial': deployed_status == 'partial',
             'missing_samples': missing_samples,
@@ -353,8 +370,10 @@ class ScannerWorker(QObject):
             'has_favorite': self._favorite_ancestors and item_rel in self._favorite_ancestors,
             'has_linked_children': has_linked_children or (self._linked_ancestors and item_rel in self._linked_ancestors),
             'has_unlinked_children': has_unlinked_children,
+            'has_partial_children': has_partial_children,
             'has_category_conflict': has_cat_conflict,
-            'is_intentional': is_intentional
+            'is_intentional': is_intentional,
+            'has_intentional_children': has_intentional_children
         }
 
     def _get_inherited_tags_static(self, folder_path, storage_root, folder_configs, non_inheritable):
@@ -380,20 +399,38 @@ class ScannerWorker(QObject):
         return tags
 
     def _scan_children_status_sn(self, folder_path, sn_storage_root, folder_configs):
-        has_linked = has_conflict = has_unlinked = has_int_conf = False
+        # Result order: has_linked, has_conflict, has_partial, has_unlinked, has_internal_conflict, has_intentional
+        has_linked = has_conflict = has_partial = has_unlinked = has_int_conf = has_intentional = False
         child_tags = set()
         child_libs = set()
         try:
             folder_rel = os.path.relpath(folder_path, sn_storage_root).replace('\\', '/')
             if folder_rel == ".": folder_rel = ""
-        except: return False, False, False, False, False
+        except: return False, False, False, False, False, False
+        
         children = getattr(self, '_parent_config_map', {}).get(folder_rel, [])
         for child_rel, child_cfg in children:
             status = child_cfg.get('last_known_status', 'none')
-            if status == 'linked': has_linked = True
-            elif status == 'conflict': has_conflict = has_unlinked = True
-            else: has_unlinked = True
-            if child_cfg.get('has_logical_conflict', 0): has_conflict = has_unlinked = True
+            is_intentional = bool(child_cfg.get('is_intentional', 0))
+            
+            if status == 'linked':
+                has_linked = True
+                if is_intentional:
+                    has_intentional = True
+            elif status == 'partial':
+                has_linked = True
+                if is_intentional:
+                    has_intentional = True
+                else:
+                    has_partial = True
+            elif status == 'conflict':
+                has_conflict = has_unlinked = True
+            else:
+                has_unlinked = True
+            
+            if child_cfg.get('has_logical_conflict', 0): 
+                has_conflict = has_unlinked = True
+                
             ctag = child_cfg.get('conflict_tag')
             if ctag:
                 if ctag in child_tags: has_int_conf = True
@@ -402,4 +439,5 @@ class ScannerWorker(QObject):
             if lib_name:
                 if lib_name in child_libs: has_int_conf = True
                 child_libs.add(lib_name)
-        return has_linked, has_conflict, has_unlinked, False, has_int_conf
+                
+        return has_linked, has_conflict, has_partial, has_unlinked, has_int_conf, has_intentional

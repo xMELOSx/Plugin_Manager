@@ -558,20 +558,22 @@ class Deployer:
                  if files_total > 0:
                      if files_found >= files_total:
                          res["status"] = "linked"
-                         # Phase 51: If we used rules (Custom/Tree) and it's linked, check if it's intentional partial
-                         # (meaning it's not a full mirror of the source but it IS a full link of the rules)
-                         if deploy_rule in ('custom', 'tree'):
-                              # We need to know if total files in source > files_total
-                              # For simplicity, if deploy_rule is custom/tree, we consider it intentional partial
-                              # if it's 'linked' at the rule level.
-                              res["is_intentional"] = True
+                         # Phase 51: If we used rules (Custom) and it's linked, check if it's intentional partial
+                         if deploy_rule == 'custom' and rules:
+                              try:
+                                  abs_total = 0
+                                  if os.path.isdir(expected_source):
+                                      for _, d, f in os.walk(expected_source): abs_total += len(f) + len(d)
+                                  if abs_total > files_total:
+                                      res["is_intentional"] = True
+                              except: pass
                      elif files_found > 0:
                          res["status"] = "partial" # Accidental loss relative to rules
                      else:
                          res["status"] = "none"
                  else:
                      # No items found in source to check (empty or all excluded)
-                     if excludes and os.path.exists(target_link_path):
+                     if rules and os.path.exists(target_link_path) and deploy_rule == 'custom':
                           res["status"] = "linked"
                           res["is_intentional"] = True # All excluded = intentional partial
                      else:
@@ -611,7 +613,7 @@ class Deployer:
                     
                     if files_total > 0:
                         if files_found >= files_total:
-                             return {"status": "linked", "type": "copy", "files_found": files_total, "files_total": files_total, "is_intentional": False}
+                             return {"status": "linked", "type": "copy", "files_found": files_found, "files_total": files_total, "is_intentional": False}
                         elif files_found > 0:
                              return {
                                  "status": "partial", 
@@ -621,11 +623,14 @@ class Deployer:
                                  "files_total": files_total,
                                  "is_intentional": False
                              }
+                        else:
+                             return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
                     
-                    # No files matched or empty source
+                    # No files in source
                     return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
                 except:
-                    return {"status": "linked", "type": "copy", "is_intentional": False}
+                    # On walk error, don't assume linked. Return none but with dir type.
+                    return {"status": "none", "type": "dir", "is_intentional": False}
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
@@ -1227,7 +1232,7 @@ class Deployer:
         """
         import time
         t0 = time.perf_counter()
-        source_root_norm = self._normalize_path(source_root)
+        source_root_norm = self._normalize_path(source_root).rstrip('\\/')
         self.logger.info(f"Sweeping for orphaned links pointing to: {source_root_norm}")
         
         # Phase 1: Collect all orphaned links
@@ -1277,8 +1282,10 @@ class Deployer:
                                 real = os.path.join(os.path.dirname(path), real)
                                 
                             real_norm = self._normalize_path(real)
-                            # Safe Match: exact or sub-path
-                            if real_norm == source_root_norm or real_norm.startswith(source_root_norm + "/"):
+                            # Safe Match: exact or sub-path. 
+                            if real_norm == source_root_norm:
+                                orphan_links.add(path)
+                            elif real_norm.startswith(source_root_norm + os.sep) or real_norm.startswith(source_root_norm + "/"):
                                 orphan_links.add(path)
                         except: pass
                     else:
@@ -1295,6 +1302,7 @@ class Deployer:
         
         # Phase 2: Parallel deletion using ThreadPoolExecutor
         removed_count = 0
+        failed_paths = []
         if orphan_links:
             def _unlink_safe(path):
                 try:
