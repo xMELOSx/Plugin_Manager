@@ -654,7 +654,7 @@ class ItemCard(QFrame):
         if self.db:
             try:
                 rel = os.path.relpath(self.path, self.storage_root).replace('\\', '/')
-                self.db.update_folder_display_config(rel, last_known_status=self.link_status)
+                self.db.update_folder_display_config(rel, last_known_status=self.link_status, is_intentional=self.is_intentional)
             except: pass
 
     def _update_name_label(self):
