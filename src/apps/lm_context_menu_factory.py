@@ -186,7 +186,22 @@ def create_item_context_menu(window, rel_path, is_package_context=False):
             if deploy_rule == 'files' and not config.get('target_override'):
                  target_link = target_dir
 
-            status_res = window.deployer.get_link_status(target_link, expected_source=full_src, expected_transfer_mode=tm, deploy_rule=deploy_rule)
+            # Phase 51: Parse rules for exclude-aware check in Context Menu
+            rules_dict = {}
+            rules_str = config.get('deployment_rules')
+            if rules_str:
+                try:
+                    import json
+                    rules_dict = json.loads(rules_str)
+                except: pass
+
+            status_res = window.deployer.get_link_status(
+                target_link, 
+                expected_source=full_src, 
+                expected_transfer_mode=tm, 
+                deploy_rule=deploy_rule,
+                rules=rules_dict
+            )
             status = status_res.get('status', 'none')
 
             
