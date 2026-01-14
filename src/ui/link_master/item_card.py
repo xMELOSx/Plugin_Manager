@@ -641,10 +641,14 @@ class ItemCard(QFrame):
         # 1. True if actually missing files
         self.is_partial = (self.link_status == 'partial')
         
-        # 2. ALSO True if Custom Mode (for visual aesthetic), but only if not conflicted
+        # 2. ALSO True if Custom Mode returned is_intentional=True (calculated based on real exclusions)
+        if not self.is_partial and status.get('is_intentional'):
+             self.is_partial = True
+             
+        # 3. Fallback: If Custom Mode and rules exist, assume partial if not conflicted (Legacy/Visual safety)
         if not self.is_partial and deploy_rule == 'custom' and self.link_status != 'conflict':
-            if rules_dict.get('exclude') or rules_dict.get('overrides') or rules_dict.get('rename'):
-                self.is_partial = True
+             if rules_dict.get('exclude') or rules_dict.get('overrides') or rules_dict.get('rename'):
+                 self.is_partial = True
 
         # Phase 28: Sync status to DB for fast total count lookups
         if self.db:

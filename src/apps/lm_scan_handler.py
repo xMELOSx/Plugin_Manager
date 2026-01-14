@@ -580,6 +580,11 @@ class LMScanHandlerMixin:
             if has_conflict and has_partial:
                 break
             
+        # DEBUG: Log intentionality for specific folder to troubleshoot Green Category issue
+        if '12Folder' in folder_rel and has_intentional:
+             import logging
+             logging.debug(f"[ScanStatus] {folder_rel}: has_linked={has_linked}, has_intentional={has_intentional} (Found intentional child)")
+
         return has_linked, has_conflict, has_partial, has_unlinked, has_internal_conflict, has_intentional
 
 
