@@ -3254,10 +3254,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 def launch():
                     try:
                         if not p: return
+                        
+                        # Resolve path relative to EXE location if frozen, otherwise CWD
+                        import sys
+                        import os
+                        
+                        target_path = p
+                        if not os.path.isabs(target_path):
+                            if getattr(sys, 'frozen', False):
+                                base_dir = os.path.dirname(sys.executable)
+                            else:
+                                base_dir = os.getcwd()
+                            target_path = os.path.join(base_dir, target_path)
+                            
+                        # Set working directory to the target app's folder
+                        # This is crucial for many apps to find their resources/DLLs
+                        work_dir = os.path.dirname(target_path) if os.path.dirname(target_path) else None
+
                         if a:
-                            subprocess.Popen([p] + a.split())
+                            subprocess.Popen([target_path] + a.split(), cwd=work_dir)
                         else:
-                            subprocess.Popen([p])
+                            subprocess.Popen([target_path], cwd=work_dir)
                     except Exception as e:
                         from src.ui.frameless_window import FramelessMessageBox
                         from src.core.lang_manager import _
