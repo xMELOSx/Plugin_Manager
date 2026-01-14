@@ -1271,7 +1271,7 @@ class ItemCard(QFrame):
     def _show_full_preview(self):
         """Show the high-res preview dialog (supporting multiple files)."""
         import os
-        from src.ui.frameless_window import FramelessMessageBox
+        from src.ui.common_widgets import FramelessMessageBox
         
         if not self.manual_preview_path:
             FramelessMessageBox.information(self, "Error", "No preview path configured.")

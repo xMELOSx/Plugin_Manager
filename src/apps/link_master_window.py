@@ -3275,8 +3275,32 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                             subprocess.Popen([target_path] + a.split(), cwd=work_dir)
                         else:
                             subprocess.Popen([target_path], cwd=work_dir)
+                    except OSError as e:
+                        # Handle UAC Elevation Requirement (WinError 740)
+                        if getattr(e, 'winerror', 0) == 740:
+                            try:
+                                import ctypes
+                                # ShellExecuteW(hwnd, verb, file, args, cwd, show_cmd)
+                                ret = ctypes.windll.shell32.ShellExecuteW(
+                                    None, "runas", target_path, a if a else None, work_dir, 1
+                                )
+                                # ShellExecute returns >32 on success
+                                if ret <= 32:
+                                    raise OSError(f"Elevation failed with code {ret}")
+                                return
+                            except Exception as uac_err:
+                                e = uac_err # Fallthrough to show dialog
+
+                        from src.ui.common_widgets import FramelessMessageBox
+                        from src.core.lang_manager import _
+                        
+                        err_box = FramelessMessageBox(self)
+                        err_box.setIcon(FramelessMessageBox.Icon.Critical)
+                        err_box.setWindowTitle(_("Launch Error"))
+                        err_box.setText(_("Failed to launch application.\n\nError: {e}").format(e=e))
+                        err_box.exec()
                     except Exception as e:
-                        from src.ui.frameless_window import FramelessMessageBox
+                        from src.ui.common_widgets import FramelessMessageBox
                         from src.core.lang_manager import _
                         
                         err_box = FramelessMessageBox(self)
