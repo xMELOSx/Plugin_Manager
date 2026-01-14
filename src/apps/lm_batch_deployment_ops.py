@@ -7,8 +7,10 @@ import logging
 import time
 from src.ui.common_widgets import FramelessMessageBox
 from PyQt6.QtCore import QThread, QTimer
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
-
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, 
+    QFrame, QSplitter, QMessageBox, QMenu, QApplication
+)
 from src.core.lang_manager import _
 from src.core.link_master.deployer import DeploymentCollisionError
 from src.ui.styles import apply_common_dialog_style
@@ -413,7 +415,6 @@ class LMDeploymentOpsMixin:
                 self.logger.warning(f"Transition sweep failed: {e}")
             
             # Phase 42: Allow UI to breather after sweep before potential re-deploy
-            from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
 
         # Parse rules early for mode-aware status check
@@ -979,8 +980,10 @@ class LMDeploymentOpsMixin:
                     try:
                         if os.path.islink(target_file):
                             os.unlink(target_file)
+                            self.logger.info(f"Unlinked (Batch): {target_file}")
                         else:
                             os.remove(target_file)
+                            self.logger.info(f"Removed (Batch): {target_file}")
                         
                         # Phase 42: Clear DB tracking
                         try: self.db.remove_deployed_file_entry(target_file)
@@ -989,6 +992,10 @@ class LMDeploymentOpsMixin:
                         deleted_count += 1
                         # Mark parent for pruning
                         deleted_dirs.add(os.path.dirname(target_file))
+                    except FileNotFoundError:
+                        pass
+                    except OSError as e:
+                        self.logger.warning(f"Failed to delete {target_file}: {e}")
                     except Exception as e:
                         self.logger.warning(f"Failed to delete {target_file}: {e}")
 

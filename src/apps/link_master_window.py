@@ -2317,10 +2317,11 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self._scan_in_progress = True 
         worker.set_params(
             path=path,
-            target_root=self.current_target_key, # Link to current target A/B
+            target_root=app_data.get(self.current_target_key), # Pass actual path, not the key string
             storage_root=self.storage_root,
             context="view",
             app_data=app_data,
+            target_key=self.current_target_key,
             app_id=self.current_app_id,
             generation_id=gen_id # NEW: Track specific switch generation
         )

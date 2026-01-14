@@ -1183,17 +1183,23 @@ class Deployer:
     @staticmethod
     def _normalize_path(path: str) -> str:
         """
-        Robust normalization for Windows paths, handling \\?\\ prefix,
+        Robust normalization for Windows paths, handling \\?\\ and \\??\\ prefix,
         case sensitivity, and absolute resolution.
         """
         if not path: return ""
         
-        # 1. Resolve Absolute
-        abs_path = os.path.abspath(path)
-        
-        # 2. Strip Extended Length Prefix if present
-        # Note: \\ in python string is \, so \\\\?\\
+        # 1. Resolve Absolute (if possible)
+        try:
+            abs_path = os.path.abspath(path)
+        except:
+            abs_path = path
+
+        # 2. Strip Extended Length / NT Object Prefixes
+        # \\?\ -> Internal Win32 prefix
+        # \??\ -> NT Object Manager prefix (common in os.readlink on Windows)
         if abs_path.startswith("\\\\?\\"):
+            abs_path = abs_path[4:]
+        elif abs_path.startswith("\\??\\"):
             abs_path = abs_path[4:]
             
         # 3. Normcase (lowercase on Windows)
@@ -1357,12 +1363,6 @@ class Deployer:
                 except OSError as e:
                     if e.errno == 2: # ENOENT (File not found) on some systems/WinError
                          return True
-                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
-                    return False
-                except FileNotFoundError:
-                    return True
-                except OSError as e:
-                    if e.errno == 2: return True
                     self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
                     return False
                 except Exception as e:

@@ -119,7 +119,7 @@ class ScannerWorker(QObject):
             else:
                 # 2. Standard Scan Mode
                 t_scan_start = time.perf_counter()
-                results = self._standard_scan_sn(sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db)
+                results = self._standard_scan_sn(sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db, sn_target_key)
                 t_scan_end = time.perf_counter()
 
             # 3. Sort logic: Categories first, then Packages, then alphabetical
@@ -160,12 +160,12 @@ class ScannerWorker(QObject):
             if hasattr(self, '_linked_ancestors'): del self._linked_ancestors
             self.finished.emit()
 
-    def _standard_scan_sn(self, sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db):
+    def _standard_scan_sn(self, sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db, sn_target_key):
         items = self.scanner.scan_directory(sn_path)
         results = []
         for item in items:
             item_abs_path = os.path.join(sn_path, item['name'])
-            res = self._enrich_item_sn(item, item_abs_path, sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db)
+            res = self._enrich_item_sn(item, item_abs_path, sn_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db, sn_target_key)
             results.append(res)
         return results
 
@@ -231,7 +231,7 @@ class ScannerWorker(QObject):
     def _detect_logical_conflicts(self, results, folder_configs):
         pass  # Feature disabled per user request
 
-    def _enrich_item_sn(self, item, item_abs_path, parent_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db):
+    def _enrich_item_sn(self, item, item_abs_path, parent_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db, sn_target_key):
         try:
             item_rel = os.path.normpath(os.path.relpath(item_abs_path, sn_storage_root)).replace('\\', '/')
             if item_rel == ".": item_rel = ""
@@ -256,12 +256,17 @@ class ScannerWorker(QObject):
         config_type = item_config.get('folder_type', 'auto')
         is_actually_package = self._is_package_auto(item_abs_path) if config_type == 'auto' else (config_type == 'package')
 
-        app_deploy_default = (sn_app_data or {}).get('deployment_type', 'folder')
+        # Phase 44: Resolve App Default Deployment Rule for the CURRENT target (A/B/C)
+        target_rule_key = 'deployment_rule'
+        if (sn_target_key or "target_root") == 'target_root_2': target_rule_key = 'deployment_rule_b'
+        elif (sn_target_key or "target_root") == 'target_root_3': target_rule_key = 'deployment_rule_c'
+        
+        app_deploy_default = (sn_app_data or {}).get(target_rule_key) or (sn_app_data or {}).get('deployment_type', 'folder')
         deploy_rule = item_config.get('deploy_rule') or item_config.get('deploy_type') or app_deploy_default
         if deploy_rule == 'flatten': deploy_rule = 'files'
         
-        primary_target_root = sn_app_data.get('target_root')
-        scan_base = primary_target_root if primary_target_root else sn_target_root
+        # Primary scan base (Root A/C) - MUST trust the resolved path passed from window
+        scan_base = sn_target_root
         
         def resolve_target_from_config(cfg):
             if not cfg: return None
