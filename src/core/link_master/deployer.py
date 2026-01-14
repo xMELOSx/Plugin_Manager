@@ -482,8 +482,19 @@ class Deployer:
                  missing_samples = []
                  
                  excludes = []
-                 if deploy_rule == 'custom' and rules:
-                     excludes = rules.get('exclude', [])
+                 if deploy_rule == 'custom':
+                     # Phase 53: Auto-load rules from disk if not provided (Fix for missing exclusions)
+                     if not rules and os.path.isdir(expected_source):
+                         json_path = os.path.join(expected_source, 'deployment.json')
+                         if os.path.exists(json_path):
+                             try:
+                                 import json
+                                 with open(json_path, 'r', encoding='utf-8') as f:
+                                     rules = json.load(f)
+                             except: pass
+
+                     if rules:
+                         excludes = rules.get('exclude', [])
                  
                  try:
                      import fnmatch

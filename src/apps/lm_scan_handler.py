@@ -525,8 +525,15 @@ class LMScanHandlerMixin:
         
         children = self.db.get_direct_children_configs(folder_rel) if cached_configs is None else []
         if cached_configs:
+            folder_rel_lower = folder_rel.lower()
             for rel, cfg in cached_configs.items():
-                if os.path.dirname(rel) == folder_rel and rel != folder_rel:
+                if '/' in rel:
+                    parent_rel = rel.rsplit('/', 1)[0]
+                else:
+                    parent_rel = ""
+                
+                # Case-insensitive comparison for parent check
+                if parent_rel.lower() == folder_rel_lower and rel.lower() != folder_rel_lower:
                     children.append((rel, cfg))
         
         for rel, cfg in children:
