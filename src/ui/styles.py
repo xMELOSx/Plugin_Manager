@@ -228,6 +228,29 @@ class DialogStyles:
             padding: 4px;
         }
 
+        /* Context Menu Styles */
+        QMenu {
+            background-color: #2b2b2b;
+            color: #eeeeee;
+            border: 1px solid #555555;
+        }
+        QMenu::item {
+            background-color: transparent;
+            padding: 4px 20px;
+        }
+        QMenu::item:selected {
+            background-color: #3d5a80;
+            color: #ffffff;
+        }
+        QMenu::item:disabled {
+            color: #666666;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #555;
+            margin: 4px 8px;
+        }
+
         /* Lists and Tables */
         QTableWidget, QListWidget, QTreeWidget {
             background-color: #252525;

@@ -17,7 +17,7 @@ from src.core.link_master.utils import format_size
 from src.ui.slide_button import SlideButton
 from src.core.lang_manager import _
 from src.ui.window_mixins import OptionsMixin
-from src.ui.common_widgets import StyledLineEdit, StyledComboBox, StyledSpinBox, StyledButton
+from src.ui.common_widgets import ProtectedLineEdit, StyledComboBox, StyledSpinBox, StyledButton
 import os
 import subprocess
 import shutil
@@ -31,7 +31,7 @@ from src.ui.frameless_window import FramelessDialog
 from src.ui.toast import Toast
 from src.ui.link_master.tag_chip_input import TagChipInput
 
-class TagIconLineEdit(StyledLineEdit):
+class TagIconLineEdit(ProtectedLineEdit):
     """QLineEdit that accepts image drag and drop."""
     file_dropped = pyqtSignal(str)
 
@@ -110,12 +110,12 @@ class AppRegistrationDialog(FramelessDialog):
         form = QFormLayout()
         
         # Name
-        self.name_edit = StyledLineEdit()
+        self.name_edit = ProtectedLineEdit()
         self.name_edit.setPlaceholderText(_("e.g. Minecraft"))
         form.addRow(_("App Name:"), self.name_edit)
         
         # Storage Root
-        self.storage_edit = StyledLineEdit()
+        self.storage_edit = ProtectedLineEdit()
         self.storage_btn = QPushButton(_(" Browse "))
         self.storage_btn.clicked.connect(self._browse_storage)
         storage_layout = QHBoxLayout()
@@ -126,7 +126,7 @@ class AppRegistrationDialog(FramelessDialog):
         # Helper to create target row with rule combo
         def create_target_row(label, edit_attr, btn_attr, rule_combo_attr, browse_slot, default_rule='folder'):
             layout = QHBoxLayout()
-            edit = StyledLineEdit()
+            edit = ProtectedLineEdit()
             setattr(self, edit_attr, edit)
             btn = QPushButton(_(" Browse "))
             setattr(self, btn_attr, btn)
@@ -194,7 +194,7 @@ class AppRegistrationDialog(FramelessDialog):
 
         
         # Cover Image with Edit Region support
-        self.cover_edit = StyledLineEdit()
+        self.cover_edit = ProtectedLineEdit()
         self.cover_edit.setPlaceholderText(_("Optional: Select cover image for app"))
         self.cover_btn = QPushButton(_(" Browse "))
         self.cover_btn.clicked.connect(self._browse_cover)
@@ -861,7 +861,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             display_form.addRow(_("Package Size:"), size_label)
         
         # Display Name (Alias)
-        self.name_edit = StyledLineEdit()
+        self.name_edit = ProtectedLineEdit()
         self.name_edit.setPlaceholderText(_("Leave empty to use folder name"))
         
         # Phase 26: Batch mode display name controls
@@ -936,12 +936,12 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.manage_previews_btn = StyledButton(_("📂 Manage Previews..."), style_type="Gray")
         self.manage_previews_btn.clicked.connect(self._open_multi_preview_browser)
         
-        self.full_preview_edit = StyledLineEdit()
+        self.full_preview_edit = ProtectedLineEdit()
         self.full_preview_edit.setText(self.current_config.get('manual_preview_path', '') or '')
         display_form.addRow(_("Multi-Preview:"), self.manage_previews_btn)
 
         # Icon Path Widgets
-        self.image_edit = StyledLineEdit()
+        self.image_edit = ProtectedLineEdit()
         self.image_edit.setPlaceholderText(_("Path to icon image (200x200)"))
         self.image_edit.setText(self.current_config.get('image_path') or '')
         
@@ -988,7 +988,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         """)
         display_form.addRow(_("Description:"), self.description_edit)
 
-        self.author_edit = StyledLineEdit()
+        self.author_edit = ProtectedLineEdit()
         self.author_edit.setPlaceholderText(_("Author / Creator"))
         self.author_edit.setText(self.current_config.get('author', '') or '')
         display_form.addRow(_("Author:"), self.author_edit)
@@ -1007,7 +1007,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         url_layout.addWidget(self.url_btn)
         
         # Hidden field to store structured JSON
-        self.url_list_edit = StyledLineEdit()
+        self.url_list_edit = ProtectedLineEdit()
         self.url_list_edit.setVisible(False)
         self.url_list_edit.setText(self.current_config.get('url_list') or '[]')
         
@@ -1318,7 +1318,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         manual_v.setContentsMargins(10, 5, 0, 5) # Indent a bit
         
         manual_edit_h = QHBoxLayout()
-        self.target_override_edit = StyledLineEdit()
+        self.target_override_edit = ProtectedLineEdit()
         self.target_override_edit.setPlaceholderText(_("Override path (Absolute)..."))
         self.target_override_edit.setText(self.current_config.get('target_override') or '')
         manual_edit_h.addWidget(self.target_override_edit)

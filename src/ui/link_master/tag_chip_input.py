@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QGuiApplication
 from src.ui.flow_layout import FlowLayout
-from src.ui.common_widgets import StyledLineEdit
+from src.ui.common_widgets import ProtectedLineEdit
 
 class TagItem(QLabel):
     """A simplified tag item that looks like text and is clickable to delete."""
@@ -55,7 +55,7 @@ class TagChipInput(QWidget):
         self.input_h.setContentsMargins(0, 0, 0, 0)
         self.input_h.setSpacing(5)
         
-        self.line_edit = StyledLineEdit()
+        self.line_edit = ProtectedLineEdit()
         self.line_edit.setPlaceholderText(placeholder)
         self.input_h.addWidget(self.line_edit, 1) # Occupy main space
         

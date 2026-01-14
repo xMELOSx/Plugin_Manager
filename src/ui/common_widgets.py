@@ -40,6 +40,9 @@ class StandardEditMenu(QMenu):
         palette.setColor(QPalette.ColorRole.Text, QColor("#eeeeee"))
         self.setPalette(palette)
         
+        # Prevent inheriting transparency from parent (Fix for transparent menus in FramelessDialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        
         self._setup_actions()
 
     def _setup_actions(self):
@@ -766,7 +769,7 @@ class FramelessInputDialog(FramelessDialog):
             self.input_field.setMinimumHeight(35)
             layout.addWidget(self.input_field)
         else:
-            self.input_field = StyledLineEdit()
+            self.input_field = ProtectedLineEdit()
             self.input_field.setText(text)
             self.input_field.setMinimumHeight(35)
             self.input_field.returnPressed.connect(self.accept)

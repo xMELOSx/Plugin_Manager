@@ -94,6 +94,7 @@ class URLListDialog(FramelessDialog):
         
         # URL Input
         input_layout = QHBoxLayout()
+        input_field = ProtectedLineEdit()
         self.url_input = ProtectedLineEdit()
         self.url_input.setPlaceholderText(_("Enter URL (https://...)"))
         self.url_input.returnPressed.connect(self._add_url)
