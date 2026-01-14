@@ -6,11 +6,12 @@ EXE実行時でもログ出力を確認できるデバッグコンソール。
 import logging
 from datetime import datetime
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QPlainTextEdit, QPushButton, QLabel, QWidget
+    QVBoxLayout, QHBoxLayout, QPlainTextEdit, QLabel, QWidget
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QTextCursor
 from src.ui.frameless_window import FramelessDialog
+from src.ui.common_widgets import StyledButton, StandardEditMenu
 from src.core.lang_manager import _
 
 
@@ -39,30 +40,20 @@ class DebugConsoleDialog(FramelessDialog):
         header = QHBoxLayout()
         
         # Marker Button
-        self.marker_btn = QPushButton(_("📌 Insert Marker"))
+        self.marker_btn = StyledButton(_("📌 Insert Marker"), style_type="Red")
         self.marker_btn.setToolTip(_("Insert a visible marker line to track actions"))
         self.marker_btn.clicked.connect(self._insert_marker)
-        self.marker_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #e74c3c; 
-                color: white; 
-                font-weight: bold;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #c0392b; }
-        """)
         header.addWidget(self.marker_btn)
         
         header.addStretch()
         
         # Clear Button
-        self.clear_btn = QPushButton(_("Clear"))
+        self.clear_btn = StyledButton(_("Clear"), style_type="Gray")
         self.clear_btn.clicked.connect(self._clear_log)
         header.addWidget(self.clear_btn)
         
         # Auto-scroll toggle
-        self.scroll_btn = QPushButton(_("Auto-scroll: ON"))
+        self.scroll_btn = StyledButton(_("Auto-scroll: ON"), style_type="Blue")
         self.scroll_btn.setCheckable(True)
         self.scroll_btn.setChecked(True)
         self.scroll_btn.toggled.connect(self._toggle_autoscroll)
@@ -94,6 +85,11 @@ class DebugConsoleDialog(FramelessDialog):
         
         # Auto-scroll flag
         self._autoscroll = True
+
+    def contextMenuEvent(self, event):
+        """Show standardized dark context menu for log text selection."""
+        menu = StandardEditMenu(self.log_text)
+        menu.exec(event.globalPos())
         
     def _setup_log_handler(self):
         """Pythonロギングシステムからログを受信するハンドラーを設定"""

@@ -599,8 +599,8 @@ class Deployer:
         if deploy_rule == 'folder' and expected_source and os.path.isdir(expected_source):
             if os.path.islink(target_link_path):
                 real_target = os.readlink(target_link_path)
-                norm_real = self._normalize_path(real_target)
-                norm_exp = self._normalize_path(expected_source)
+                norm_real = self._normalize_path(real_target).replace('\\', '/')
+                norm_exp = self._normalize_path(expected_source).replace('\\', '/')
                 if norm_real == norm_exp:
                     return {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
                 else:
@@ -679,8 +679,8 @@ class Deployer:
         if os.path.islink(target_link_path):
             real_target = os.readlink(target_link_path)
             if expected_source:
-                norm_real = self._normalize_path(real_target)
-                norm_exp = self._normalize_path(expected_source)
+                norm_real = self._normalize_path(real_target).replace('\\', '/')
+                norm_exp = self._normalize_path(expected_source).replace('\\', '/')
                 if norm_real == norm_exp:
                     return {"status": "linked", "target": real_target}
                 else:

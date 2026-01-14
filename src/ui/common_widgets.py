@@ -1,9 +1,90 @@
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt6.QtWidgets import QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMenu
 from PyQt6.QtCore import Qt, QPoint, QSize
-from PyQt6.QtGui import QPainter, QPolygon, QBrush, QColor, QIcon
+from PyQt6.QtGui import QPainter, QPolygon, QBrush, QColor, QIcon, QPalette, QAction
 from src.ui.frameless_window import FramelessDialog
 from src.ui.title_bar_button import TitleBarButton
 from src.core.lang_manager import _
+
+class StandardEditMenu(QMenu):
+    """
+    Standardized dark-themed context menu for edit fields (QLineEdit, QSpinBox, etc.)
+    with Japanese translations.
+    """
+    def __init__(self, target_widget, parent=None):
+        super().__init__(parent or target_widget)
+        self.target = target_widget
+        self.setStyleSheet("""
+            QMenu {
+                background-color: #2b2b2b;
+                color: #eeeeee;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 4px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #3d5a80;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #666666;
+            }
+        """)
+        
+        # Apply dark palette
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor("#2b2b2b"))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#eeeeee"))
+        palette.setColor(QPalette.ColorRole.Base, QColor("#2b2b2b"))
+        palette.setColor(QPalette.ColorRole.Text, QColor("#eeeeee"))
+        self.setPalette(palette)
+        
+        self._setup_actions()
+
+    def _setup_actions(self):
+        # Determine the effective editor (for SpinBoxes, it's the internal lineEdit)
+        editor = self.target
+        if hasattr(self.target, 'lineEdit') and callable(self.target.lineEdit):
+            editor = self.target.lineEdit()
+            
+        if not editor: return
+
+        # Undo/Redo
+        undo_action = self.addAction(_("元に戻す"))
+        undo_action.triggered.connect(editor.undo)
+        undo_action.setEnabled(editor.isUndoAvailable())
+        
+        redo_action = self.addAction(_("やり直し"))
+        redo_action.triggered.connect(editor.redo)
+        redo_action.setEnabled(editor.isRedoAvailable())
+        
+        self.addSeparator()
+        
+        # Cut/Copy/Paste/Delete
+        cut_action = self.addAction(_("切り取り"))
+        cut_action.triggered.connect(editor.cut)
+        cut_action.setEnabled(editor.hasSelectedText())
+        
+        copy_action = self.addAction(_("コピー"))
+        copy_action.triggered.connect(editor.copy)
+        copy_action.setEnabled(editor.hasSelectedText())
+        
+        paste_action = self.addAction(_("貼り付け"))
+        paste_action.triggered.connect(editor.paste)
+        
+        delete_action = self.addAction(_("削除"))
+        delete_action.triggered.connect(lambda: editor.insert(""))
+        delete_action.setEnabled(editor.hasSelectedText())
+        
+        self.addSeparator()
+        
+        # Select All
+        select_all_action = self.addAction(_("すべて選択"))
+        select_all_action.triggered.connect(editor.selectAll)
+        # Check if it has text (QLineEdit has .text(), but SpinBox editor is also a QLineEdit)
+        if hasattr(editor, 'text'):
+            select_all_action.setEnabled(len(editor.text()) > 0)
 
 def _draw_spinbox_arrows(painter, rect):
     """Common logic for drawing up/down arrows in spinboxes."""
@@ -73,70 +154,7 @@ class ProtectedLineEdit(StyledLineEdit):
 
     def showDarkContextMenu(self, pos):
         """Show custom dark-themed context menu with Japanese translations."""
-        from PyQt6.QtWidgets import QMenu
-        from PyQt6.QtGui import QPalette, QColor, QAction
-        from src.core.lang_manager import _
-        
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2b2b2b;
-                color: #eeeeee;
-                border: 1px solid #555555;
-            }
-            QMenu::item {
-                background-color: transparent;
-                padding: 4px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #3d5a80;
-                color: #ffffff;
-            }
-            QMenu::item:disabled {
-                color: #666666;
-            }
-        """)
-        
-        # Create translated actions
-        undo_action = menu.addAction(_("元に戻す"))
-        undo_action.triggered.connect(self.undo)
-        undo_action.setEnabled(self.isUndoAvailable())
-        
-        redo_action = menu.addAction(_("やり直し"))
-        redo_action.triggered.connect(self.redo)
-        redo_action.setEnabled(self.isRedoAvailable())
-        
-        menu.addSeparator()
-        
-        cut_action = menu.addAction(_("切り取り"))
-        cut_action.triggered.connect(self.cut)
-        cut_action.setEnabled(self.hasSelectedText())
-        
-        copy_action = menu.addAction(_("コピー"))
-        copy_action.triggered.connect(self.copy)
-        copy_action.setEnabled(self.hasSelectedText())
-        
-        paste_action = menu.addAction(_("貼り付け"))
-        paste_action.triggered.connect(self.paste)
-        
-        delete_action = menu.addAction(_("削除"))
-        delete_action.triggered.connect(lambda: self.insert(""))
-        delete_action.setEnabled(self.hasSelectedText())
-        
-        menu.addSeparator()
-        
-        select_all_action = menu.addAction(_("すべて選択"))
-        select_all_action.triggered.connect(self.selectAll)
-        select_all_action.setEnabled(len(self.text()) > 0)
-        
-        # Apply dark palette
-        palette = menu.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#2b2b2b"))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor("#eeeeee"))
-        palette.setColor(QPalette.ColorRole.Base, QColor("#2b2b2b"))
-        palette.setColor(QPalette.ColorRole.Text, QColor("#eeeeee"))
-        menu.setPalette(palette)
-        
+        menu = StandardEditMenu(self)
         menu.exec(pos)
 
     def contextMenuEvent(self, event):

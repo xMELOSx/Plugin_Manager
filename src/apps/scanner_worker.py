@@ -189,10 +189,8 @@ class ScannerWorker(QObject):
                     for entry in it:
                         if not entry.is_dir(): continue
                         item_abs_path = entry.path
-                        try:
-                            item_rel = os.path.relpath(item_abs_path, sn_storage_root).replace('\\', '/')
-                            if item_rel == ".": item_rel = ""
-                        except: continue
+                        item_rel = os.path.normpath(os.path.relpath(item_abs_path, sn_storage_root)).replace('\\', '/')
+                        if item_rel == ".": item_rel = ""
                         
                         config = folder_configs.get(item_rel, {})
                         can_inherit = config.get('inherit_tags', 1) != 0
@@ -234,10 +232,9 @@ class ScannerWorker(QObject):
         pass  # Feature disabled per user request
 
     def _enrich_item_sn(self, item, item_abs_path, parent_path, sn_storage_root, sn_target_root, sn_app_data, folder_configs, sn_db):
-        item_rel = ""
         try:
-            raw_rel = os.path.relpath(item_abs_path, sn_storage_root)
-            item_rel = raw_rel.replace('\\', '/') if raw_rel != "." else ""
+            item_rel = os.path.normpath(os.path.relpath(item_abs_path, sn_storage_root)).replace('\\', '/')
+            if item_rel == ".": item_rel = ""
         except: pass
         
         item_config = folder_configs.get(item_rel)
@@ -403,8 +400,9 @@ class ScannerWorker(QObject):
         has_linked = has_conflict = has_partial = has_unlinked = has_int_conf = has_intentional = False
         child_tags = set()
         child_libs = set()
+        folder_rel = ""
         try:
-            folder_rel = os.path.relpath(folder_path, sn_storage_root).replace('\\', '/')
+            folder_rel = os.path.normpath(os.path.relpath(folder_path, sn_storage_root)).replace('\\', '/')
             if folder_rel == ".": folder_rel = ""
         except: return False, False, False, False, False, False
         

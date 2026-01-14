@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from src.ui.common_widgets import StyledLineEdit
+from src.ui.common_widgets import ProtectedLineEdit
 from src.ui.action_button import ActionButton
 from src.core.lang_manager import _
 import os
@@ -37,12 +37,12 @@ class ExecutablesManagerDialog(FramelessDialog):
         form_group.setStyleSheet("QGroupBox { color: #aaa; font-weight: bold; }")
         form_layout = QFormLayout(form_group)
         
-        self.name_edit = StyledLineEdit()
+        self.name_edit = ProtectedLineEdit()
         self.name_edit.setPlaceholderText(_("Display Name (e.g. 'Launch Game')"))
         form_layout.addRow(_("Name:"), self.name_edit)
         
         path_layout = QHBoxLayout()
-        self.path_edit = StyledLineEdit()
+        self.path_edit = ProtectedLineEdit()
         self.path_edit.setPlaceholderText(_("Executable path (.exe)"))
         path_layout.addWidget(self.path_edit)
         browse_btn = QPushButton(_("Browse"))
@@ -50,7 +50,7 @@ class ExecutablesManagerDialog(FramelessDialog):
         path_layout.addWidget(browse_btn)
         form_layout.addRow(_("Path:"), path_layout)
         
-        self.args_edit = StyledLineEdit()
+        self.args_edit = ProtectedLineEdit()
         self.args_edit.setPlaceholderText(_("Command line arguments (optional)"))
         form_layout.addRow(_("Args:"), self.args_edit)
         
