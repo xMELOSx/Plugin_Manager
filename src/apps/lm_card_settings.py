@@ -51,7 +51,6 @@ class LMCardSettingsMixin:
         # Keep buttons hidden as we use external +/- buttons here
         spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         spin.setStyleSheet(spin.styleSheet() + "background: #222; border: 1px solid #555;")
-        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         row.addWidget(spin)
         
         plus_btn = QPushButton("+")
@@ -107,7 +106,6 @@ class LMCardSettingsMixin:
         # Keep buttons hidden as we use external +/- buttons here
         spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         spin.setStyleSheet(spin.styleSheet() + "background: #222; border: 1px solid #555;")
-        spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         row.addWidget(spin)
         
         plus_btn = QPushButton("+")

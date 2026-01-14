@@ -45,6 +45,11 @@ class ScannerWorker(QObject):
     def set_db(self, db):
         """Update database reference when app changes."""
         self.db = db
+        # Phase 44: Sync Deployer's DB and App Name context
+        if self.deployer and hasattr(db, 'db_name'):
+             # Deployer internal property triggers lazily if None, but we can force it
+             self.deployer._app_name = db.db_name
+             self.deployer._db_instance = db
 
     def set_params(self, path, target_root, storage_root, search_config=None, context="view", app_data=None, target_key=None, app_id=None, generation_id=0):
         self.current_path = path
@@ -262,7 +267,14 @@ class ScannerWorker(QObject):
         elif (sn_target_key or "target_root") == 'target_root_3': target_rule_key = 'deployment_rule_c'
         
         app_deploy_default = (sn_app_data or {}).get(target_rule_key) or (sn_app_data or {}).get('deployment_type', 'folder')
-        deploy_rule = item_config.get('deploy_rule') or item_config.get('deploy_type') or app_deploy_default
+        rules_val = item_config.get('deploy_rule') or item_config.get('deploy_type')
+        
+        # Phase 44: Explicitly resolve 'inherit' or None to App Default BEFORE calling scan log
+        if not rules_val or rules_val in ("inherit", "default"):
+            deploy_rule = app_deploy_default
+        else:
+            deploy_rule = rules_val
+
         if deploy_rule == 'flatten': deploy_rule = 'files'
         
         # Primary scan base (Root A/C) - MUST trust the resolved path passed from window
@@ -308,6 +320,8 @@ class ScannerWorker(QObject):
         # Hierarchy-Aware Path Checking
         # 1. Try flat path (Standard for packages)
         check_path = effective_target_base if deploy_rule == 'files' else os.path.join(effective_target_base, item['name'])
+        
+        self.logger.debug(f"[ScanTrace] {item['name']} - Rule:{deploy_rule} Target:{effective_target_base} Key:{sn_target_key}")
         status_res = self.deployer.get_link_status(check_path, expected_source=item_abs_path, deploy_rule=deploy_rule, rules=rules_dict)
         
         # 2. If 'none', and we are in a subfolder, try the mirrored hierarchical path

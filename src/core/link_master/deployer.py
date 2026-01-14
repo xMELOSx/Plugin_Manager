@@ -1183,25 +1183,25 @@ class Deployer:
     @staticmethod
     def _normalize_path(path: str) -> str:
         """
-        Robust normalization for Windows paths, handling \\?\\ and \\??\\ prefix,
+        Robust normalization for Windows paths, handling \\\\?\\ and \\??\\ prefix,
         case sensitivity, and absolute resolution.
         """
         if not path: return ""
         
-        # 1. Resolve Absolute (if possible)
-        try:
-            abs_path = os.path.abspath(path)
-        except:
-            abs_path = path
+        # 1. Strip Extended Length / NT Object Prefixes FIRST
+        # These are absolute, but abspath might not recognize them if called before stripping
+        processed = path
+        if processed.startswith("\\\\?\\"):
+            processed = processed[4:]
+        elif processed.startswith("\\??\\"):
+            processed = processed[4:]
 
-        # 2. Strip Extended Length / NT Object Prefixes
-        # \\?\ -> Internal Win32 prefix
-        # \??\ -> NT Object Manager prefix (common in os.readlink on Windows)
-        if abs_path.startswith("\\\\?\\"):
-            abs_path = abs_path[4:]
-        elif abs_path.startswith("\\??\\"):
-            abs_path = abs_path[4:]
-            
+        # 2. Resolve Absolute
+        try:
+            abs_path = os.path.abspath(processed)
+        except:
+            abs_path = processed
+
         # 3. Normcase (lowercase on Windows)
         return os.path.normcase(abs_path)
 

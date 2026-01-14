@@ -101,7 +101,6 @@ class ItemCard(QFrame):
         self.app_cat_style_default = app_cat_style_default
         self.app_pkg_style_default = app_pkg_style_default
 
-        self.deploy_type = deploy_type # Phase 18.15
         self.conflict_policy = conflict_policy # Phase 18.15
         self.manual_preview_path = manual_preview_path
         self.storage_root = storage_root

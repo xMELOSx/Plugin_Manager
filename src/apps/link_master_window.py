@@ -209,9 +209,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         self.setWindowOpacity(1.0)
         self._load_opacity_settings()  # Load opacity without needing OptionsWindow
         
-        self.setWindowOpacity(1.0)
-        self._load_opacity_settings()  # Load opacity without needing OptionsWindow
-        
         # User Instruction: Print transparency values at window creation
         # print(f"DEBUG: Window Creation - Transparency 1 (windowOpacity): {self.windowOpacity()}")
         # print(f"DEBUG: Window Creation - Transparency 2 (bg_opacity): {getattr(self, '_bg_opacity', 'N/A')}")
@@ -242,11 +239,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         t_init_end = time.perf_counter()
         self.logger.debug(f"[Profile] _init_ui total took {t_init_end - self._init_start_t:.3f}s")
-        
-        # Ensure Icon Alt-Click is connected (Fixes Debug Launch)
-        if hasattr(self, 'icon_label'):
-            self.icon_label.mousePressEvent = self._icon_mouse_press
-            # self.icon_label.setCursor(Qt.CursorShape.PointingHandCursor) # Unauthorized
         
         # Navigation History (Phase 28)
         self.nav_history = []
@@ -2413,7 +2405,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         # Async Scan for packages only
         self.pkg_scanner_worker.set_params(path, target_root, storage_root, context="contents",
-                                           app_data=app_data, target_key=self.current_target_key)
+                                           app_data=app_data, target_key=self.current_target_key,
+                                           generation_id=self._app_switch_generation)
         from PyQt6.QtCore import QMetaObject, Qt
         QMetaObject.invokeMethod(self.pkg_scanner_worker, "run", Qt.ConnectionType.QueuedConnection)
 

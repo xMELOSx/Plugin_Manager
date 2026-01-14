@@ -18,7 +18,6 @@ Link Master: Display Mode Mixin
 """
 import os
 import logging
-import logging
 from src.core.lang_manager import _
 
 

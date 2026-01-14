@@ -193,7 +193,7 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         # Unregistered Border Toggle
         from src.ui.link_master import item_card_style
         self.show_unregistered_border_cb = QCheckBox(_("DB未登録の紫枠を表示 (Show Unregistered Border)"))
-        saved_border_value = self._load_debug_setting('show_unregistered_border', True)
+        saved_border_value = self._load_debug_setting('show_unregistered_border', False)
         item_card_style.SHOW_UNREGISTERED_BORDER = saved_border_value
         self.show_unregistered_border_cb.setChecked(saved_border_value)
         self.show_unregistered_border_cb.toggled.connect(self._on_unregistered_border_toggled)
@@ -276,9 +276,11 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
         self.lang_label.setText(f"{_('Current:')} {self.lang_manager.current_language_name}")
 
     def _on_allow_folder_deploy_toggled(self, checked):
+        """Toggle folder deployment in package view and persist state."""
         from src.ui.link_master.item_card import ItemCard
         ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
-        self.logger.debug(f"[Debug] Folder Deploy in Package View set to: {checked}")
+        self._save_debug_setting('allow_folder_deploy_pkg_view', checked)
+        self.logger.info(f"Folder Deploy in Package View: {checked}")
         
     def _on_hitbox_toggled(self, checked):
         from src.ui.link_master.item_card import ItemCard
@@ -308,12 +310,6 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
                  # QApplication stylesheet is global.
                  pass
 
-    def _on_allow_folder_deploy_toggled(self, checked):
-        """Toggle folder deployment in package view and persist state."""
-        from src.ui.link_master.item_card import ItemCard
-        ItemCard.ALLOW_FOLDER_DEPLOY_IN_PKG_VIEW = checked
-        self._save_debug_setting('allow_folder_deploy_pkg_view', checked)
-        self.logger.info(f"Folder Deploy in Package View: {checked}")
 
     def _on_unregistered_border_toggled(self, checked):
         """Toggle purple border for unregistered items and persist state."""
@@ -351,10 +347,9 @@ class LinkMasterDebugWindow(FramelessWindow, OptionsMixin):
 
     def _get_debug_settings_path(self):
         """Get path to debug settings JSON file."""
-        import os
-        # Use resource folder relative to project
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        return os.path.join(base, 'resource', 'debug_settings.json')
+        from src.core.file_handler import FileHandler
+        project_root = FileHandler().project_root
+        return os.path.join(project_root, 'config', 'debug_settings.json')
 
     def _load_debug_setting(self, key, default=None):
         """Load a debug setting from JSON file."""
