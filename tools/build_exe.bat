@@ -52,7 +52,17 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo [2.5/3] Copying external resources...
-xcopy "config\locale" "dist\config\locale" /E /I /Y >nul
+if exist "config\locale" (
+    if not exist "dist\config\locale" mkdir "dist\config\locale"
+    xcopy "config\locale" "dist\config\locale" /E /I /Y
+    if %ERRORLEVEL% neq 0 (
+        echo Warning: Failed to copy locale files.
+    ) else (
+        echo Locale files copied successfully.
+    )
+) else (
+    echo Warning: config\locale directory not found. skipping translation copy.
+)
 
 echo [3/3] Build completed!
 echo Executable is located in: dist\Dionys Control.exe

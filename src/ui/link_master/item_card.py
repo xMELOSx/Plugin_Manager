@@ -1271,8 +1271,10 @@ class ItemCard(QFrame):
     def _show_full_preview(self):
         """Show the high-res preview dialog (supporting multiple files)."""
         import os
+        from src.ui.frameless_window import FramelessMessageBox
+        
         if not self.manual_preview_path:
-            QMessageBox.warning(self, "Error", "No preview path configured.")
+            FramelessMessageBox.information(self, "Error", "No preview path configured.")
             return
 
         # Split multiple paths
@@ -1280,14 +1282,21 @@ class ItemCard(QFrame):
         valid_paths = [p for p in raw_paths if os.path.exists(p)]
 
         if not valid_paths:
-            QMessageBox.warning(self, "Error", "None of the configured preview files exist.")
+            FramelessMessageBox.warning(self, "Error", "None of the configured preview files exist.")
             return
 
         # If it's just one file and a video, open it directly
         if len(valid_paths) == 1:
             ext = os.path.splitext(valid_paths[0])[1].lower()
             if ext in ['.mp4', '.avi', '.mkv', '.mov', '.wmv']:
-                os.startfile(valid_paths[0])
+                try:
+                    os.startfile(valid_paths[0])
+                except Exception as e:
+                    err = FramelessMessageBox(self)
+                    err.setIcon(FramelessMessageBox.Icon.Critical)
+                    err.setWindowTitle("Launch Error")
+                    err.setText(f"Failed to launch video.\n\n{e}")
+                    err.exec()
                 return
 
         # Otherwise use the new gallery dialog

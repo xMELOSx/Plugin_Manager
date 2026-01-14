@@ -3259,8 +3259,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         else:
                             subprocess.Popen([p])
                     except Exception as e:
-                        from PyQt6.QtWidgets import QMessageBox
-                        QMessageBox.warning(self, "Error", f"Failed to launch: {e}")
+                        from src.ui.frameless_window import FramelessMessageBox
+                        from src.core.lang_manager import _
+                        
+                        err_box = FramelessMessageBox(self)
+                        err_box.setIcon(FramelessMessageBox.Icon.Critical)
+                        err_box.setWindowTitle(_("Launch Error"))
+                        err_box.setText(_("Failed to launch application.\n\nError: {e}").format(e=e))
+                        err_box.exec()
                 return launch
             
             btn.clicked.connect(make_launcher(path, args))
