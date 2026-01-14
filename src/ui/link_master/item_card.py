@@ -642,7 +642,9 @@ class ItemCard(QFrame):
         self.is_partial = (self.link_status == 'partial')
         
         # 2. ALSO True if Custom Mode returned is_intentional=True (calculated based on real exclusions)
-        if not self.is_partial and status.get('is_intentional'):
+        # Phase 56: Explicitly update self.is_intentional from status to ensure fresh state
+        self.is_intentional = status.get('is_intentional', False)
+        if not self.is_partial and self.is_intentional:
              self.is_partial = True
              
         # 3. Fallback: If Custom Mode and rules exist, assume partial if not conflicted (Legacy/Visual safety)

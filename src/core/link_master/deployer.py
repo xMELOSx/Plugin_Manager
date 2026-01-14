@@ -138,12 +138,15 @@ class Deployer:
         count = os.cpu_count() or 4
         self.max_workers = min(count, 60)
         self.allow_symlinks = True  # Phase 1: Set by LinkMasterWindow based on capability test
+        self._db_instance = None
     
     @property
     def _db(self):
         """Get database instance for backup registry persistence."""
-        from src.core.link_master.database import get_lm_db
-        return get_lm_db(self._app_name)
+        if self._db_instance is None:
+            from src.core.link_master.database import get_lm_db
+            self._db_instance = get_lm_db(self._app_name)
+        return self._db_instance
     
     def clear_actions(self):
         self.last_actions = []
@@ -820,6 +823,17 @@ class Deployer:
                 self.logger.error(f"Invalid rules JSON: {rules}")
                 rules = {}
         
+        # Phase 51: Auto-load rules if missing in Custom Mode
+        if deploy_rule == 'custom' and not rules:
+            json_path = os.path.join(source_path, 'deployment.json')
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        rules = json.load(f)
+                    self.logger.info(f"Auto-loaded deployment.json for {source_path}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to auto-load deployment.json: {e}")
+        
         # 1. Custom Mode Logic
         if deploy_rule == 'custom':
             if not os.path.exists(source_path): return False
@@ -1337,6 +1351,20 @@ class Deployer:
                         self._db.remove_deployed_file_entry(path_key)
                         
                     return True
+                except FileNotFoundError:
+                    # Already gone, consider success
+                    return True
+                except OSError as e:
+                    if e.errno == 2: # ENOENT (File not found) on some systems/WinError
+                         return True
+                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
+                    return False
+                except FileNotFoundError:
+                    return True
+                except OSError as e:
+                    if e.errno == 2: return True
+                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
+                    return False
                 except Exception as e:
                     self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
                     return False
