@@ -604,7 +604,7 @@ class QuickViewDelegateDialog(QuickViewManagerDialog):
             if count > 0:
                 Toast.show_toast(self, _("Changes saved! ({0} items)").format(count), preset="success")
             else:
-                Toast.show_toast(self, _("変更はありません"), preset="warning")
+                Toast.show_toast(self, _("No changes made"), preset="warning")
 
     def _perform_save(self):
         """Mode 2 specific save logic."""

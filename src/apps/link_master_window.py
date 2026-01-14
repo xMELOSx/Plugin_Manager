@@ -623,10 +623,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         if self._symlink_available:
             self.mode_indicator.setStyleSheet("color: #27ae60; font-size: 14px;")  # Green
-            self.mode_indicator.setToolTip(_("シンボリックリンクが作成できる状態です"))
+            self.mode_indicator.setToolTip(_("Symlink creation is enabled"))
         else:
             self.mode_indicator.setStyleSheet("color: #888888; font-size: 14px;")  # Gray
-            self.mode_indicator.setToolTip(_("管理者権限がないため、コピーモードで動作します"))
+            self.mode_indicator.setToolTip(_("Running in copy mode due to lack of admin privileges"))
 
     def toggle_options(self):
         """Show/Toggle independent options window."""
@@ -647,7 +647,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self.opt_btn.setChecked(True)
             # Update size sliders
             self.options_window.update_size_from_parent()
-            msg = _("シンボリックリンクが使用できない（またはこのドライブで制限されている）ため、自動でコピーモードになります")
+            msg = _("Symbolic links are unavailable (or restricted on this drive), defaulting to copy mode")
             self.mode_indicator.setToolTip(msg)
         
         # Propagate to deployer
@@ -1081,7 +1081,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 self._toast_instance = Toast(self, "", y_offset=140)
             
             msg = _("No visible categories to manage.") if scope == "category" else _("No visible packages to manage.")
-            self._toast_instance.show_message(msg, preset="warning")
+            self._toast_instance.show_message(msg, preset="error")
             return
 
         # Get quick tags
@@ -1126,7 +1126,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if not items_data:
             if not hasattr(self, "_toast_instance"):
                 self._toast_instance = Toast(self, "", y_offset=140)
-            self._toast_instance.show_message(_("No visible items to manage."), preset="warning")
+            self._toast_instance.show_message(_("No visible items to manage."), preset="error")
             return
 
         # Get quick tags
@@ -1261,10 +1261,10 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             self._refresh_current_view(force=False)
             
             if dialog.results:
-                msg = _("{count}件 変更しました！").format(count=len(dialog.results))
+                msg = _("Changed {count} items!").format(count=len(dialog.results))
                 Toast.show_toast(self, msg, preset='success', y_offset=140)
             else:
-                Toast.show_toast(self, _("変更はありません"), preset='warning', y_offset=140)
+                Toast.show_toast(self, _("No changes made"), preset='warning', y_offset=140)
         else:
             # Case: Rejected (Cancelled or X button)
             # We show toasts here because the Main Window now has focus.
@@ -1277,7 +1277,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             if has_changes:
                 Toast.show_toast(self, _("Edit Cancelled"), preset="warning", y_offset=140)
             else:
-                Toast.show_toast(self, _("変更はありません"), preset="warning", y_offset=140)
+                Toast.show_toast(self, _("No changes made"), preset="warning", y_offset=140)
 
     def _make_widget_action(self, menu, widget):
         act = QWidgetAction(menu)

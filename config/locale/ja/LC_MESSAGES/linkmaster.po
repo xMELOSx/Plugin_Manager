@@ -2848,3 +2848,31 @@ msgstr "セカンダリターゲットパスが存在しません:\n{path}"
 
 msgid "Tertiary target path does not exist:\n{path}"
 msgstr "ターシャリターゲットパスが存在しません:\n{path}"
+
+# QuickView & Symlink Status
+msgid "Symlink creation is enabled"
+msgstr "シンボリックリンクが作成できる状態です"
+
+msgid "Running in copy mode due to lack of admin privileges"
+msgstr "管理者権限がないため、コピーモードで動作します"
+
+msgid "Symbolic links are unavailable (or restricted on this drive), defaulting to copy mode"
+msgstr "シンボリックリンクが使用できない（またはこのドライブで制限されている）ため、自動でコピーモードになります"
+
+msgid "No visible categories to manage."
+msgstr "管理対象のカテゴリが見つかりません (表示可能なカードがありません)"
+
+msgid "No visible packages to manage."
+msgstr "管理対象のパッケージが見つかりません (表示可能なカードがありません)"
+
+msgid "No visible items to manage."
+msgstr "管理対象のアイテムが見つかりません"
+
+msgid "Changed {count} items!"
+msgstr "{count}件 変更しました！"
+
+msgid "No changes made"
+msgstr "変更はありません"
+
+msgid "Edit Cancelled"
+msgstr "編集がキャンセルされました"

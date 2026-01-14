@@ -172,6 +172,16 @@ class Toast(QLabel):
                     winsound.PlaySound(sound_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
             except:
                 pass
+        elif actual_preset == 'error':
+            try:
+                import winsound
+                import os
+                base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                sound_path = os.path.join(base_path, "resource", "se", "error.wav")
+                if os.path.exists(sound_path):
+                    winsound.PlaySound(sound_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            except:
+                pass
         
         # Start hide timer
         self._hide_timer.start(show_duration)
