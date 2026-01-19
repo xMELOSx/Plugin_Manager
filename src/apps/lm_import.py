@@ -103,10 +103,12 @@ class LMImportMixin:
                 break
             widget = widget.parentWidget()
 
+        changes_occurred = False
         for url in urls:
             path = url.toLocalFile()
             if os.path.exists(path):
-                self._handle_drop(path, target_type)
+                if self._handle_drop(path, target_type):
+                    changes_occurred = True
         
         # Block signals to prevent unneeded re-scans
         self.search_bar.blockSignals(True)
@@ -116,12 +118,13 @@ class LMImportMixin:
         self.search_bar.blockSignals(False)
         self.tag_bar.blockSignals(False)
         
-        # Optimized Refresh
-        if target_type == "package" and getattr(self, 'current_path', None):
-            self._on_category_selected(self.current_path, force=True)
-            self._refresh_category_cards()
-        else:
-            self._refresh_current_view()
+        # Optimized Refresh (Only if changes happened)
+        if changes_occurred:
+            if target_type == "package" and getattr(self, 'current_path', None):
+                self._on_category_selected(self.current_path, force=True)
+                self._refresh_category_cards()
+            else:
+                self._refresh_current_view()
 
     def _open_import_dialog(self, target_type):
         """Opens a custom dark-themed dialog to select import type or open explorer."""
@@ -132,21 +135,20 @@ class LMImportMixin:
             result = dialog.get_result()
             
             if result == "explorer":
-                app_data = self.app_combo.currentData()
-                if not app_data: return
+                # User Request: Open Target Folder or Target Category
+                # This is usually the currently viewed path in the file manager
+                target_path = getattr(self, 'current_path', None)
                 
-                # Priority 1: Downloads Folder (User Request)
-                downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
-                target_path = downloads_path
-                
-                # Priority 2: Storage Root (Fallback)
-                if not os.path.exists(target_path):
-                     target_path = app_data.get('storage_root')
+                # Fallback to storage_root if current_path is invalid/empty (e.g. at root)
+                if not target_path or not os.path.exists(target_path):
+                    app_data = self.app_combo.currentData()
+                    if app_data:
+                        target_path = app_data.get('storage_root')
                 
                 if target_path and os.path.exists(target_path):
                     subprocess.Popen(['explorer', os.path.normpath(target_path)])
                 else:
-                    self.logger.warning(f"Could not open explorer. Paths invalid: Downloads or Storage Root.")
+                    self.logger.warning(f"Could not open explorer. Target path invalid: {target_path}")
                 return
 
             if result == "folder":
@@ -254,7 +256,7 @@ class LMImportMixin:
                     msg.setIcon(FramelessMessageBox.Icon.Warning)
                     msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
                     msg.exec()
-                    return
+                    return False
 
             except Exception as e:
                 from src.ui.common_widgets import FramelessMessageBox
@@ -264,7 +266,7 @@ class LMImportMixin:
                 msg.setIcon(FramelessMessageBox.Icon.Critical)
                 msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
                 msg.exec()
-                return
+                return False
 
 
         # Handle Folder
@@ -286,10 +288,11 @@ class LMImportMixin:
                 msg.setText(_("Failed to copy folder: {error}").format(error=e))
                 msg.setIcon(FramelessMessageBox.Icon.Critical)
                 msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
                 msg.exec()
-                return
+                return False
         else:
-            return
+            return False
 
         # Register in Database
         abs_dest = os.path.abspath(dest_path)
@@ -311,6 +314,7 @@ class LMImportMixin:
             is_visible=1
         )
         self.logger.info(f"Registered dropped item as {target_type}: {rel_path}")
+        return True
 
     def _extract_7z_internal(self, source_path, dest_path):
         """Try extracting with py7zr."""

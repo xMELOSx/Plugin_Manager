@@ -2933,3 +2933,49 @@ msgstr "履歴内に有効なパスワードが見つかりませんでした。
 msgid "Open Explorer"
 msgstr "エクスプローラーを開く"
 
+
+# Import Dialog
+msgid "Select Import Type"
+msgstr "インポート方法の選択"
+
+msgid "Import Category"
+msgstr "カテゴリをインポート"
+
+msgid "Import Package"
+msgstr "パッケージをインポート"
+
+msgid "Select how to import this {type}:"
+msgstr "この{type}のインポート方法を選択してください:"
+
+msgid "📦 Archive File"
+msgstr "📦 アーカイブファイル"
+
+msgid "📁 Folder"
+msgstr "📁 フォルダ"
+
+msgid "🔍 Open Explorer"
+msgstr "🔍 エクスプローラーを開く"
+
+msgid "Unregister App"
+msgstr "アプリ登録を解除"
+
+msgid "Extraction Failed"
+msgstr "展開に失敗しました"
+
+msgid "Failed to extract archive. Please ensure py7zr/rarfile is installed OR WinRAR/7-Zip is available."
+msgstr "アーカイブの展開に失敗しました。py7zr/rarfileがインストールされているか、WinRAR/7-Zipが利用可能であることを確認してください。"
+
+msgid "Failed to extract archive: {error}"
+msgstr "アーカイブの展開に失敗しました: {error}"
+
+msgid "Failed to copy folder: {error}"
+msgstr "フォルダのコピーに失敗しました: {error}"
+
+msgid "Storage root does not exist."
+msgstr "ストレージルートが存在しません。"
+
+msgid "Select Folder to Import as {type}"
+msgstr "{type}としてインポートするフォルダを選択"
+
+msgid "Select Archive to Import as {type}"
+msgstr "{type}としてインポートするアーカイブを選択"
