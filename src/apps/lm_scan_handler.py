@@ -717,8 +717,9 @@ class LMScanHandlerMixin:
                         
                         # Apply cached status if available
                         cached_status = cfg.get('last_known_status')
-                        if cached_status and cached_status in ('linked', 'partial', 'none', 'conflict'):
-                            card.link_status = cached_status
+                        if cached_status and cached_status in ('linked', 'partial', 'none', 'conflict', 'unlinked'):
+                            # Normalize 'unlinked' to 'none' for visual consistency
+                            card.link_status = 'none' if cached_status == 'unlinked' else cached_status
                         
                         # Preserve intentional status from DB
                         cached_intentional = cfg.get('is_intentional')
@@ -728,7 +729,9 @@ class LMScanHandlerMixin:
                     except:
                         pass
                     
+                    # Update both style (border) and icon overlays (deploy button)
                     card._update_style()
+                    card._update_icon_overlays()
         
         t_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_package_cards ({pkg_count} cards) took {(t_end-t_start)*1000:.1f}ms")
