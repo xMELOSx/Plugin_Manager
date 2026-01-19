@@ -2456,7 +2456,12 @@ class TagManagerDialog(FramelessDialog):
     def __init__(self, parent=None, db=None, registry=None):
         super().__init__(parent)
         # FramelessDialog handles its own background styling
+        
+        # Fallback: Try to get db from parent if not provided
+        if db is None and parent and hasattr(parent, 'db'):
+            db = parent.db
         self.db = db
+        
         # Fallback: Try to get registry from parent if not provided
         if registry is None and parent and hasattr(parent, 'registry'):
             registry = parent.registry
@@ -2466,7 +2471,7 @@ class TagManagerDialog(FramelessDialog):
             registry = get_lm_registry()
             import logging; logging.info(f"[TagManagerDialog] Using global registry singleton")
         self.registry = registry
-        import logging; logging.info(f"[TagManagerDialog] __init__: registry={registry is not None}")
+        import logging; logging.info(f"[TagManagerDialog] __init__: db={db is not None}, registry={registry is not None}")
         self.setWindowTitle(_("Manage Quick Tags"))
         self.resize(500, 400)
         self.tags = [] 
@@ -2757,8 +2762,6 @@ class TagManagerDialog(FramelessDialog):
 
     def _refresh_table(self):
         self.tag_table.setRowCount(0)
-        from PyQt6.QtGui import QIcon, QColor
-        import os
         
         for idx, tag in enumerate(self.tags):
             row = idx
@@ -2955,7 +2958,6 @@ class TagManagerDialog(FramelessDialog):
                 if item0:
                     item0.setData(Qt.ItemDataRole.UserRole, tag)
                     if tag['icon'] and os.path.exists(tag['icon']):
-                        from PyQt6.QtGui import QIcon
                         item0.setIcon(QIcon(tag['icon']))
                     else:
                         item0.setIcon(QIcon())
@@ -3036,8 +3038,11 @@ class TagManagerDialog(FramelessDialog):
 
     def _save_and_close(self):
         self._save_current_item_data()
+        # テーブルのUserRoleデータをself.tagsに同期（位置変更なしでも編集内容を反映）
+        self._sync_tags_from_table()
         import json
-        self.registry.save_tags(json.dumps(self.tags)) # Serialize as JSON string for DB
+        # 読み込み位置 (self.db.get_setting('frequent_tags_config')) と一致させる
+        self.db.set_setting('frequent_tags_config', json.dumps(self.tags))
         # Close dialog first
         self.accept()
         # Use main window for toast so it persists

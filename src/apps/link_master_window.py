@@ -851,8 +851,6 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if updated:
             self.db.set_setting('frequent_tags_config', json.dumps(tags))
             self.logger.info(f"[TagIcon] Persisted icon/mode for tag '{tag_value}'")
-            # Signal change to registry for other windows if necessary
-            self.registry.set_setting('frequent_tags_config', json.dumps(tags))
         
         # Refresh tag bar if available
         if hasattr(self, 'tag_bar'):
