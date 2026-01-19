@@ -401,7 +401,13 @@ class LMDeploymentOpsMixin:
             try:
                 target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
                 failed_paths = []
-                sweep_occured, failed_paths = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                # Phase 28: Pass rel_path and preserve target_link to avoid race conditions and improve speed
+                sweep_occured, failed_paths = self.deployer.remove_links_pointing_to(
+                    target_roots, 
+                    full_src, 
+                    package_rel_path=rel_path,
+                    preserve_paths=[target_link]
+                )
                 
                 if sweep_occured:
                     self.logger.info(f"[Deploy-Sweep] Cleaned up legacy files/links for {rel_path}")
@@ -760,7 +766,8 @@ class LMDeploymentOpsMixin:
              failed_paths_list = [] # Renaming to avoid any scope confusion
              try:
                  target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
-                 _, result_failed = self.deployer.remove_links_pointing_to(target_roots, full_src)
+                 # Phase 28: Optimized sweep call
+                 _, result_failed = self.deployer.remove_links_pointing_to(target_roots, full_src, package_rel_path=rel_path)
                  if result_failed:
                      failed_paths_list = result_failed
                  
@@ -1449,7 +1456,8 @@ class LMDeploymentOpsMixin:
     def _show_cleanup_failure_dialog(self, failed_paths: list):
         """Show a warning dialog when cleanup fails."""
         if not failed_paths: return
-        from src.ui.link_master.dialogs.frameless_dialogs import FramelessMessageBox
+        # from src.ui.common_widgets import FramelessMessageBox # Already imported globally
+
         
         msg = _("Some files could not be removed (they may be in use by the game):\n\n")
         limit = 10

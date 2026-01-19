@@ -1255,143 +1255,186 @@ class Deployer:
                             except: pass
             except Exception as e:
                 self.logger.error(f"Cleanup scan failed: {e}")
-    def remove_links_pointing_to(self, search_roots: list, source_root: str):
+    def remove_links_pointing_to(self, search_roots: list, source_root: str, package_rel_path: str = None, preserve_paths: list = None):
         """
-        Sweeps through a list of search roots and removes ANY symlink found
+        Sweeps through a list of search roots and removes ANY symlink/copy found
         that points specifically into the source_root.
-        Uses ThreadPoolExecutor for parallel deletion.
+        
+        Optimization Checkpoint (Phase 28/53):
+        - Uses DB to find known files (Fast).
+        - Uses 'package_rel_path' to perform targeted recursive scans (Fast).
+        - Avoids full recursive scan of search roots unless absolutely necessary.
+        
+        Args:
+            search_roots: List of root directories to search in.
+            source_root: The physical source path we are cleaning up links to.
+            package_rel_path: (Optional) Relative path of the package (e.g. "Mods/MyMod").
+                              Used to predict legacy locations.
+            preserve_paths: (Optional) List of paths to explicitely PROTECT from deletion.
+                            (e.g. the new target link we are about to create).
         """
         import time
         t0 = time.perf_counter()
         source_root_norm = self._normalize_path(source_root).rstrip('\\/')
         self.logger.info(f"Sweeping for orphaned links pointing to: {source_root_norm}")
         
-        # Phase 1: Collect all orphaned links
-        orphan_links = set()
-        empty_dirs = []
+        preserve_paths_norm = {self._normalize_path(p) for p in (preserve_paths or []) if p}
         
+        # Phase 1: Collect targets
+        orphan_links = set()
+        empty_dirs = set() # Use set to avoid duplicates
+        
+        # 1.1 DB-backed Discovery (Declarative & Fast)
+        try:
+            if hasattr(self, '_db'):
+                source_root_db = source_root_norm.replace('\\', '/')
+                with self._db.get_connection() as conn:
+                    cursor = conn.cursor()
+                    # Find all files registered as deployed from this source tree
+                    cursor.execute("SELECT target_path FROM lm_deployed_files WHERE source_path LIKE ?", (f"{source_root_db}%",))
+                    db_items = [row[0] for row in cursor.fetchall()]
+                    for item_path in db_items:
+                        if os.path.exists(item_path) or os.path.islink(item_path):
+                            orphan_links.add(item_path)
+                            self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
+        except Exception as e:
+            self.logger.warning(f"DB-backed sweep query failed: {e}")
+
+        # 1.2 Targeted Legacy Scan (Heuristic)
+        # Instead of scanning the whole world, scan only likely locations based on previous rules (Tree/Folder).
+        scan_targets = []
         for root_dir in search_roots:
             if not os.path.isdir(root_dir): continue
             
-            # Phase: DB-backed Sweep (Declarative)
-            # Find any files registered in the DB for this source package
-            # This is much faster and more reliable than scanning the whole target tree for copies.
-            try:
-                # We need the relative path of the package to query the DB
-                # If source_root is e.g. "C:/Mods/Packages/MyMod" and storage_root is "C:/Mods/Packages"
-                # then rel_path is "MyMod"
-                if hasattr(self, '_db'):
-                    # Phase 42: Slash Consistency Fix
-                    # Normalize search root for DB query (DB uses '/' and lowercase on Windows)
-                    # Use a set for orphan_links for fast lookup
-                    source_root_db = source_root_norm.replace('\\', '/')
-                    
-                    with self._db.get_connection() as conn:
-                        cursor = conn.cursor()
-                        # Use LIKE to match all files inside this source package
-                        # register_deployed_file already lowercases source_path, so this matches efficiently
-                        cursor.execute("SELECT target_path FROM lm_deployed_files WHERE source_path LIKE ?", (f"{source_root_db}%",))
-                        db_items = [row[0] for row in cursor.fetchall()]
-                        for item_path in db_items:
-                            if os.path.exists(item_path) or os.path.islink(item_path):
-                                orphan_links.add(item_path)
-                                self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
-            except Exception as e:
-                self.logger.warning(f"DB-backed sweep query failed: {e}")
-
-            # Use bottom-up walk to allow cleaning empty folders after unlinking (Legacy/Safety fallback)
-            for root, dirs, files in os.walk(root_dir, topdown=False):
-                for name in files + dirs:
-                    path = os.path.join(root, name)
-                    if path in orphan_links: continue # Already found via DB
-                    
-                    if os.path.islink(path):
-                        try:
-                            # Read link and normalize
-                            real = os.readlink(path)
-                            if not os.path.isabs(real):
-                                real = os.path.join(os.path.dirname(path), real)
-                                
-                            real_norm = self._normalize_path(real)
-                            # Safe Match: exact or sub-path. 
-                            if real_norm == source_root_norm:
-                                orphan_links.add(path)
-                            elif real_norm.startswith(source_root_norm + os.sep) or real_norm.startswith(source_root_norm + "/"):
-                                orphan_links.add(path)
-                        except: pass
-                    else:
-                        # Check for copy metadata (Legacy/External fallback)
-                        source_meta = self._db.get_deployed_file_source(path)
-                        if source_meta:
-                            meta_norm = self._normalize_path(source_meta)
-                            if meta_norm == source_root_norm or meta_norm.startswith(source_root_norm + "/"):
-                                orphan_links.add(path)
+            # A: Root check (for Flattened files) - Non-recursive
+            # We check the root itself later
+            
+            # B: Likely Subdirectories (for Tree/Folder modes)
+            if package_rel_path:
+                # 1. Full Relative Path (Tree mode expectation)
+                # e.g. TargetRoot/Category/Package
+                p1 = os.path.join(root_dir, package_rel_path)
+                scan_targets.append(p1)
                 
-                # Track empty folders for later cleanup
-                if root != root_dir:
-                    empty_dirs.append(root)
+                # 2. Basename only (Folder/Flatten-to-Folder expectation)
+                # e.g. TargetRoot/Package
+                p2 = os.path.join(root_dir, os.path.basename(package_rel_path))
+                if p2 != p1: scan_targets.append(p2)
         
-        # Phase 2: Parallel deletion using ThreadPoolExecutor
+        # Perform Targeted Recursive Scans
+        # We assume that legacy files are either in the DB OR in these likely locations.
+        # We DO NOT recursively scan the entire target_root anymore (performance killer).
+        
+        for target_dir in scan_targets:
+            if os.path.isdir(target_dir):
+                self.logger.debug(f"[Sweep-Targeted] Scanning likely legacy path: {target_dir}")
+                for root, dirs, files in os.walk(target_dir, topdown=False):
+                    for name in files + dirs:
+                        path = os.path.join(root, name)
+                        if path in orphan_links: continue
+                        
+                        # Use _check_and_add logic
+                        if self._is_link_to_source(path, source_root_norm):
+                            orphan_links.add(path)
+                    
+                    if root != target_dir: # Don't mark the search root itself yet
+                        empty_dirs.add(root)
+
+        # 1.3 Flattened File Safecheck (Root Level Only)
+        # Scan immediate files in search roots to catch any loose flattened files (rare but possible)
+        for root_dir in search_roots:
+            if not os.path.isdir(root_dir): continue
+            try:
+                with os.scandir(root_dir) as it:
+                    for entry in it:
+                        # Only check files or symlinks, don't recurse into dirs
+                        if entry.is_file() or entry.is_symlink():
+                            path = entry.path
+                            if path not in orphan_links:
+                                if self._is_link_to_source(path, source_root_norm):
+                                    orphan_links.add(path)
+            except: pass
+
+        # Phase 2: Parallel Deletion
         removed_count = 0
         failed_paths = []
         if orphan_links:
             def _unlink_safe(path):
+                if self._normalize_path(path) in preserve_paths_norm:
+                     self.logger.info(f"[Sweep-Preserve] Skipping preserved path: {path}")
+                     return True
+                     
                 try:
-                    if os.name == 'nt':
-                        path_key = path.replace('\\', '/').lower()
-                    else:
-                        path_key = path
-                        
                     if os.path.islink(path):
                         os.unlink(path)
-                        self.logger.debug(f"[Sweep] Unlinked symlink: {path}")
                     elif os.path.isdir(path):
                         shutil.rmtree(path)
-                        self.logger.debug(f"[Sweep] Removed physical directory (copy): {path}")
                     else:
                         os.remove(path)
-                        self.logger.debug(f"[Sweep] Removed file: {path}")
                     
-                    # Phase 42: Clear DB entry
+                    # Clear DB
                     if hasattr(self, '_db'):
-                        self._db.remove_deployed_file_entry(path_key)
-                        
+                        key = path.replace('\\', '/').lower() if os.name == 'nt' else path
+                        self._db.remove_deployed_file_entry(key)
                     return True
-                except FileNotFoundError:
-                    # Already gone, consider success
-                    return True
-                except OSError as e:
-                    if e.errno == 2: # ENOENT (File not found) on some systems/WinError
-                         return True
-                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
-                    return False
+                except FileNotFoundError: return True
                 except Exception as e:
-                    self.logger.warning(f"Sweep cleanup failed for {path}: {e}")
+                    self.logger.warning(f"Sweep deletion failed {path}: {e}")
                     return False
-            
+
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Use wait to get results in order and match with paths
                 futures = {executor.submit(_unlink_safe, p): p for p in orphan_links}
-                failed_paths = []
                 for future in as_completed(futures):
                     if not future.result():
                         failed_paths.append(futures[future])
                     else:
                         removed_count += 1
-        
-        # Phase 3: Cleanup empty folders (sequential, as order matters)
+
+        # Phase 3: Cleanup Empty Dirs (Safe)
+        # Only cleanup dirs we visited or that were parents of removed links
+        # Retrying empty dir cleanup on parents of removed links
         dirs_removed = 0
-        for d in empty_dirs:
+        
+        # Add parents of all removed links to empty_dirs candidates
+        for link in orphan_links:
+            empty_dirs.add(os.path.dirname(link))
+            
+        sorted_dirs = sorted(list(empty_dirs), key=len, reverse=True) # Deepest first
+        for d in sorted_dirs:
+            if not os.path.exists(d): continue
+            if self._normalize_path(d) in preserve_paths_norm: continue
+            
             try:
-                if os.path.isdir(d) and not os.listdir(d):
+                # 🚨 Safety: Don't invoke rmdir if it's a search root
+                # (Simple check: is d one of search_roots?)
+                is_root = any(self._normalize_path(d) == self._normalize_path(r) for r in search_roots)
+                if not is_root and not os.listdir(d):
                     os.rmdir(d)
                     dirs_removed += 1
             except: pass
-        
+
         elapsed = time.perf_counter() - t0
-        self.logger.info(f"Sweep completed: Removed {removed_count} orphaned links, {dirs_removed} empty dirs in {elapsed:.3f}s")
-        
+        self.logger.info(f"Sweep completed (Optimized): Removed {removed_count} items, {dirs_removed} dirs in {elapsed:.3f}s")
         return removed_count > 0, failed_paths
+
+    def _is_link_to_source(self, path: str, source_root_norm: str) -> bool:
+        """Helper to check if a path points to the source root."""
+        try:
+            if os.path.islink(path):
+                real = os.readlink(path)
+                if not os.path.isabs(real):
+                    real = os.path.join(os.path.dirname(path), real)
+                real_norm = self._normalize_path(real)
+                return real_norm == source_root_norm or real_norm.startswith(source_root_norm + os.sep) or real_norm.startswith(source_root_norm + "/")
+            else:
+                # Check Copy Metadata via DB (Fallback)
+                if hasattr(self, '_db'):
+                    src = self._db.get_deployed_file_source(path)
+                    if src:
+                        src_norm = self._normalize_path(src)
+                        return src_norm == source_root_norm or src_norm.startswith(source_root_norm + "/")
+        except: pass
+        return False
 
 
 
