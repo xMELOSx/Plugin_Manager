@@ -669,14 +669,21 @@ class LMScanHandlerMixin:
         t_cat_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards ({cat_count} cards) took {(t_cat_end-t_start)*1000:.1f}ms")
         
-        # Also refresh package card borders (green for linked, red for conflict)
+        # Phase 57: Refresh package card visuals (borders only, no status re-scan)
         self._refresh_package_cards()
         
         t_total_end = time.perf_counter()
         self.logger.debug(f"[Profile] _refresh_category_cards TOTAL took {(t_total_end-t_start)*1000:.1f}ms")
 
     def _refresh_package_cards(self):
-        """Refresh link status for all Package cards (updates green/conflict borders)."""
+        """Refresh visual style for all Package cards (updates green/conflict borders).
+        
+        Phase 57: This method now ONLY updates visuals, NOT link status.
+        Status is managed individually via _update_card_by_path after deploy/unlink.
+        Calling _check_link_status on ALL cards was causing:
+        - Unnecessary file I/O
+        - Resetting is_intentional (orange) on unrelated items
+        """
         import time
         t_start = time.perf_counter()
         
@@ -689,15 +696,38 @@ class LMScanHandlerMixin:
             self.logger.debug("[Profile] _refresh_package_cards SKIPPED (display mode changing)")
             return
         
+        # Phase 57: Fetch DB cache once for performance
+        all_configs_raw = self.db.get_all_folder_configs()
+        cached_configs = {k.replace('\\', '/'): v for k, v in all_configs_raw.items()}
+        
         from src.ui.link_master.item_card import ItemCard
         pkg_count = 0
         for i in range(self.pkg_layout.count()):
             item = self.pkg_layout.itemAt(i)
             if item and item.widget():
                 card = item.widget()
-                if isinstance(card, ItemCard) and hasattr(card, '_check_link_status'):
+                if isinstance(card, ItemCard):
                     pkg_count += 1
-                    card._check_link_status()
+                    
+                    # Phase 57: Use DB cache to update card state WITHOUT disk I/O
+                    # This preserves is_intentional and provides correct link_status for visual updates
+                    try:
+                        rel_path = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
+                        cfg = cached_configs.get(rel_path, {})
+                        
+                        # Apply cached status if available
+                        cached_status = cfg.get('last_known_status')
+                        if cached_status and cached_status in ('linked', 'partial', 'none', 'conflict'):
+                            card.link_status = cached_status
+                        
+                        # Preserve intentional status from DB
+                        cached_intentional = cfg.get('is_intentional')
+                        if cached_intentional:
+                            card.is_intentional = True
+                            card.is_partial = True  # Intentional implies partial for visual
+                    except:
+                        pass
+                    
                     card._update_style()
         
         t_end = time.perf_counter()
