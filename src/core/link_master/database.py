@@ -77,8 +77,12 @@ class LinkMasterRegistry:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN url_list TEXT DEFAULT '[]'")
             except: pass
             try:
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN password_list TEXT DEFAULT '[]'")
+            except: pass
+            try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN deployment_rule TEXT DEFAULT 'folder'")
             except: pass
+
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN transfer_mode TEXT DEFAULT 'symlink'")
             except: pass
@@ -162,7 +166,7 @@ class LinkMasterRegistry:
         valid_keys = ['name', 'storage_root', 'target_root', 'target_root_2', 'target_root_3', 'managed_folder_name', 
                       'default_subpath', 'conflict_policy', 'deployment_type', 'deployment_rule', 'deployment_rule_b', 'deployment_rule_c', 'transfer_mode',
                       'cover_image', 'last_target',
-                      'default_category_style', 'default_package_style', 'executables', 'url_list',
+                      'default_category_style', 'default_package_style', 'executables', 'url_list', 'password_list',
                       'is_favorite', 'score', 'default_skip_levels']
 
         parts = []

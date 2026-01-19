@@ -683,17 +683,17 @@ class FramelessInputDialog(FramelessDialog):
     Standardized Frameless Input Dialog to replace QInputDialog.
     Supports text and integer inputs.
     """
-    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None, echo_mode=QLineEdit.EchoMode.Normal):
+    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None, echo_mode=QLineEdit.EchoMode.Normal, history=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.set_resizable(False)
         self.set_default_icon()
         self._is_int = is_int
         self._items = items
-        self._setup_ui(label, text, value, min_val, max_val, echo_mode)
+        self._setup_ui(label, text, value, min_val, max_val, echo_mode, history)
         self.resize(350, 200)
 
-    def _setup_ui(self, label, text, value, min_val, max_val, echo_mode):
+    def _setup_ui(self, label, text, value, min_val, max_val, echo_mode, history):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -723,7 +723,20 @@ class FramelessInputDialog(FramelessDialog):
             self.input_field.setMinimumHeight(35)
             self.input_field.setEchoMode(echo_mode)
             self.input_field.returnPressed.connect(self.accept)
-            layout.addWidget(self.input_field)
+            
+            if history is not None:
+                h_layout = QHBoxLayout()
+                h_layout.setSpacing(5)
+                h_layout.addWidget(self.input_field)
+                
+                self.hist_btn = StyledButton("▼", style_type="Gray")
+                self.hist_btn.setFixedSize(30, 35)
+                self.hist_btn.setToolTip(_("Select from History"))
+                self.hist_btn.clicked.connect(lambda: self._show_history_menu(history))
+                h_layout.addWidget(self.hist_btn)
+                layout.addLayout(h_layout)
+            else:
+                layout.addWidget(self.input_field)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -743,6 +756,20 @@ class FramelessInputDialog(FramelessDialog):
 
         self.set_content_widget(content)
 
+    def _show_history_menu(self, history):
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background-color: #2b2b2b; color: #eee; border: 1px solid #555; } QMenu::item:selected { background-color: #3d5a80; }")
+        
+        if not history:
+            action = menu.addAction(_("(No History)"))
+            action.setEnabled(False)
+        else:
+            for pwd in history:
+                action = menu.addAction(pwd)
+                action.triggered.connect(lambda checked, p=pwd: self.input_field.setText(p))
+            
+        menu.exec(self.hist_btn.mapToGlobal(QPoint(0, self.hist_btn.height())))
+
     def showEvent(self, event):
         super().showEvent(event)
         # Ensure we focus the input field after window is shown
@@ -759,12 +786,12 @@ class FramelessInputDialog(FramelessDialog):
         return self.input_field.text()
 
     @staticmethod
-    def getText(parent, title, label, text="", mode=QLineEdit.EchoMode.Normal):
-        dlg = FramelessInputDialog(parent, title, label, text=text, echo_mode=mode)
+    def getText(parent, title, label, text="", mode=QLineEdit.EchoMode.Normal, history=None):
+        dlg = FramelessInputDialog(parent, title, label, text=text, echo_mode=mode, history=history)
         if dlg.exec():
             return dlg.value(), True
         return "", False
-
+    
     @staticmethod
     def getInt(parent, title, label, value=0, min_val=0, max_val=100, step=1):
         dlg = FramelessInputDialog(parent, title, label, value=value, min_val=min_val, max_val=max_val, is_int=True)

@@ -14,14 +14,64 @@ Link Master: Import Mixin
 import os
 import shutil
 import zipfile
+import json  # Added for password history
 import subprocess
-from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtWidgets import QFileDialog, QLineEdit # Added QLineEdit explicitly
 from src.core.lang_manager import _
 
 
 class LMImportMixin:
     """ドラッグ&ドロップとインポート処理を担当するMixin。"""
     
+    # === Password History Helpers ===
+    def _get_password_history(self):
+        """Retrieve password history for current app."""
+        try:
+            if hasattr(self, 'app_combo') and self.app_combo.count() > 0:
+                data = self.app_combo.currentData()
+                if data:
+                    raw = data.get('password_list', '[]')
+                    try:
+                        return json.loads(raw) if raw else []
+                    except json.JSONDecodeError:
+                        return []
+        except Exception as e:
+            self.logger.warning(f"Failed to load password history: {e}")
+        return []
+
+    def _save_password_history(self, password):
+        """Save successful password to history (move to top)."""
+        try:
+            if not password: return
+            
+            history = self._get_password_history()
+            if password in history:
+                history.remove(password)
+            history.insert(0, password)
+            
+            # Update current app data in memory
+            if hasattr(self, 'app_combo') and self.app_combo.count() > 0:
+                data = self.app_combo.currentData()
+                if data:
+                    new_json = json.dumps(history)
+                    data['password_list'] = new_json
+                    
+                    # Persist to DB
+                    if hasattr(self, 'db'):
+                        # Using db.update_app from LinkMasterDB/LinkMasterRegistry
+                        # Hint: self.db is LinkMasterDB, but app updates usually go to LinkMasterRegistry (global)
+                        # or self.registry if available.
+                        # Check where 'update_app' is available.
+                        # LinkMasterWindow inherits from Mixins.
+                        # Usually self.registry is the one.
+                        if hasattr(self, 'registry'):
+                             self.registry.update_app(data['id'], {'password_list': new_json})
+                        else:
+                             # Fallback or log
+                             self.logger.warning("Registry not available to save password history.")
+        except Exception as e:
+            self.logger.error(f"Failed to save password history: {e}")
+
     def dragEnterEvent(self, event):
         """Accept drag events with URLs."""
         if event.mimeData().hasUrls():
@@ -260,30 +310,50 @@ class LMImportMixin:
             self.logger.warning("py7zr not found. Falling back to external.")
             return False
         except Exception as e:
-            # Handle Password Protection
+            # Specific password handling
             if "Password is required" in str(e):
-                from PyQt6.QtWidgets import QLineEdit
-                from src.ui.common_widgets import FramelessInputDialog
-                password = None
-                while True:
+                 from PyQt6.QtWidgets import QLineEdit
+                 from src.ui.common_widgets import FramelessInputDialog
+                 
+                 history = self._get_password_history()
+                 
+                 # === Auto-Try from History ===
+                 if history:
+                     self.logger.info("Auto-trying passwords from history...")
+                     for h_pwd in history:
+                         try:
+                             with py7zr.SevenZipFile(source_path, mode='r', password=h_pwd) as z:
+                                 z.extractall(path=dest_path)
+                             self.logger.info(f"Auto-unlocked with history password.")
+                             self._save_password_history(h_pwd)
+                             return True
+                         except py7zr.exceptions.Bad7zFile:
+                             continue # Wrong password
+                         except py7zr.exceptions.PasswordRequired:
+                             continue
+                         except Exception:
+                             continue
+                 
+                 while True:
                     pwd, ok = FramelessInputDialog.getText(
                         self, _("Password Required"),
                         _("Enter password for {file}:").format(file=os.path.basename(source_path)),
-                        mode=QLineEdit.EchoMode.Password
+                        mode=QLineEdit.EchoMode.Password,
+                        history=history
                     )
                     if not ok:
-                        return False # User cancelled
+                        return False
                     
                     try:
                         with py7zr.SevenZipFile(source_path, mode='r', password=pwd) as z:
                             z.extractall(path=dest_path)
+                        self._save_password_history(pwd)
                         return True
+                    except py7zr.exceptions.PasswordRequired:
+                        continue # Retry
                     except Exception as e_retry:
-                        if "Password is required" in str(e_retry) or "Bad password" in str(e_retry):
-                            continue # Wrong password, ask again
-                        else:
-                            self.logger.error(f"py7zr extraction error (retry): {e_retry}")
-                            return False
+                        self.logger.error(f"7z extraction error (retry): {e_retry}")
+                        return False
 
             self.logger.error(f"py7zr extraction error: {e}")
             return False
@@ -307,24 +377,48 @@ class LMImportMixin:
             return False
         except Exception as e:
              # Handle Password Protection
-             if "Bad password" in str(e) or "Password required" in str(e): # rarfile usually throws UnrarError or BadRarFile
-                from PyQt6.QtWidgets import QLineEdit
-                from src.ui.common_widgets import FramelessInputDialog
-                while True:
+            # Specific password handling
+            if "Password required" in str(e) or "Bad password" in str(e):
+                 from PyQt6.QtWidgets import QLineEdit
+                 from src.ui.common_widgets import FramelessInputDialog
+                 
+                 history = self._get_password_history()
+                 
+                 # === Auto-Try from History ===
+                 if history:
+                     self.logger.info("Auto-trying passwords from history (files only)...")
+                     # Note: rarfile check is tricky without full extract, so we try extractall directly
+                     # This might be slow if history is long and archive massive, but user requested brute-force.
+                     for h_pwd in history:
+                         try:
+                            with rarfile.RarFile(source_path) as rf:
+                                rf.setpassword(h_pwd)
+                                rf.extractall(dest_path)
+                            self.logger.info(f"Auto-unlocked with history password.")
+                            self._save_password_history(h_pwd)
+                            return True
+                         except (rarfile.PasswordRequired, rarfile.BadRarFile):
+                            continue
+                         except Exception:
+                            continue
+
+                 while True:
                     pwd, ok = FramelessInputDialog.getText(
                         self, _("Password Required"),
                         _("Enter password for {file}:").format(file=os.path.basename(source_path)),
-                        mode=QLineEdit.EchoMode.Password
+                        mode=QLineEdit.EchoMode.Password,
+                        history=history
                     )
                     if not ok:
                         return False
-
+                    
                     try:
                         with rarfile.RarFile(source_path) as rf:
-                           rf.setpassword(pwd)
-                           rf.extractall(dest_path)
+                            rf.setpassword(pwd)
+                            rf.extractall(dest_path)
+                        self._save_password_history(pwd)
                         return True
-                    except Exception as e_retry:
+                    except (rarfile.PasswordRequired, rarfile.BadRarFile) as e_retry:
                         # rarfile doesn't always have clean error messages for bad password, usually just "BadRarFile" or custom code
                         if "Bad password" in str(e_retry) or "crc" in str(e_retry).lower(): # CRC often fails on wrong password
                              continue
@@ -332,8 +426,8 @@ class LMImportMixin:
                              self.logger.error(f"rarfile extraction error (retry): {e_retry}")
                              return False
 
-             self.logger.error(f"rarfile extraction error: {e}")
-             return False
+            self.logger.error(f"rarfile extraction error: {e}")
+            return False
 
     def _extract_with_external(self, source_path, dest_path):
         """Fallback: try to find WinRAR or 7-Zip installed on the system and use them."""
@@ -369,11 +463,27 @@ class LMImportMixin:
                          from PyQt6.QtWidgets import QLineEdit
                          from src.ui.common_widgets import FramelessInputDialog
                          
+                         history = self._get_password_history()
+                         
+                         # === Auto-Try from History ===
+                         if history:
+                             self.logger.info("Auto-trying passwords from history (External 7z)...")
+                             for h_pwd in history:
+                                 cmd_try = cmd + [f'-p{h_pwd}']
+                                 # Use -y to assume yes (overwrite) although we are extracting to new folder
+                                 # Also -pPASSWORD handles it.
+                                 res_try = subprocess.run(cmd_try, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                                 if res_try.returncode == 0:
+                                     self.logger.info(f"Auto-unlocked with history password.")
+                                     self._save_password_history(h_pwd)
+                                     return True
+                         
                          while True:
                             pwd, ok = FramelessInputDialog.getText(
                                 self, _("Password Required"),
                                 _("Enter password for {file} (External 7-Zip):").format(file=os.path.basename(source_path)),
-                                mode=QLineEdit.EchoMode.Password
+                                mode=QLineEdit.EchoMode.Password,
+                                history=history
                             )
                             if not ok:
                                 return False
@@ -383,6 +493,7 @@ class LMImportMixin:
                             res_retry = subprocess.run(cmd_pwd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
                             
                             if res_retry.returncode == 0:
+                                self._save_password_history(pwd)
                                 return True
                             
                             err_retry = res_retry.stderr

@@ -270,10 +270,31 @@ class AppRegistrationDialog(FramelessDialog):
         self.url_count_label.setStyleSheet("color: #888;")
         
         url_layout = QHBoxLayout()
-        url_layout.addWidget(self.url_btn)
+        
         url_layout.addWidget(self.url_count_label)
         url_layout.addStretch()
         form.addRow(_("URLs:"), url_layout)
+
+        # Password Management (Phase 45: Per-App Password List)
+        self.pwd_btn = QPushButton(_("🔑 Manage Passwords..."))
+        self.pwd_btn.clicked.connect(self._open_password_manager)
+        self.pwd_btn.setStyleSheet("background-color: #8e44ad; color: white;")
+        
+        self.pwd_count_label = QLabel("(0)")
+        self.pwd_count_label.setStyleSheet("color: #888;")
+        
+        pwd_layout = QHBoxLayout()
+        pwd_layout.addWidget(self.pwd_btn)
+        pwd_layout.addWidget(self.pwd_count_label)
+        pwd_layout.addStretch()
+        form.addRow(_("Passwords:"), pwd_layout)
+        
+        # Hidden field to store password JSON
+        self.password_list_json = self.app_data.get('password_list', '[]') if self.app_data else '[]'
+        self.pwd_list_edit = ProtectedLineEdit() # Hidden storage
+        self.pwd_list_edit.setVisible(False)
+        self.pwd_list_edit.setText(self.password_list_json)
+        self._update_pwd_count()
         
         layout.addLayout(form)
         layout.addStretch()
@@ -402,6 +423,23 @@ class AppRegistrationDialog(FramelessDialog):
         if dialog.exec():
             self.url_list_json = dialog.get_data()
             self._update_url_count()
+
+    def _open_password_manager(self):
+        from src.ui.link_master.dialogs.password_list_dialog import PasswordListDialog
+        dialog = PasswordListDialog(self, password_list_json=self.password_list_json)
+        if dialog.exec():
+            self.password_list_json = dialog.get_data()
+            self.pwd_list_edit.setText(self.password_list_json) # Sync hidden field
+            self._update_pwd_count()
+
+    def _update_pwd_count(self):
+        try:
+            import json
+            pwds = json.loads(self.password_list_json)
+            count = len(pwds)
+            self.pwd_count_label.setText(f"({count})")
+        except:
+            self.pwd_count_label.setText("(0)")
 
     def _browse_storage(self):
         path = QFileDialog.getExistingDirectory(self, _("Select Storage Root"))
@@ -619,7 +657,8 @@ class AppRegistrationDialog(FramelessDialog):
             "default_package_style": self.pkg_style_combo.currentData(),
             "default_skip_levels": self.default_skip_levels_spin.value(),
             "executables": json.dumps(self.executables) if self.executables else "[]",
-            "url_list": getattr(self, "url_list_json", "[]")
+            "url_list": getattr(self, "url_list_json", "[]"),
+            "password_list": getattr(self, "password_list_json", "[]")
         }
 
 class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
