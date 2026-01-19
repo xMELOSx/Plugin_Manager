@@ -684,6 +684,11 @@ class LMScanHandlerMixin:
         if getattr(self, '_scan_suppressed', False):
             return
         
+        # Phase 57: Skip during display mode operations to prevent state corruption
+        if getattr(self, '_display_mode_changing', False):
+            self.logger.debug("[Profile] _refresh_package_cards SKIPPED (display mode changing)")
+            return
+        
         from src.ui.link_master.item_card import ItemCard
         pkg_count = 0
         for i in range(self.pkg_layout.count()):

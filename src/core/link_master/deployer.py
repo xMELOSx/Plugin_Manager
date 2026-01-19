@@ -465,6 +465,22 @@ class Deployer:
         
         # Phase 42: Declarative State Check - Removed premature return to ensure disk verification
 
+        # -------------------------------------------------------------------------
+        # 🚨 Phase 57: OPTIMIZED FOLDER-LINK CHECK FOR 'tree' AND 'folder' MODES
+        # If the target is itself a symlink pointing to expected_source, we're done.
+        # This is MUCH faster than iterating through every file for large folders.
+        # -------------------------------------------------------------------------
+        if deploy_rule in ('folder', 'tree') and os.path.islink(target_link_path):
+            try:
+                link_target = os.path.realpath(target_link_path)
+                expected_real = os.path.realpath(expected_source) if expected_source else None
+                if expected_real and os.path.normcase(link_target) == os.path.normcase(expected_real):
+                    return {"status": "linked", "type": "symlink", "is_intentional": False}
+                else:
+                    return {"status": "conflict", "type": "symlink", "is_intentional": False}
+            except Exception:
+                pass  # Fall through to detailed check
+
         # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
         # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
         # OR if it's a file. If it's a directory, it might just be the search root (collision!).
@@ -1044,8 +1060,10 @@ class Deployer:
                               (isinstance(overrides, dict) and len(overrides) > 0) or \
                               (skip_levels > 0)
         
-        # If 'folder' rule and NO filters/skips/overrides, we can just link/copy the root once
-        if resolved_rule == 'folder' and not has_complex_filters:
+        # Phase 57 OPTIMIZATION: 'tree' mode can also use folder-level linking if no complex filters
+        # This is MUCH faster than iterating through every file for large folders
+        if resolved_rule in ('folder', 'tree') and not has_complex_filters:
+            self.logger.info(f"[Optimized Deploy] Using folder-level link for '{resolved_rule}' mode (no filters)")
             if real_mode == 'copy':
                 return self.deploy_copy(source_path, target_link_path, conflict_policy)
             else:

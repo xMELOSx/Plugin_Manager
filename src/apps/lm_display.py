@@ -61,6 +61,9 @@ class LMDisplayMixin:
     
     def _toggle_cat_display_mode(self, mode, force=False):
         """Toggle category display mode button - click again to deselect and return to default."""
+        # Phase 57: Prevent _refresh_package_cards from running during display mode change
+        self._display_mode_changing = True
+        
         if not force and self.cat_display_override == mode:
             self.cat_display_override = None
         else:
@@ -152,9 +155,15 @@ class LMDisplayMixin:
             
             t_end = time.perf_counter()
             logging.info(f"[DisplayMode] Cat toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
+        
+        # Phase 57: Reset display mode changing flag
+        self._display_mode_changing = False
 
     def _toggle_pkg_display_mode(self, mode, force=False):
         """Toggle package display mode button - click again to deselect and return to default."""
+        # Phase 57: Prevent _refresh_package_cards from running during display mode change
+        self._display_mode_changing = True
+        
         if not force and self.pkg_display_override == mode:
             self.pkg_display_override = None
         else:
@@ -231,6 +240,9 @@ class LMDisplayMixin:
                 
             t_end = time.perf_counter()
             logging.info(f"[DisplayMode] Pkg toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
+        
+        # Phase 57: Reset display mode changing flag
+        self._display_mode_changing = False
 
     def _toggle_show_hidden(self):
         """Toggle visibility of hidden folders."""
