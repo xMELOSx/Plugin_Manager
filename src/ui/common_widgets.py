@@ -683,17 +683,17 @@ class FramelessInputDialog(FramelessDialog):
     Standardized Frameless Input Dialog to replace QInputDialog.
     Supports text and integer inputs.
     """
-    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None):
+    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None, echo_mode=QLineEdit.EchoMode.Normal):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.set_resizable(False)
         self.set_default_icon()
         self._is_int = is_int
         self._items = items
-        self._setup_ui(label, text, value, min_val, max_val)
+        self._setup_ui(label, text, value, min_val, max_val, echo_mode)
         self.resize(350, 200)
 
-    def _setup_ui(self, label, text, value, min_val, max_val):
+    def _setup_ui(self, label, text, value, min_val, max_val, echo_mode):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -721,6 +721,7 @@ class FramelessInputDialog(FramelessDialog):
             self.input_field = ProtectedLineEdit()
             self.input_field.setText(text)
             self.input_field.setMinimumHeight(35)
+            self.input_field.setEchoMode(echo_mode)
             self.input_field.returnPressed.connect(self.accept)
             layout.addWidget(self.input_field)
 
@@ -758,8 +759,8 @@ class FramelessInputDialog(FramelessDialog):
         return self.input_field.text()
 
     @staticmethod
-    def getText(parent, title, label, text=""):
-        dlg = FramelessInputDialog(parent, title, label, text=text)
+    def getText(parent, title, label, text="", mode=QLineEdit.EchoMode.Normal):
+        dlg = FramelessInputDialog(parent, title, label, text=text, echo_mode=mode)
         if dlg.exec():
             return dlg.value(), True
         return "", False

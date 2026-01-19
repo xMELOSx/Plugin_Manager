@@ -15,7 +15,7 @@ import os
 import shutil
 import zipfile
 import subprocess
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QFileDialog
 from src.core.lang_manager import _
 
 
@@ -184,11 +184,23 @@ class LMImportMixin:
                 if success:
                     self.logger.info(f"Successfully extracted {source_path}")
                 else:
-                    QMessageBox.warning(self, _("Extraction Failed"), _("Failed to extract archive. Please ensure py7zr/rarfile is installed OR WinRAR/7-Zip is available."))
+                    from src.ui.common_widgets import FramelessMessageBox
+                    msg = FramelessMessageBox(self)
+                    msg.setWindowTitle(_("Extraction Failed"))
+                    msg.setText(_("Failed to extract archive. Please ensure py7zr/rarfile is installed OR WinRAR/7-Zip is available."))
+                    msg.setIcon(FramelessMessageBox.Icon.Warning)
+                    msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                    msg.exec()
                     return
 
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to extract archive: {error}").format(error=e))
+                from src.ui.common_widgets import FramelessMessageBox
+                msg = FramelessMessageBox(self)
+                msg.setWindowTitle(_("Error"))
+                msg.setText(_("Failed to extract archive: {error}").format(error=e))
+                msg.setIcon(FramelessMessageBox.Icon.Critical)
+                msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                msg.exec()
                 return
 
 
@@ -205,7 +217,13 @@ class LMImportMixin:
                 shutil.copytree(source_path, dest_path)
                 self.logger.info(f"Copied folder {source_path} to {dest_path}")
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to copy folder: {error}").format(error=e))
+                from src.ui.common_widgets import FramelessMessageBox
+                msg = FramelessMessageBox(self)
+                msg.setWindowTitle(_("Error"))
+                msg.setText(_("Failed to copy folder: {error}").format(error=e))
+                msg.setIcon(FramelessMessageBox.Icon.Critical)
+                msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                msg.exec()
                 return
         else:
             return
@@ -242,6 +260,31 @@ class LMImportMixin:
             self.logger.warning("py7zr not found. Falling back to external.")
             return False
         except Exception as e:
+            # Handle Password Protection
+            if "Password is required" in str(e):
+                from PyQt6.QtWidgets import QLineEdit
+                from src.ui.common_widgets import FramelessInputDialog
+                password = None
+                while True:
+                    pwd, ok = FramelessInputDialog.getText(
+                        self, _("Password Required"),
+                        _("Enter password for {file}:").format(file=os.path.basename(source_path)),
+                        mode=QLineEdit.EchoMode.Password
+                    )
+                    if not ok:
+                        return False # User cancelled
+                    
+                    try:
+                        with py7zr.SevenZipFile(source_path, mode='r', password=pwd) as z:
+                            z.extractall(path=dest_path)
+                        return True
+                    except Exception as e_retry:
+                        if "Password is required" in str(e_retry) or "Bad password" in str(e_retry):
+                            continue # Wrong password, ask again
+                        else:
+                            self.logger.error(f"py7zr extraction error (retry): {e_retry}")
+                            return False
+
             self.logger.error(f"py7zr extraction error: {e}")
             return False
 
@@ -263,6 +306,32 @@ class LMImportMixin:
             self.logger.warning("rarfile library not found. Falling back to external.")
             return False
         except Exception as e:
+             # Handle Password Protection
+             if "Bad password" in str(e) or "Password required" in str(e): # rarfile usually throws UnrarError or BadRarFile
+                from PyQt6.QtWidgets import QLineEdit
+                from src.ui.common_widgets import FramelessInputDialog
+                while True:
+                    pwd, ok = FramelessInputDialog.getText(
+                        self, _("Password Required"),
+                        _("Enter password for {file}:").format(file=os.path.basename(source_path)),
+                        mode=QLineEdit.EchoMode.Password
+                    )
+                    if not ok:
+                        return False
+
+                    try:
+                        with rarfile.RarFile(source_path) as rf:
+                           rf.setpassword(pwd)
+                           rf.extractall(dest_path)
+                        return True
+                    except Exception as e_retry:
+                        # rarfile doesn't always have clean error messages for bad password, usually just "BadRarFile" or custom code
+                        if "Bad password" in str(e_retry) or "crc" in str(e_retry).lower(): # CRC often fails on wrong password
+                             continue
+                        else:
+                             self.logger.error(f"rarfile extraction error (retry): {e_retry}")
+                             return False
+
              self.logger.error(f"rarfile extraction error: {e}")
              return False
 
@@ -281,14 +350,51 @@ class LMImportMixin:
                 try:
                     self.logger.info(f"Attempting extraction with 7-Zip: {exe}")
                     # 7z x "source" -o"dest" -y
+                    # 7z x "source" -o"dest" -y
                     cmd = [exe, 'x', source_path, f'-o{dest_path}', '-y']
                     # Create startup info to hide console window
                     si = subprocess.STARTUPINFO()
                     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     
-                    subprocess.run(cmd, check=True, startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    return True
-                except subprocess.CalledProcessError:
+                    # Ensure stdin is closed to prevent hangs on password prompt
+                    result = subprocess.run(cmd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                    
+                    if result.returncode == 0:
+                        return True
+                    
+                    # Check for password error in stderr
+                    # 7-Zip usually prints "Wrong password" or "Enter password" if failed
+                    err_out = result.stderr
+                    if "Wrong password" in err_out or "Enter password" in err_out or "Can not open encrypted archive" in err_out:
+                         from PyQt6.QtWidgets import QLineEdit
+                         from src.ui.common_widgets import FramelessInputDialog
+                         
+                         while True:
+                            pwd, ok = FramelessInputDialog.getText(
+                                self, _("Password Required"),
+                                _("Enter password for {file} (External 7-Zip):").format(file=os.path.basename(source_path)),
+                                mode=QLineEdit.EchoMode.Password
+                            )
+                            if not ok:
+                                return False
+                            
+                            # Retry with password
+                            cmd_pwd = cmd + [f'-p{pwd}']
+                            res_retry = subprocess.run(cmd_pwd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                            
+                            if res_retry.returncode == 0:
+                                return True
+                            
+                            err_retry = res_retry.stderr
+                            if "Wrong password" in err_retry:
+                                continue
+                            else:
+                                break # Other error
+                                
+ 
+                    continue # Try next executable or fail
+                except Exception as e:
+                    self.logger.error(f"External 7-Zip execution failed: {e}")
                     continue
         
         # 2. WinRAR
