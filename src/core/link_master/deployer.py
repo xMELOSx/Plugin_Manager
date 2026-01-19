@@ -501,20 +501,53 @@ class Deployer:
                  
                  try:
                      import fnmatch
+                     # 🚨 Load path_overrides for custom mode detection
+                     path_overrides = rules.get('overrides', rules.get('rename', {})) if (rules and isinstance(rules, dict) and deploy_rule == 'custom') else {}
+                     has_overrides = len(path_overrides) > 0
+                     
                      if deploy_rule in ('tree', 'custom'):
                          # Recursive check for tree and custom modes
                          for root, dirs, files in os.walk(expected_source):
                              rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
-                             for name in files + dirs:
-                                 rel_path = name if rel_dir == "." else f"{rel_dir}/{name}"
+                             if rel_dir == ".":
+                                 rel_dir = ""
+                             
+                             for name in files:
+                                 rel_path = f"{rel_dir}/{name}" if rel_dir else name
                                  
                                  # Exclude Check
-                                 if excludes and any(fnmatch.fnmatch(rel_path, pat) for pat in excludes):
+                                 if excludes and any(fnmatch.fnmatch(rel_path, pat) or fnmatch.fnmatch(name, pat) for pat in excludes):
                                      continue
                                      
                                  files_total += 1
                                  item_src = os.path.join(root, name)
-                                 item_tgt = os.path.normpath(os.path.join(target_link_path, rel_path))
+                                 
+                                 # 🚨 OVERRIDE-AWARE TARGET PATH CALCULATION (same logic as deploy)
+                                 item_tgt = None
+                                 
+                                 # Priority 1: Exact file path match
+                                 if rel_path in path_overrides:
+                                     item_tgt = path_overrides[rel_path]
+                                 
+                                 # Priority 2: Parent folder match
+                                 if item_tgt is None and rel_dir and path_overrides:
+                                     path_parts = rel_dir.split('/')
+                                     for i in range(len(path_parts), 0, -1):
+                                         check_dir = '/'.join(path_parts[:i])
+                                         if check_dir in path_overrides:
+                                             override_target = path_overrides[check_dir]
+                                             remaining = '/'.join(path_parts[i:])
+                                             if remaining:
+                                                 item_tgt = os.path.join(override_target, remaining, name)
+                                             else:
+                                                 item_tgt = os.path.join(override_target, name)
+                                             break
+                                 
+                                 # Priority 3: Default path
+                                 if item_tgt is None:
+                                     item_tgt = os.path.join(target_link_path, rel_path.replace('/', os.sep))
+                                 
+                                 item_tgt = os.path.normpath(item_tgt)
                                  
                                  is_valid = False
                                  if os.path.islink(item_tgt):
@@ -572,24 +605,32 @@ class Deployer:
                  if files_total > 0:
                      if files_found >= files_total:
                          res["status"] = "linked"
-                         # Phase 51: If we used rules (Custom) and it's linked, check if it's intentional partial
-                         if deploy_rule == 'custom' and rules:
-                              try:
-                                  abs_total = 0
-                                  if os.path.isdir(expected_source):
-                                      for _, d, f in os.walk(expected_source): abs_total += len(f) + len(d)
-                                  if abs_total > files_total:
-                                      res["is_intentional"] = True
-                              except: pass
+                         # 🚨 INTENTIONAL CHECK: If custom mode with overrides or excludes, it's intentional
+                         if deploy_rule == 'custom' and (has_overrides or excludes):
+                             res["is_intentional"] = True
+                         elif deploy_rule == 'custom' and rules:
+                             # Legacy check: compare source file count vs deployed count
+                             try:
+                                 abs_total = 0
+                                 if os.path.isdir(expected_source):
+                                     for _, d, f in os.walk(expected_source): abs_total += len(f)
+                                 if abs_total > files_total:
+                                     res["is_intentional"] = True
+                             except: pass
                      elif files_found > 0:
-                         res["status"] = "partial" # Accidental loss relative to rules
+                         # 🚨 PARTIAL: If overrides exist and we found SOME files, likely intentional partial
+                         if has_overrides:
+                             res["status"] = "linked"
+                             res["is_intentional"] = True
+                         else:
+                             res["status"] = "partial"  # Accidental loss relative to rules
                      else:
                          res["status"] = "none"
                  else:
                      # No items found in source to check (empty or all excluded)
                      if rules and os.path.exists(target_link_path) and deploy_rule == 'custom':
                           res["status"] = "linked"
-                          res["is_intentional"] = True # All excluded = intentional partial
+                          res["is_intentional"] = True  # All excluded = intentional partial
                      else:
                           res["status"] = "none"
                  
