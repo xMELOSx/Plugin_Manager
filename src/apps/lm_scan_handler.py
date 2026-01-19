@@ -235,8 +235,10 @@ class LMScanHandlerMixin:
         settings = {
             'cat_show_link': getattr(self, f'cat_{vd_mode}_show_link', True),
             'cat_show_deploy': getattr(self, f'cat_{vd_mode}_show_deploy', True),
+            'cat_text_wrap': getattr(self, f'cat_{vd_mode}_text_wrap', False),
             'pkg_show_link': getattr(self, f'pkg_{pk_mode}_show_link', True),
             'pkg_show_deploy': getattr(self, f'pkg_{pk_mode}_show_deploy', True),
+            'pkg_text_wrap': getattr(self, f'pkg_{pk_mode}_text_wrap', False),
             'opacity': getattr(self, 'deploy_button_opacity', 0.8)
         }
         
@@ -339,6 +341,7 @@ class LMScanHandlerMixin:
             tags_raw=item_config.get('tags', ''),
             show_link=settings['pkg_show_link'] if use_pkg_settings else settings['cat_show_link'],
             show_deploy=self._calculate_show_deploy(is_package, use_pkg_settings, settings),
+            text_wrap=settings['pkg_text_wrap'] if use_pkg_settings else settings['cat_text_wrap'],
             deploy_button_opacity=settings['opacity'],
             category_deploy_status=item_config.get('category_deploy_status'),
             is_intentional=r.get('is_intentional', False)

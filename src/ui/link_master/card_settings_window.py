@@ -218,6 +218,8 @@ class CardSettingsWindow(FramelessDialog):
         # 3. Toggles
         layout.addLayout(self._create_check_row(_("Show Link Icon"), f'{prefix}_{mode}_show_link', type_, mode, 'show_link'))
         layout.addLayout(self._create_check_row(_("Show Deploy Button"), f'{prefix}_{mode}_show_deploy', type_, mode, 'show_deploy'))
+        # Phase 52: Text Wrap Option
+        layout.addLayout(self._create_check_row(_("Allow Text Wrapping"), f'{prefix}_{mode}_text_wrap', type_, mode, 'text_wrap'))
 
     def _create_slider_row(self, label, attr, type_, mode, param, min_v, max_v):
         row = QHBoxLayout()

@@ -2876,3 +2876,6 @@ msgstr "変更はありません"
 
 msgid "Edit Cancelled"
 msgstr "編集がキャンセルされました"
+
+msgid "Allow Text Wrapping"
+msgstr "テキストを改行許可"

@@ -439,6 +439,10 @@ class ItemCard(QFrame):
             self.is_focused = False
 
         # 5. Update UI Labels (style/overlays deferred to set_card_params for performance)
+        # Phase 52: Support text wrap option
+        if 'text_wrap' in kwargs:
+            self.name_label.setWrapMode(bool(kwargs['text_wrap']))
+            
         self._update_name_label()
 
         # 6. Image Update (ALWAYS process to prevent stale images from pooled cards)

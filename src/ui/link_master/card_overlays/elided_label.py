@@ -26,8 +26,24 @@ class ElidedLabel(QLabel):
         super().resizeEvent(event)
         self._updateElidedText()
     
+    def setWrapMode(self, wrap: bool):
+        """Enable or disable text wrapping."""
+        self._wrap = wrap
+        self.setWordWrap(wrap)
+        if wrap:
+            # When wrapping is on, show full text and let Qt handle wrapping
+            super().setText(self._full_text)
+        else:
+            # When wrapping is off, enforce single line elision
+            self._updateElidedText()
+
     def _updateElidedText(self):
         """Calculate and set the elided text based on current width."""
+        if getattr(self, '_wrap', False):
+            # If wrapping is enabled, do nothing (Qt handles it)
+            super().setText(self._full_text)
+            return
+
         if not self._full_text:
             super().setText("")
             return

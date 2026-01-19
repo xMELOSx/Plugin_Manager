@@ -213,6 +213,8 @@ class LMCardSettingsMixin:
         # Phase 31: Visibility Toggles
         show_link = getattr(self, f'{prefix}_{mode}_show_link', True)
         show_deploy = getattr(self, f'{prefix}_{mode}_show_deploy', True)
+        # Phase 52: Text Wrap
+        text_wrap = getattr(self, f'{prefix}_{mode}_text_wrap', False)
         opacity = getattr(self, 'deploy_button_opacity', 0.8)
         
         layout = self.cat_layout if type_ == 'category' else self.pkg_layout
@@ -235,6 +237,7 @@ class LMCardSettingsMixin:
                 widget.update_data(
                     show_link=show_link,
                     show_deploy=show_deploy,
+                    text_wrap=text_wrap,
                     deploy_button_opacity=opacity
                 )
             if hasattr(widget, 'set_card_params'):
