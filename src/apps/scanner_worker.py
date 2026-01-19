@@ -28,18 +28,29 @@ class ScannerWorker(QObject):
         self.generation_id = 0
 
     def _is_package_auto(self, abs_path):
-        """Heuristic: Check if folder contains package-like config files."""
+        """Heuristic: Check if folder contains package-like config files OR is a leaf folder."""
         if not abs_path or not os.path.isdir(abs_path):
             return False
-        package_indicators = {'.json', '.ini', '.yaml', '.toml', '.yml'}
+        package_indicators = {'.json', '.ini', '.yaml', '.toml', '.yml', '.txt'}
+        has_subdirs = False
+        has_files = False
+
         try:
             with os.scandir(abs_path) as it:
                 for entry in it:
-                    if entry.is_file():
+                    if entry.is_dir() and not entry.name.startswith('.'):
+                        has_subdirs = True
+                    elif entry.is_file():
+                        has_files = True
                         ext = os.path.splitext(entry.name)[1].lower()
                         if ext in package_indicators:
                             return True
         except: pass
+        
+        # If no config found, fallback to structure check
+        if has_files and not has_subdirs:
+            return True
+            
         return False
 
     def set_db(self, db):

@@ -306,6 +306,44 @@ class PreviewWindow(FramelessDialog):
         # Navigation Bar
         nav_bar = QHBoxLayout()
         nav_bar.setContentsMargins(10, 5, 10, 5)
+
+        # Phase 7: Preview Toolbar
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(10, 5, 10, 0)
+        toolbar_layout.setSpacing(10)
+        
+        self.btn_icon_set = QPushButton("✨")
+        self.btn_icon_set.setToolTip(_("Set as Folder Icon"))
+        self.btn_icon_set.setFixedSize(32, 32)
+        self.btn_icon_set.clicked.connect(self._set_current_as_icon)
+        
+        self.btn_crop = QPushButton("✂")
+        self.btn_crop.setToolTip(_("Crop Image"))
+        self.btn_crop.setFixedSize(32, 32)
+        self.btn_crop.clicked.connect(self._crop_current)
+        
+        self.btn_open = QPushButton("🚀")
+        self.btn_open.setToolTip(_("Open File"))
+        self.btn_open.setFixedSize(32, 32)
+        self.btn_open.clicked.connect(self._open_current)
+        
+        self.btn_delete = QPushButton("❌")
+        self.btn_delete.setToolTip(_("Delete File"))
+        self.btn_delete.setFixedSize(32, 32)
+        self.btn_delete.setStyleSheet("background-color: #c0392b;")
+        self.btn_delete.clicked.connect(self._delete_current)
+
+        toolbar_layout.addWidget(self.btn_icon_set)
+        toolbar_layout.addWidget(self.btn_crop)
+        toolbar_layout.addWidget(self.btn_open)
+        toolbar_layout.addWidget(self.btn_delete)
+        toolbar_layout.addStretch()
+        
+        toolbar_widget = QWidget()
+        toolbar_widget.setLayout(toolbar_layout)
+        preview_layout.addWidget(toolbar_widget)
+        
+        # Navigation Bar (Existing)
         
         self.prev_btn = QPushButton("◀")
         self.prev_btn.setFixedWidth(40)
@@ -507,6 +545,84 @@ class PreviewWindow(FramelessDialog):
         self.customContextMenuRequested.connect(self._show_context_menu)
         
         self.set_content_widget(content)
+
+    def _set_current_as_icon(self):
+        """Set current image as folder icon."""
+        if not self.paths: return
+        path = self.paths[self.current_index]
+        if not os.path.exists(path): return
+        
+        if self.db and self.folder_path:
+            # Calculate relative path for folder
+            folder_rel = ""
+            if self.storage_root and self.folder_path.startswith(self.storage_root):
+                 folder_rel = os.path.relpath(self.folder_path, self.storage_root)
+            else:
+                 folder_rel = os.path.basename(self.folder_path)
+            
+            self.db.update_folder_display_config(folder_rel, image_path=path)
+            self.folder_config['image_path'] = path
+            
+            # Notify user
+            from src.ui.toast import Toast
+            Toast.show_toast(self, _("Icon updated"), preset="success")
+
+    def _crop_current(self):
+        """Crop current image."""
+        if not self.paths: return
+        path = self.paths[self.current_index]
+        if not os.path.exists(path): return
+        
+        # Determine if it's an image
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in self.IMAGE_EXTENSIONS:
+            return
+
+        from src.ui.link_master.dialogs_legacy import IconCropDialog
+        try:
+            dlg = IconCropDialog(self, path, allow_free=True)
+            if dlg.exec():
+                 pix = dlg.get_cropped_pixmap()
+                 if pix:
+                     import time
+                     dir_name = os.path.dirname(path)
+                     name, ext = os.path.splitext(os.path.basename(path))
+                     new_path = os.path.join(dir_name, f"{name}_crop_{int(time.time())}.png")
+                     pix.save(new_path)
+                     
+                     # Update list
+                     self.paths.insert(self.current_index + 1, new_path)
+                     self._next()
+        except ImportError:
+            pass
+
+    def _open_current(self):
+        """Open file in default viewer."""
+        if not self.paths: return
+        path = self.paths[self.current_index]
+        if os.path.exists(path):
+            os.startfile(path)
+
+    def _delete_current(self):
+        """Delete current file."""
+        if not self.paths: return
+        path = self.paths[self.current_index]
+        
+        reply = QMessageBox.question(self, _("Confirm Delete"), _("Delete this file permanently?\n") + path, 
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                os.remove(path)
+                self.paths.pop(self.current_index)
+                if self.current_index >= len(self.paths):
+                    self.current_index = max(0, len(self.paths) - 1)
+                
+                if self.paths:
+                    self._show_current()
+                else:
+                    self._show_no_preview()
+            except Exception as e:
+                QMessageBox.warning(self, _("Error"), str(e))
     
     def _create_properties_panel(self):
         """プロパティパネルを作成。"""

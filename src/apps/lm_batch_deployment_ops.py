@@ -439,7 +439,7 @@ class LMDeploymentOpsMixin:
         self.logger.debug(f"[Deploy-Check] '{folder_name}' target_link={target_link}, current_status={current_status}")
         
         if current_status == 'linked':
-            self.logger.info(f"Skipping {rel_path} - Already correctly linked to {target_link}")
+            self.logger.debug(f"Skipping {rel_path} - Already correctly linked to {target_link}")
             if update_ui:
                 # Targeted update instead of full background refresh
                 self._update_card_by_path(full_src)
@@ -504,7 +504,7 @@ class LMDeploymentOpsMixin:
         if config.get('lib_deps'):
             deps_to_deploy = self._resolve_dependencies([rel_path])
             if deps_to_deploy:
-                self.logger.info(f"Auto-Deploying {len(deps_to_deploy)} dependencies for {folder_name}")
+                self.logger.debug(f"Auto-Deploying {len(deps_to_deploy)} dependencies for {folder_name}")
                 for lib_rel in deps_to_deploy:
                      if lib_rel != rel_path:
                          self._deploy_single(lib_rel, update_ui=True)
@@ -529,7 +529,7 @@ class LMDeploymentOpsMixin:
             reply = msg_box.exec()
             
             if reply == FramelessMessageBox.StandardButton.Yes:
-                self.logger.info(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
+                self.logger.debug(f"Swapping: Disabling {conflict_data['name']} for {folder_name}")
                 self._unlink_single(conflict_data['path'], update_ui=True)
                 self._refresh_tag_visuals(target_tag=conflict_data.get('tag'))
             else:
@@ -577,7 +577,7 @@ class LMDeploymentOpsMixin:
                 return False
             
             if success:
-                 self.logger.info(f"[DeploySingle] Success. Syncing state to DB for {rel_path}")
+                 self.logger.debug(f"[DeploySingle] Success. Syncing state to DB for {rel_path}")
                  # Phase 51: Re-check status to get correct is_intentional flag
                  # Pass rules_dict for accurate intentionality detection
                  post_res = self.deployer.get_link_status(target_link, expected_source=full_src, deploy_rule=deploy_rule, rules=rules_dict)
@@ -603,21 +603,22 @@ class LMDeploymentOpsMixin:
                     msg_box.exec()
         
         finally:
-            try:
-                # Phase 51: ALWAYS refresh card visual (including border/symbols) even on partial success or failure
-                self.logger.info(f"[DeployUI] Refreshing card visual for {rel_path} (Final state check)")
-                self._update_card_by_path(full_src)
-                
-                if hasattr(self, '_update_total_link_count'):
-                    self._update_total_link_count()
-                
-                tag = config.get('conflict_tag')
-                self._refresh_tag_visuals(target_tag=tag)
-                
-                if hasattr(self, 'library_panel') and self.library_panel:
-                    self.library_panel.refresh()
-            except Exception as ex:
-                self.logger.warning(f"Failed to perform post-deployment UI update for {rel_path}: {ex}")
+            if update_ui:
+                try:
+                    # Phase 51: ALWAYS refresh card visual (including border/symbols) even on partial success or failure
+                    self.logger.debug(f"[DeployUI] Refreshing card visual for {rel_path} (Final state check)")
+                    self._update_card_by_path(full_src)
+                    
+                    if hasattr(self, '_update_total_link_count'):
+                        self._update_total_link_count()
+                    
+                    tag = config.get('conflict_tag')
+                    self._refresh_tag_visuals(target_tag=tag)
+                    
+                    if hasattr(self, 'library_panel') and self.library_panel:
+                        self.library_panel.refresh()
+                except Exception as ex:
+                    self.logger.warning(f"Failed to perform post-deployment UI update for {rel_path}: {ex}")
 
         return success
 
@@ -635,7 +636,7 @@ class LMDeploymentOpsMixin:
         search_roots = [r for r in search_roots if r is not None]
         
         # 🚨 DEBUG: Log unlink operation details
-        self.logger.info(f"[Unlink] Starting unlink for rel_path={rel_path}")
+        self.logger.debug(f"[Unlink] Starting unlink for rel_path={rel_path}")
         self.logger.debug(f"[Unlink] search_roots={search_roots}")
         
         config = self.db.get_folder_config(rel_path) or {}
@@ -730,10 +731,10 @@ class LMDeploymentOpsMixin:
             # For Files/Custom modes, we need file-by-file deletion to avoid deleting unrelated content
             if deploy_rule in ('files', 'custom'):
                  # Safe Batch Undeploy: delete source-matched files only, then prune empty dirs
-                 # We use search_root as base because _safe_batch_undeploy handles mirroring/overrides internally
-                 deleted_count = self._safe_batch_undeploy(full_src, search_root, deploy_rule, rules_json=rules_json)
+                 # We use target_link as base because it accounts for skip_levels offset
+                 deleted_count = self._safe_batch_undeploy(full_src, target_link, deploy_rule, rules_json=rules_json)
                  if deleted_count > 0:
-                      self.logger.info(f"Batch undeploy ({deploy_rule}): removed {deleted_count} items from {search_root}")
+                      self.logger.debug(f"Batch undeploy ({deploy_rule}): removed {deleted_count} items from {search_root}")
             else:
                  # 🚨 Safety Check: Avoid unlinking the search root itself unless it is genuinely a link to us
                  if target_link:
@@ -749,13 +750,13 @@ class LMDeploymentOpsMixin:
                               continue
 
                  if self.deployer.undeploy(target_link, transfer_mode=transfer_mode, source_path_hint=full_src):
-                      self.logger.info(f"Unlinked/Undeployed: {target_link}")
+                      self.logger.debug(f"Unlinked/Undeployed: {target_link}")
 
         # Phase: Exhaustive Transition Sweep for Manual Unlink
         # If the user clicks Unlink, we want to make sure it's REALLY unlinked even if rules changed.
         current_status = config.get('last_known_status')
         if current_status == 'linked' or current_status == 'partial':
-             self.logger.info(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
+             self.logger.debug(f"[Unlink-Sweep] Performing exhaustive cleanup for: {rel_path}")
              failed_paths_list = [] # Renaming to avoid any scope confusion
              try:
                  target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
@@ -936,8 +937,10 @@ class LMDeploymentOpsMixin:
             try: rules = json.loads(rules_json)
             except: pass
         
+        
         overrides = rules.get('overrides', rules.get('rename', {})) if deploy_rule == 'custom' else {}
-        skip_levels = int(rules.get('skip_levels', 0))
+        # Phase 33: Ignore skip_levels for Tree mode as target_base is already adjusted
+        skip_levels = int(rules.get('skip_levels', 0)) if deploy_rule == 'custom' else 0
         
         deleted_count = 0
         deleted_dirs = set()

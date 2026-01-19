@@ -440,7 +440,7 @@ class Deployer:
             try:
                 if core_handler.is_dir(path) and not os.listdir(path):
                     core_handler.remove_empty_dir(path)
-                    self.logger.info(f"Cleaned empty parent: {path}")
+                    self.logger.debug(f"Cleaned empty parent: {path}")
                     path = parent
                 else: break
             except: break
@@ -793,7 +793,7 @@ class Deployer:
             # Phase X: Restore backups for copy mode too
             self._restore_backup_if_exists(target_path)
             
-            self.logger.info(f"Copy deployment removed: {target_path}")
+            self.logger.debug(f"Copy deployment removed: {target_path}")
             return True
         except Exception as e:
             self.logger.error(f"Failed to remove copy deployment: {e}")
@@ -932,7 +932,7 @@ class Deployer:
         
         excludes = rules.get('exclude', []) if is_custom else []
         overrides = rules.get('overrides', rules.get('rename', {})) if is_custom else {}
-        skip_levels = int(rules.get('skip_levels', 0)) if (is_custom or is_tree) else 0
+        skip_levels = int(rules.get('skip_levels', 0)) if is_custom else 0
         
         has_complex_filters = (isinstance(excludes, list) and len(excludes) > 0) or \
                               (isinstance(overrides, dict) and len(overrides) > 0) or \
@@ -1227,7 +1227,7 @@ class Deployer:
                                 real = os.path.join(os.path.dirname(path), real)
                             if self._normalize_path(real).startswith(valid_source_root_norm):
                                 os.unlink(path)
-                                self.logger.info(f"Recursive cleanup removed: {path}")
+                                self.logger.debug(f"Recursive cleanup removed: {path}")
                                 # Restore backup if exists
                                 if restore_backups:
                                     self._restore_backup_if_exists(path)
@@ -1251,7 +1251,7 @@ class Deployer:
                                     real = os.path.join(os.path.dirname(entry.path), real)
                                 if self._normalize_path(real).startswith(valid_source_root_norm):
                                     os.unlink(entry.path)
-                                    self.logger.info(f"Cleanup removed: {entry.path}")
+                                    self.logger.debug(f"Cleanup removed: {entry.path}")
                             except: pass
             except Exception as e:
                 self.logger.error(f"Cleanup scan failed: {e}")
@@ -1347,7 +1347,7 @@ class Deployer:
                         self.logger.debug(f"[Sweep] Unlinked symlink: {path}")
                     elif os.path.isdir(path):
                         shutil.rmtree(path)
-                        self.logger.info(f"[Sweep] Removed physical directory (copy): {path}")
+                        self.logger.debug(f"[Sweep] Removed physical directory (copy): {path}")
                     else:
                         os.remove(path)
                         self.logger.debug(f"[Sweep] Removed file: {path}")

@@ -42,15 +42,31 @@ class PreviewItemWidget(QWidget):
         drag_label.setToolTip(_("Drag to reorder"))
         layout.addWidget(drag_label)
         
+        # Thumbnail Label
+        self.thumb_label = QLabel()
+        self.thumb_label.setFixedSize(32, 32)
+        self.thumb_label.setStyleSheet("background-color: #333; border: 1px solid #555; border-radius: 2px;")
+        self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.thumb_label)
+        
         # Path Label (stretch)
         self.path_label = QLabel(self.path)
         self.path_label.setToolTip(self.path)
         self.path_label.setStyleSheet("color: #e0e0e0;")
         layout.addWidget(self.path_label, 1)
         
-        # Detect if file is an image for conditional button visibility
+        # Detect if file is an image for conditional button visibility and thumbnail
         ext = os.path.splitext(self.path)[1].lower()
         is_image = ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']
+        
+        if is_image and os.path.exists(self.path):
+            pix = QPixmap(self.path)
+            if not pix.isNull():
+                 self.thumb_label.setPixmap(pix.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            else:
+                 self.thumb_label.setText("?")
+        else:
+             self.thumb_label.setText("📄") # Generic file icon
         
         # Button Order: Icon → Crop → Launch → Explorer → Delete
         btn_style = "QPushButton { padding: 2px 5px; } QPushButton:hover { background-color: #5d5d5d; }"
