@@ -42,9 +42,15 @@ def setup_error_handling():
     # Try to load from debug_settings.json
     try:
         import json
-        # Project root is parent of 'src'
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        settings_path = os.path.join(project_root, 'resource', 'debug_settings.json')
+        # EXE-compatible path resolution
+        if getattr(sys, 'frozen', False):
+            # EXE mode: project root is next to executable
+            project_root = os.path.dirname(sys.executable)
+        else:
+            # Dev mode: src/main_setup.py -> 1 level up to project root
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        settings_path = os.path.join(project_root, 'config', 'debug_settings.json')
         if os.path.exists(settings_path):
             with open(settings_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)

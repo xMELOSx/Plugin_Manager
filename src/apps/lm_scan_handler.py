@@ -29,6 +29,27 @@ import re # Phase 33: Natural Sort
 class LMScanHandlerMixin:
     """スキャン結果処理とカード生成を担当するMixin。"""
     
+    def _init_scan_debounce(self):
+        """Initialize debounce timer for card refresh operations."""
+        from PyQt6.QtCore import QTimer
+        self._refresh_debounce_timer = QTimer()
+        self._refresh_debounce_timer.setSingleShot(True)
+        self._refresh_debounce_timer.setInterval(100)  # 100ms debounce
+        self._refresh_debounce_timer.timeout.connect(self._refresh_category_cards)
+        self._refresh_pending = False
+    
+    def _request_refresh_category_cards(self):
+        """Debounced refresh request - coalesces multiple rapid calls into one."""
+        if not hasattr(self, '_refresh_debounce_timer'):
+            self._init_scan_debounce()
+        
+        # If timer is already running, it will reset on next start
+        if self._refresh_debounce_timer.isActive():
+            # Already pending, just extend the wait
+            return
+        
+        self._refresh_debounce_timer.start()
+    
     def _on_scan_results_ready(self, results, original_path, context="view", app_id=None, gen_id=0):
         """Populates the category and package layouts based on scan results and context."""
         import time

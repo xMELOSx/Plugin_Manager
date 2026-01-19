@@ -26,10 +26,17 @@ logger = logging.getLogger(__name__)
 
 # Load debug settings from file at class definition time
 def _load_debug_settings_at_startup():
-    import os, json
+    import os, json, sys
     try:
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        path = os.path.join(base, 'resource', 'debug_settings.json')
+        # EXE-compatible path resolution
+        if getattr(sys, 'frozen', False):
+            # EXE mode: project root is next to executable
+            project_root = os.path.dirname(sys.executable)
+        else:
+            # Dev mode: src/ui/link_master/item_card.py -> 4 levels up to project root
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        
+        path = os.path.join(project_root, 'config', 'debug_settings.json')
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)

@@ -150,7 +150,8 @@ class LMCardPoolMixin:
         card.request_move_to_trash.connect(self._on_package_move_to_trash)
         card.request_restore.connect(self._on_package_restore)
         card.request_reorder.connect(self._reorder_item)
-        card.deploy_changed.connect(self._refresh_category_cards)
+        # 🚨 DEBOUNCED: Use request method to coalesce rapid updates
+        card.deploy_changed.connect(self._request_refresh_category_cards)
         card.deploy_changed.connect(self._update_total_link_count)
         
         # Phase 30: Direct deployment toggle from card overlay button
