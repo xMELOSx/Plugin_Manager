@@ -683,17 +683,18 @@ class FramelessInputDialog(FramelessDialog):
     Standardized Frameless Input Dialog to replace QInputDialog.
     Supports text and integer inputs.
     """
-    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None, echo_mode=QLineEdit.EchoMode.Normal, history=None):
+    def __init__(self, parent=None, title="", label="", text="", value=0, min_val=0, max_val=100, is_int=False, items=None, echo_mode=QLineEdit.EchoMode.Normal, history=None, allow_auto_try=False):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.set_resizable(False)
         self.set_default_icon()
         self._is_int = is_int
         self._items = items
-        self._setup_ui(label, text, value, min_val, max_val, echo_mode, history)
+        self._auto_try_requested = False
+        self._setup_ui(label, text, value, min_val, max_val, echo_mode, history, allow_auto_try)
         self.resize(350, 200)
 
-    def _setup_ui(self, label, text, value, min_val, max_val, echo_mode, history):
+    def _setup_ui(self, label, text, value, min_val, max_val, echo_mode, history, allow_auto_try):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -744,6 +745,14 @@ class FramelessInputDialog(FramelessDialog):
                 self.hist_btn.setToolTip(_("Select from History"))
                 self.hist_btn.clicked.connect(lambda: self._show_history_menu(history))
                 h_layout.addWidget(self.hist_btn)
+
+            # Auto-Try Button
+            if allow_auto_try:
+                self.auto_btn = StyledButton("⚡", style_type="Orange")
+                self.auto_btn.setFixedSize(35, 35)
+                self.auto_btn.setToolTip(_("Try All Passwords (Brute Force)"))
+                self.auto_btn.clicked.connect(self._request_auto_try)
+                h_layout.addWidget(self.auto_btn)
             
             # If neither, we still used h_layout in replacement, so we need to add logic to use it or just always use h_layout wrapper
             layout.addLayout(h_layout)
@@ -773,6 +782,10 @@ class FramelessInputDialog(FramelessDialog):
         else:
             self.input_field.setEchoMode(QLineEdit.EchoMode.Password)
             self.eye_btn.setText("👁")
+
+    def _request_auto_try(self):
+        self._auto_try_requested = True
+        self.accept()
 
     def _show_history_menu(self, history):
         menu = QMenu(self)
@@ -804,9 +817,11 @@ class FramelessInputDialog(FramelessDialog):
         return self.input_field.text()
 
     @staticmethod
-    def getText(parent, title, label, text="", mode=QLineEdit.EchoMode.Normal, history=None):
-        dlg = FramelessInputDialog(parent, title, label, text=text, echo_mode=mode, history=history)
+    def getText(parent, title, label, text="", mode=QLineEdit.EchoMode.Normal, history=None, allow_auto_try=False):
+        dlg = FramelessInputDialog(parent, title, label, text=text, echo_mode=mode, history=history, allow_auto_try=allow_auto_try)
         if dlg.exec():
+            if getattr(dlg, '_auto_try_requested', False):
+                return "<AUTO_TRY>", True
             return dlg.value(), True
         return "", False
     

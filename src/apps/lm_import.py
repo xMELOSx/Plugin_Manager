@@ -134,11 +134,19 @@ class LMImportMixin:
             if result == "explorer":
                 app_data = self.app_combo.currentData()
                 if not app_data: return
-                storage_root = app_data.get('storage_root')
                 
-                target_path = getattr(self, 'current_path', storage_root)
+                # Priority 1: Downloads Folder (User Request)
+                downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+                target_path = downloads_path
+                
+                # Priority 2: Storage Root (Fallback)
+                if not os.path.exists(target_path):
+                     target_path = app_data.get('storage_root')
+                
                 if target_path and os.path.exists(target_path):
                     subprocess.Popen(['explorer', os.path.normpath(target_path)])
+                else:
+                    self.logger.warning(f"Could not open explorer. Paths invalid: Downloads or Storage Root.")
                 return
 
             if result == "folder":
@@ -199,19 +207,10 @@ class LMImportMixin:
         
         folder_name = os.path.basename(source_path)
         
-        # Auto-Detect Type logic
-        is_auto_detect = (target_type == "auto")
-        if is_auto_detect:
-            # If it's a folder, check its content to decide
-            try:
-                if os.path.isdir(source_path):
-                    has_subdirs = any(os.path.isdir(os.path.join(source_path, d)) for d in os.listdir(source_path))
-                    target_type = "category" if has_subdirs else "package"
-                else:
-                    # Files (archives etc) default to package, but we re-check after extraction
-                    target_type = "package"
-            except Exception:
-                target_type = "package" # Fallback
+        # If target_type is 'auto', we DO NOT resolve it here.
+        # We let it pass through to the DB as 'auto', so the runtime scanner/display logic
+        # handles the classification (package vs folder).
+        # User explicitly requested preserving the 'auto' state.
         
         # Handle Archives (Zip / 7z / Rar)
         ext = os.path.splitext(source_path)[1].lower()
@@ -247,16 +246,6 @@ class LMImportMixin:
 
                 if success:
                     self.logger.info(f"Successfully extracted {source_path}")
-                    
-                    # Post-Extraction Auto-Detection for Archives
-                    if is_auto_detect:
-                        try:
-                            has_subdirs = any(os.path.isdir(os.path.join(dest_path, d)) for d in os.listdir(dest_path))
-                            target_type = "category" if has_subdirs else "package"
-                            self.logger.info(f"Auto-detected type for extracted archive: {target_type}")
-                        except Exception as e:
-                            self.logger.warning(f"Failed to auto-detect type after extraction: {e}")
-
                 else:
                     from src.ui.common_widgets import FramelessMessageBox
                     msg = FramelessMessageBox(self)
@@ -346,10 +335,38 @@ class LMImportMixin:
                         self, _("Password Required"),
                         _("Enter password for {file}:").format(file=os.path.basename(source_path)),
                         mode=QLineEdit.EchoMode.Password,
-                        history=history
+                        history=history,
+                        allow_auto_try=True if history else False
                     )
                     if not ok:
                         return False
+                    
+                    # Handle Auto-Try Request
+                    if pwd == "<AUTO_TRY>":
+                         self.logger.info("User requested Brute Force from History...")
+                         found = False
+                         for h_pwd in history:
+                             try:
+                                 with py7zr.SevenZipFile(source_path, mode='r', password=h_pwd) as z:
+                                     z.extractall(path=dest_path)
+                                 self.logger.info(f"Auto-unlocked with history password.")
+                                 self._save_password_history(h_pwd)
+                                 # Move to top happens in save
+                                 found = True
+                                 break
+                             except Exception:
+                                 continue
+                         
+                         if found:
+                             return True
+                         else:
+                             from src.ui.common_widgets import FramelessMessageBox
+                             msg = FramelessMessageBox(self)
+                             msg.setWindowTitle(_("Failed"))
+                             msg.setText(_("No valid password found in history."))
+                             msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                             msg.exec()
+                             continue # Re-prompt
                     
                     try:
                         with py7zr.SevenZipFile(source_path, mode='r', password=pwd) as z:
@@ -396,11 +413,41 @@ class LMImportMixin:
                         self, _("Password Required"),
                         _("Enter password for {file}:").format(file=os.path.basename(source_path)),
                         mode=QLineEdit.EchoMode.Password,
-                        history=history
+                        history=history,
+                        allow_auto_try=True if history else False
                     )
                     if not ok:
                         return False
-                    
+
+                    # Handle Auto-Try Request
+                    if pwd == "<AUTO_TRY>":
+                         self.logger.info("User requested Brute Force from History (RAR)...")
+                         found = False
+                         for h_pwd in history:
+                             try:
+                                with rarfile.RarFile(source_path) as rf:
+                                    rf.setpassword(h_pwd)
+                                    rf.extractall(dest_path)
+                                self.logger.info(f"Auto-unlocked with history password.")
+                                self._save_password_history(h_pwd)
+                                found = True
+                                break
+                             except (rarfile.PasswordRequired, rarfile.BadRarFile):
+                                continue
+                             except Exception:
+                                continue
+                         
+                         if found: 
+                             return True
+                         else:
+                             from src.ui.common_widgets import FramelessMessageBox
+                             msg = FramelessMessageBox(self)
+                             msg.setWindowTitle(_("Failed"))
+                             msg.setText(_("No valid password found in history."))
+                             msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                             msg.exec()
+                             continue
+
                     try:
                         with rarfile.RarFile(source_path) as rf:
                             rf.setpassword(pwd)
@@ -459,11 +506,36 @@ class LMImportMixin:
                                 self, _("Password Required"),
                                 _("Enter password for {file} (External 7-Zip):").format(file=os.path.basename(source_path)),
                                 mode=QLineEdit.EchoMode.Password,
-                                history=history
+                                history=history,
+                                allow_auto_try=True if history else False
                             )
                             if not ok:
                                 return False
                             
+                            # Handle Auto-Try Request
+                            if pwd == "<AUTO_TRY>":
+                                 self.logger.info("User requested Brute Force from History (Ext 7z)...")
+                                 found = False
+                                 for h_pwd in history:
+                                     cmd_try = cmd + [f'-p{h_pwd}']
+                                     res_try = subprocess.run(cmd_try, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                                     if res_try.returncode == 0:
+                                         self.logger.info(f"Auto-unlocked with history password.")
+                                         self._save_password_history(h_pwd)
+                                         found = True
+                                         break
+                                 
+                                 if found:
+                                     return True
+                                 else:
+                                     from src.ui.common_widgets import FramelessMessageBox
+                                     msg = FramelessMessageBox(self)
+                                     msg.setWindowTitle(_("Failed"))
+                                     msg.setText(_("No valid password found in history."))
+                                     msg.setStandardButtons(FramelessMessageBox.StandardButton.Ok)
+                                     msg.exec()
+                                     continue
+
                             # Retry with password
                             cmd_pwd = cmd + [f'-p{pwd}']
                             res_retry = subprocess.run(cmd_pwd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)

@@ -2920,3 +2920,16 @@ msgstr "パスワード:"
 msgid "Show/Hide Password"
 msgstr "パスワードを表示/非表示"
 
+
+msgid "Try All Passwords (Brute Force)"
+msgstr "パスワード履歴を総当たり (自動試行)"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "No valid password found in history."
+msgstr "履歴内に有効なパスワードが見つかりませんでした。"
+
+msgid "Open Explorer"
+msgstr "エクスプローラーを開く"
+
