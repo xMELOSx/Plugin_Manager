@@ -44,9 +44,9 @@ class PasswordListDialog(FramelessDialog):
         top_layout.addWidget(QLabel(_("Stored Passwords:")))
         top_layout.addStretch()
         
-        self.toggle_btn = QPushButton("👁")
+        self.toggle_btn = StyledButton("👁", style_type="Gray")
         self.toggle_btn.setCheckable(True)
-        self.toggle_btn.setFixedSize(30, 30)
+        self.toggle_btn.setFixedSize(40, 30)
         self.toggle_btn.setToolTip(_("Show/Hide Passwords"))
         self.toggle_btn.toggled.connect(self._toggle_visibility)
         top_layout.addWidget(self.toggle_btn)
