@@ -156,8 +156,9 @@ class LMDisplayMixin:
             t_end = time.perf_counter()
             logging.info(f"[DisplayMode] Cat toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
         
-        # Phase 57: Reset display mode changing flag
-        self._display_mode_changing = False
+        # Phase 57: Reset display mode changing flag with delay to skip debounced refresh
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._reset_display_mode_flag)
 
     def _toggle_pkg_display_mode(self, mode, force=False):
         """Toggle package display mode button - click again to deselect and return to default."""
@@ -241,7 +242,12 @@ class LMDisplayMixin:
             t_end = time.perf_counter()
             logging.info(f"[DisplayMode] Pkg toggle to '{apply_mode}' for {count} items took {(t_end - t_start):.4f}s (WidgetUpdate: {(t_mid-t_start):.4f}s, Layout: {(t_end-t_mid):.4f}s)")
         
-        # Phase 57: Reset display mode changing flag
+        # Phase 57: Reset display mode changing flag with delay to skip debounced refresh
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(200, self._reset_display_mode_flag)
+
+    def _reset_display_mode_flag(self):
+        """Phase 57: Helper to reset display mode changing flag."""
         self._display_mode_changing = False
 
     def _toggle_show_hidden(self):

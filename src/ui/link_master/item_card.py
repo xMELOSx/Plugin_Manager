@@ -652,8 +652,18 @@ class ItemCard(QFrame):
         self.is_partial = (self.link_status == 'partial')
         
         # 2. ALSO True if Custom Mode returned is_intentional=True (calculated based on real exclusions)
-        # Phase 56: Explicitly update self.is_intentional from status to ensure fresh state
-        self.is_intentional = status.get('is_intentional', False)
+        # Phase 57: CONSERVATIVE UPDATE - Only set is_intentional to True if scanner explicitly returns True.
+        # If scanner returns False (possibly due to wrong deploy_rule), preserve existing value.
+        # This prevents the orange status from being lost during display mode changes.
+        # EXCEPTION: If status is 'none' (unlinked), always reset is_intentional to False.
+        scanner_is_intentional = status.get('is_intentional', False)
+        if self.link_status == 'none':
+            # Unlinked - definitely not intentional partial anymore
+            self.is_intentional = False
+        elif scanner_is_intentional:
+            self.is_intentional = True
+        # For linked/partial with False, preserve existing value (don't overwrite True with False)
+        
         if not self.is_partial and self.is_intentional:
              self.is_partial = True
              
@@ -661,6 +671,7 @@ class ItemCard(QFrame):
         if not self.is_partial and deploy_rule == 'custom' and self.link_status != 'conflict':
              if rules_dict.get('exclude') or rules_dict.get('overrides') or rules_dict.get('rename'):
                  self.is_partial = True
+                 self.is_intentional = True  # Phase 57: Also set intentional for visual consistency
 
         # Phase 28: Sync status to DB for fast total count lookups
         if self.db:
