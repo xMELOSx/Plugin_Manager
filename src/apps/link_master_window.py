@@ -1742,7 +1742,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 # Check if exists, if not, create entry with folder_type='category'
                 # Level 1 and Level 2 are Categories, Level 3+ are Packages
                 if not self.db.get_folder_config(rel):
-                    self.db.update_folder_display_config(rel, folder_type='category')
+                    # Phase 55: Fix Default style to None (App Default)
+                    self.db.update_folder_display_config(rel, folder_type='category', display_style=None)
                     registered_count += 1
                     self.logger.debug(f"Registered L1: {rel}")
                 
@@ -1753,7 +1754,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         if not os.path.isdir(sub_path): continue
                         sub_rel = (rel + "/" + sub).replace('\\', '/')
                         if not self.db.get_folder_config(sub_rel):
-                            self.db.update_folder_display_config(sub_rel, folder_type='category')
+                            # Phase 55: Fix Default style to None (App Default)
+                            # Explicitly set None to be safe, though DB default is likely None.
+                            self.db.update_folder_display_config(sub_rel, folder_type='category', display_style=None)
                             registered_count += 1
                             self.logger.debug(f"Registered L2: {sub_rel}")
                 except: pass
@@ -2867,7 +2870,14 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 # Else: _sync_app_data_to_ui updated the ItemData and Text in place.
                         
                 Toast.show_toast(self, _("Application saved successfully"), preset="success")
-                self._manual_rebuild()
+                
+                # Phase 42b: Stop the Madness.
+                # _manual_rebuild() triggers a full scan/refresh which freezes the UI.
+                # We already synced the UI via _sync_app_data_to_ui.
+                # If there are changes that REQUIRE a scan (like root folder change),
+                # the user should probably be prompted or it should happen transparently in background.
+                # But for settings updates, this double-hammer is killing the UX.
+                # self._manual_rebuild()  <-- REMOVED
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 
