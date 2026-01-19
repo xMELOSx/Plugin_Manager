@@ -2175,7 +2175,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         # print(f"[Profiling] Metadata sync failed for {getattr(widget, 'path', '???')}: {e}")
                         pass
 
-        self._refresh_category_cards()  # Updates category borders + package borders
+        self._request_refresh_category_cards()  # Updates category borders + package borders (debounced)
     
     def _rebuild_current_view(self):
         """Force full widget reconstruction. Use only when items are added/removed/moved.

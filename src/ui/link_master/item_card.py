@@ -139,7 +139,7 @@ class ItemCard(QFrame):
         self.lib_name = lib_name   # Phase 30: Library name for grouping
         self.has_category_conflict = False # Phase 35: Category deployment blocked by logic conflict
         self.missing_samples = [] # Phase 51: Sampled missing files for Partial status
-        self.is_intentional = False # Phase 51: Intentional partial (Custom/Tree)
+        # Note: self.is_intentional is already set above from kwargs (line 126)
         self.has_intentional_children = False # Hierarchy variant
 
         # Phase 31: Visibility Toggles (Per mode)
