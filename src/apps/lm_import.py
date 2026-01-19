@@ -40,35 +40,27 @@ class LMImportMixin:
         return []
 
     def _save_password_history(self, password):
-        """Save successful password to history (move to top)."""
+        """Phase 19: Adds a password to the history for the CURRENT application."""
         try:
             if not password: return
+            app_data = self.app_combo.currentData()
+            if not app_data: return
             
             history = self._get_password_history()
             if password in history:
                 history.remove(password)
             history.insert(0, password)
             
-            # Update current app data in memory
-            if hasattr(self, 'app_combo') and self.app_combo.count() > 0:
-                data = self.app_combo.currentData()
-                if data:
-                    new_json = json.dumps(history)
-                    data['password_list'] = new_json
-                    
-                    # Persist to DB
-                    if hasattr(self, 'db'):
-                        # Using db.update_app from LinkMasterDB/LinkMasterRegistry
-                        # Hint: self.db is LinkMasterDB, but app updates usually go to LinkMasterRegistry (global)
-                        # or self.registry if available.
-                        # Check where 'update_app' is available.
-                        # LinkMasterWindow inherits from Mixins.
-                        # Usually self.registry is the one.
-                        if hasattr(self, 'registry'):
-                             self.registry.update_app(data['id'], {'password_list': new_json})
-                        else:
-                             # Fallback or log
-                             self.logger.warning("Registry not available to save password history.")
+            new_json = json.dumps(history)
+            
+            # Phase 28/43: Update Registry AND UI Cache immediately
+            if hasattr(self, 'registry'):
+                self.registry.update_app(app_data['id'], {"password_list": new_json})
+            
+            if hasattr(self, '_sync_app_data_to_ui'):
+                self._sync_app_data_to_ui(app_data['id'], {"password_list": new_json})
+                
+            self.logger.info(f"Saved password to history for {app_data['name']}")
         except Exception as e:
             self.logger.error(f"Failed to save password history: {e}")
 
@@ -490,16 +482,19 @@ class LMImportMixin:
                     si = subprocess.STARTUPINFO()
                     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     
-                    # Ensure stdin is closed to prevent hangs on password prompt
-                    result = subprocess.run(cmd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                    # Capture BOTH stdout and stderr
+                    result = subprocess.run(cmd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     
                     if result.returncode == 0:
                         return True
                     
-                    # Check for password error in stderr
-                    # 7-Zip usually prints "Wrong password" or "Enter password" if failed
-                    err_out = result.stderr
-                    if "Wrong password" in err_out or "Enter password" in err_out or "Can not open encrypted archive" in err_out:
+                    # 7-Zip Return Codes:
+                    # 0: OK, 1: Warning, 2: Fatal Error, 7: Command line error, 8: Memory error, 255: User stopped
+                    # Password errors usually result in code 2.
+                    all_out = (result.stdout + result.stderr).lower()
+                    is_pwd_err = any(x in all_out for x in ["password", "encrypted", "wrong", "パスワード", "暗号"])
+                    
+                    if is_pwd_err or result.returncode == 2:
                          from PyQt6.QtWidgets import QLineEdit
                          from src.ui.common_widgets import FramelessInputDialog
                          
@@ -521,8 +516,8 @@ class LMImportMixin:
                                  self.logger.info("User requested Brute Force from History (Ext 7z)...")
                                  found = False
                                  for h_pwd in history:
-                                     cmd_try = cmd + [f'-p{h_pwd}']
-                                     res_try = subprocess.run(cmd_try, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                                     cmd_try = [exe, 'x', source_path, f'-o{dest_path}', f'-p{h_pwd}', '-y']
+                                     res_try = subprocess.run(cmd_try, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                                      if res_try.returncode == 0:
                                          self.logger.info(f"Auto-unlocked with history password.")
                                          self._save_password_history(h_pwd)
@@ -541,20 +536,19 @@ class LMImportMixin:
                                      continue
 
                             # Retry with password
-                            cmd_pwd = cmd + [f'-p{pwd}']
-                            res_retry = subprocess.run(cmd_pwd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                            cmd_pwd = [exe, 'x', source_path, f'-o{dest_path}', f'-p{pwd}', '-y']
+                            res_retry = subprocess.run(cmd_pwd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                             
                             if res_retry.returncode == 0:
                                 self._save_password_history(pwd)
                                 return True
                             
-                            err_retry = res_retry.stderr
-                            if "Wrong password" in err_retry:
+                            out_retry = (res_retry.stdout + res_retry.stderr).lower()
+                            if any(x in out_retry for x in ["wrong", "password", "パスワード"]):
                                 continue
                             else:
                                 break # Other error
                                 
- 
                     continue # Try next executable or fail
                 except Exception as e:
                     self.logger.error(f"External 7-Zip execution failed: {e}")
@@ -571,16 +565,73 @@ class LMImportMixin:
                 try:
                     self.logger.info(f"Attempting extraction with WinRAR: {exe}")
                     # WinRAR x -ibck -inul "source" "dest\"
-                    # Note: WinRAR expects dest folder to end with backslash for extraction to folder
                     dest_arg = dest_path if dest_path.endswith(os.sep) else dest_path + os.sep
                     cmd = [exe, 'x', '-ibck', '-inul', source_path, dest_arg]
                     
                     si = subprocess.STARTUPINFO()
                     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     
-                    subprocess.run(cmd, check=True, startupinfo=si)
-                    return True
-                except subprocess.CalledProcessError:
+                    result = subprocess.run(cmd, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    
+                    if result.returncode == 0:
+                        return True
+                        
+                    # WinRAR Exit Codes:
+                    # 0: Success, 1: Warning, 2: Fatal error, 11: Locked/Wrong password
+                    all_out = (result.stdout + result.stderr).lower()
+                    is_pwd_err = (result.returncode == 11) or any(x in all_out for x in ["password", "encrypted", "locked", "パスワード"])
+
+                    if is_pwd_err:
+                         from PyQt6.QtWidgets import QLineEdit
+                         from src.ui.common_widgets import FramelessInputDialog
+                         
+                         history = self._get_password_history()
+                         
+                         while True:
+                            pwd, ok = FramelessInputDialog.getText(
+                                self, _("Password Required"),
+                                _("Enter password for {file} (External WinRAR):").format(file=os.path.basename(source_path)),
+                                mode=QLineEdit.EchoMode.Password,
+                                history=history,
+                                allow_auto_try=True if history else False
+                            )
+                            if not ok:
+                                return False
+                            
+                            # Handle Auto-Try Request
+                            if pwd == "<AUTO_TRY>":
+                                 self.logger.info("User requested Brute Force from History (Ext WinRAR)...")
+                                 found = False
+                                 for h_pwd in history:
+                                     # winrar uses -p<pwd>
+                                     cmd_try = [exe, 'x', '-ibck', '-inul', f'-p{h_pwd}', source_path, dest_arg]
+                                     res_try = subprocess.run(cmd_try, startupinfo=si)
+                                     if res_try.returncode == 0:
+                                         self.logger.info(f"Auto-unlocked with history password.")
+                                         self._save_password_history(h_pwd)
+                                         found = True
+                                         break
+                                 
+                                 if found:
+                                     return True
+                                 continue # fail message already shown? No, let's keep it consistent
+
+                            # Retry with password
+                            cmd_pwd = [exe, 'x', '-ibck', '-inul', f'-p{pwd}', source_path, dest_arg]
+                            res_retry = subprocess.run(cmd_pwd, startupinfo=si)
+                            if res_retry.returncode == 0:
+                                self._save_password_history(pwd)
+                                return True
+                            
+                            if res_retry.returncode == 11:
+                                continue
+                            else:
+                                break
+
+                except Exception as e:
+                    self.logger.error(f"External WinRAR execution failed: {e}")
                     continue
+        
+        return False
                     
         return False

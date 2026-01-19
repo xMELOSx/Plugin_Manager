@@ -22,7 +22,7 @@ class LMDeploymentOpsMixin:
     def _batch_deploy_selected(self):
         """Deploys all selected items."""
         if not self.selected_paths: return
-        self.logger.info(f"Batch Deploy: {len(self.selected_paths)} items")
+        self.logger.debug(f"Batch Deploy: {len(self.selected_paths)} items")
         
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -46,7 +46,7 @@ class LMDeploymentOpsMixin:
     def _batch_separate_selected(self):
         """Removes links for all selected items."""
         if not self.selected_paths: return
-        self.logger.info(f"Batch Separate: {len(self.selected_paths)} items")
+        self.logger.debug(f"Batch Separate: {len(self.selected_paths)} items")
         
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -70,7 +70,7 @@ class LMDeploymentOpsMixin:
     def _batch_category_deploy_selected(self):
         """Deploys all selected categories."""
         if not self.selected_paths: return
-        self.logger.info(f"Batch Category Deploy: {len(self.selected_paths)} items")
+        self.logger.debug(f"Batch Category Deploy: {len(self.selected_paths)} items")
         
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -90,7 +90,7 @@ class LMDeploymentOpsMixin:
     def _batch_category_unlink_selected(self):
         """Unlinks all selected categories."""
         if not self.selected_paths: return
-        self.logger.info(f"Batch Category Unlink: {len(self.selected_paths)} items")
+        self.logger.debug(f"Batch Category Unlink: {len(self.selected_paths)} items")
         
         app_data = self.app_combo.currentData()
         if not app_data: return
@@ -120,7 +120,7 @@ class LMDeploymentOpsMixin:
         if not self.storage_root: return
         try:
             rel_path = os.path.relpath(abs_path, self.storage_root)
-            self.logger.info(f"Redeploy requested for {rel_path}")
+            self.logger.debug(f"Redeploy requested for {rel_path}")
             self._deploy_single(rel_path, update_ui=True, force_sweep=True)
         except ValueError:
             self.logger.warning(f"Could not relativize path for redeploy: {abs_path}")
@@ -300,7 +300,7 @@ class LMDeploymentOpsMixin:
                         return False
                     
                     # Unlink Category
-                    self.logger.info(f"[Swap] Unlinking parent category: {parent_rel}")
+                    self.logger.debug(f"[Swap] Unlinking parent category: {parent_rel}")
                     self._unlink_single(parent_rel, update_ui=False)
                     # Clear DB status
                     self.db.update_folder_display_config(parent_rel, category_deploy_status=None)
@@ -397,7 +397,7 @@ class LMDeploymentOpsMixin:
         should_proactive_sweep = force_sweep or last_status in ('linked', 'partial', 'none')
         
         if should_proactive_sweep:
-            self.logger.info(f"[Deploy-Sweep] Transitioning {rel_path} (Rule: {deploy_rule}, Force: {force_sweep}). Performing cleanup.")
+            self.logger.debug(f"[Deploy-Sweep] Transitioning {rel_path} (Rule: {deploy_rule}, Force: {force_sweep}). Performing cleanup.")
             try:
                 target_roots = [app_data.get(k) for k in ['target_root', 'target_root_2', 'target_root_3'] if app_data.get(k)]
                 failed_paths = []
@@ -410,7 +410,7 @@ class LMDeploymentOpsMixin:
                 )
                 
                 if sweep_occured:
-                    self.logger.info(f"[Deploy-Sweep] Cleaned up legacy files/links for {rel_path}")
+                    self.logger.debug(f"[Deploy-Sweep] Cleaned up legacy files/links for {rel_path}")
                     from src.ui.toast import Toast
                     active_win = QApplication.activeWindow() or (self.window() if hasattr(self, 'window') else self)
                     Toast.show_toast(active_win, _("Transition sync: Legacy files cleaned up"), preset="info")
@@ -500,7 +500,7 @@ class LMDeploymentOpsMixin:
                         msg_box.setStandardButtons(FramelessMessageBox.StandardButton.Yes | FramelessMessageBox.StandardButton.No)
                         reply = msg_box.exec()
                         if reply == FramelessMessageBox.StandardButton.Yes:
-                            self.logger.info(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
+                            self.logger.debug(f"[LibSwitch] Unlinking {other_path} to switch to {rel_path}")
                             self._unlink_single(other_path, update_ui=True)
                         else:
                             self._last_deploy_cancelled = True
@@ -1416,6 +1416,13 @@ class LMDeploymentOpsMixin:
                     card = item.widget()
                     if hasattr(card, 'path'):
                         rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
+                        
+                        # Phase 42 Fix: STRICT FILTERING
+                        # Only update if explicitly requested in paths/overrides
+                        # Otherwise we might revert siblings to DB state which might be stale during batch ops
+                        if rel not in overrides and rel not in paths:
+                            continue
+
                         config = self.db.get_folder_config(rel) or {}
                         
                         # Apply Overrides
@@ -1438,6 +1445,11 @@ class LMDeploymentOpsMixin:
                     card = item.widget()
                     if hasattr(card, 'path'):
                         rel = os.path.relpath(card.path, self.storage_root).replace('\\', '/')
+                        
+                        # Phase 42 Fix: STRICT FILTERING
+                        if rel not in overrides and rel not in paths:
+                            continue
+
                         config = self.db.get_folder_config(rel) or {}
                         
                         # Apply Overrides

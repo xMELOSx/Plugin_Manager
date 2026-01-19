@@ -134,6 +134,13 @@ class LMNavigationMixin:
                 config = self.db.get_folder_config(accumulated)
                 display_name = (config.get('display_name') if config else None) or part
                 
+                # Strip Private Use Area characters from the start (used for sorting)
+                while display_name and '\ue000' <= display_name[0] <= '\uf8ff':
+                    display_name = display_name[1:]
+                # Also strip ONE immediately following underscore if present
+                if display_name.startswith('_'):
+                    display_name = display_name[1:]
+                
                 lbl = ClickableLabel(display_name, parent=self)
                 lbl.setStyleSheet("color: #ddd; font-size: 13px;")
                 lbl.clicked.connect(lambda checked=False, p=accumulated: 

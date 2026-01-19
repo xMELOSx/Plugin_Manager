@@ -353,7 +353,7 @@ class Deployer:
         if os.path.isdir(target_link_path):
             
             if source_path_hint:
-                self.logger.info(f"Cleaning up directory-based (Partial) deployment: {target_link_path}")
+                self.logger.debug(f"Cleaning up directory-based (Partial) deployment: {target_link_path}")
                 self.cleanup_links_in_target(target_link_path, source_path_hint, recursive=True, restore_backups=restore_backups)
                 # If empty after cleanup, remove it
                 # 🚨 Safety: NEVER remove target_link_path if it looks like a search root (< 5 path parts)
@@ -1237,7 +1237,7 @@ class Deployer:
                     try:
                         if not os.listdir(root):
                             os.rmdir(root)
-                            self.logger.info(f"Cleaned empty subfolder: {root}")
+                            self.logger.debug(f"Cleaned empty subfolder: {root}")
                     except: pass
         else:
             # Standard Top-level scan
@@ -1276,7 +1276,7 @@ class Deployer:
         import time
         t0 = time.perf_counter()
         source_root_norm = self._normalize_path(source_root).rstrip('\\/')
-        self.logger.info(f"Sweeping for orphaned links pointing to: {source_root_norm}")
+        self.logger.debug(f"Sweeping for orphaned links pointing to: {source_root_norm}")
         
         preserve_paths_norm = {self._normalize_path(p) for p in (preserve_paths or []) if p}
         
@@ -1414,7 +1414,7 @@ class Deployer:
             except: pass
 
         elapsed = time.perf_counter() - t0
-        self.logger.info(f"Sweep completed (Optimized): Removed {removed_count} items, {dirs_removed} dirs in {elapsed:.3f}s")
+        self.logger.debug(f"Sweep completed (Optimized): Removed {removed_count} items, {dirs_removed} dirs in {elapsed:.3f}s")
         return removed_count > 0, failed_paths
 
     def _is_link_to_source(self, path: str, source_root_norm: str) -> bool:

@@ -284,6 +284,20 @@ class LMScanHandlerMixin:
         is_package = r.get('is_package', False)
         use_pkg_settings = (is_package or context == "contents")
         
+        # Resolve Name (Auto-hide PUA prefix if not manually set)
+        raw_name = r['item']['name']
+        display_name = item_config.get('display_name')
+        if not display_name:
+            display_name = raw_name
+            # Strip Private Use Area characters from the start (used for sorting)
+            # Range: \uE000 - \uF8FF (BMP Private Use Area)
+            while display_name and '\ue000' <= display_name[0] <= '\uf8ff':
+                display_name = display_name[1:]
+            
+            # Also strip ONE immediately following underscore if present
+            if display_name.startswith('_'):
+                display_name = display_name[1:]
+        
         # Resolve Image
         img_path = None
         cfg_img = item_config.get('image_path')
@@ -293,7 +307,7 @@ class LMScanHandlerMixin:
             img_path = os.path.join(r['abs_path'], r['thumbnail'])
 
         card.update_data(
-            name=item_config.get('display_name') or r['item']['name'],
+            name=display_name,
             path=r['abs_path'],
             image_path=img_path,
             is_registered=(item_rel in configs['folder_configs']),
@@ -749,7 +763,7 @@ class LMScanHandlerMixin:
                         local_link_count += 1
             self.pkg_link_count_label.setText(_("Link Count In Category: {count}").format(count=local_link_count))
 
-    def _manual_rebuild(self):
+    def _manual_rebuild_db_cache(self):
         """Phase 28: Full recursive scan to re-validate and cache link statuses in DB."""
         app_data = self.app_combo.currentData()
         if not app_data: return

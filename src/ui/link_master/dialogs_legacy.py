@@ -105,9 +105,26 @@ class AppRegistrationDialog(FramelessDialog):
             self._fill_data()
         
     def _init_ui(self):
+        from PyQt6.QtWidgets import QScrollArea
+        
+        # Main layout is managed by FramelessDialog
+        # dialog_layout = QVBoxLayout(self) # Removed redundant layout creation
+        # dialog_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Scroll Area Setup
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+        
         content_widget = QWidget()
-        layout = QVBoxLayout(content_widget)
+        content_widget.setStyleSheet("background: transparent;")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(20, 20, 20, 10)
+        content_layout.setSpacing(15)
+        
         form = QFormLayout()
+        form.setSpacing(12)
         
         # Name
         self.name_edit = ProtectedLineEdit()
@@ -145,24 +162,19 @@ class AppRegistrationDialog(FramelessDialog):
             layout.addWidget(rule_combo)
             form.addRow(label, layout)
 
-        # Phase 40: Unified Target Labels
-        # Target A (Primary) -> プライマリ
+        # Target Configs
         create_target_row(_("Primary"), "target_edit", "target_btn", "deploy_rule_combo", self._browse_target)
-        
-        # Target B (Optional) -> セカンダリ（任意）
         create_target_row(_("Secondary (Optional)"), "target_edit_2", "target_btn_2", "deploy_rule_combo_b", self._browse_target_2)
-
-        # Target C (Optional) -> ターシャリ（任意）
         create_target_row(_("Tertiary (Optional)"), "target_edit_3", "target_btn_3", "deploy_rule_combo_c", self._browse_target_3)
 
         # Default Folder Property Settings Group (Misc)
         defaults_group = QGroupBox(_("Other Default Settings"))
-        # Inherit styling from DialogStyles.COMMON via parent
         defaults_form = QFormLayout()
+        defaults_form.setSpacing(10)
         
-        # Tree Skip (Relocated to top of group)
+        # Tree Skip
         self.default_skip_levels_spin = StyledSpinBox()
-        self.default_skip_levels_spin.setRange(0, 5) # Default config defines the 'default', so 0-5 is appropriate
+        self.default_skip_levels_spin.setRange(0, 5)
         self.default_skip_levels_spin.setSuffix(_(" levels"))
         defaults_form.addRow(_("Tree Skip:"), self.default_skip_levels_spin)
 
@@ -180,11 +192,14 @@ class AppRegistrationDialog(FramelessDialog):
 
         # Style Settings
         self.cat_style_combo = StyledComboBox()
+        # Phase 33: "Global Default" removed from App Settings as it creates a null reference for children.
+        # App Settings must define the concrete default for the hierarchy.
         for s, label in [("image", _("Image")), ("text", _("Text")), ("image_text", _("Image + Text"))]:
             self.cat_style_combo.addItem(label, s)
         defaults_form.addRow(_("Category Style:"), self.cat_style_combo)
 
         self.pkg_style_combo = StyledComboBox()
+        # "Global Default" removed here too.
         for s, label in [("image", _("Image")), ("text", _("Text")), ("image_text", _("Image + Text"))]:
             self.pkg_style_combo.addItem(label, s)
         defaults_form.addRow(_("Package Style:"), self.pkg_style_combo)
@@ -192,8 +207,7 @@ class AppRegistrationDialog(FramelessDialog):
         defaults_group.setLayout(defaults_form)
         form.addRow(defaults_group)
 
-        
-        # Cover Image with Edit Region support
+        # Cover Image
         self.cover_edit = ProtectedLineEdit()
         self.cover_edit.setPlaceholderText(_("Optional: Select cover image for app"))
         self.cover_btn = QPushButton(_(" Browse "))
@@ -201,108 +215,87 @@ class AppRegistrationDialog(FramelessDialog):
         self.cover_crop_btn = QPushButton(_("✂ Edit Region"))
         self.cover_crop_btn.clicked.connect(self._crop_cover)
         self.cover_crop_btn.setToolTip(_("Select custom region from image"))
-        cover_layout = QHBoxLayout()
-        cover_layout.addWidget(self.cover_edit)
-        cover_layout.addWidget(self.cover_btn)
-        
         self.cover_paste_btn = QPushButton(_("📋 Paste"))
         self.cover_paste_btn.clicked.connect(self._paste_cover_from_clipboard)
         self.cover_paste_btn.setToolTip(_("Paste image from clipboard"))
-        cover_layout.addWidget(self.cover_paste_btn)
         
+        cover_layout = QHBoxLayout()
+        cover_layout.addWidget(self.cover_edit)
+        cover_layout.addWidget(self.cover_btn)
+        cover_layout.addWidget(self.cover_paste_btn)
         cover_layout.addWidget(self.cover_crop_btn)
         form.addRow(_("Cover Image:"), cover_layout)
         
-        # Favorite System: ★ Toggle + Score
+        # Favorite & Score
         fav_score_layout = QHBoxLayout()
-        fav_score_layout.addStretch()
-        
         self.favorite_btn = QPushButton(_("☆Favorite"))
         self.favorite_btn.setCheckable(True)
         self.favorite_btn.setFixedWidth(120)
         self.favorite_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.favorite_btn.setStyleSheet("""
             QPushButton { 
-                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px;
-                text-align: center; padding: 4px 8px; min-width: 80px;
+                background-color: transparent; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 4px 8px; min-width: 80px;
             }
             QPushButton:hover { background-color: #444; }
             QPushButton:checked { color: #f1c40f; font-weight: bold; border-color: #f1c40f; }
         """)
         self.favorite_btn.toggled.connect(lambda checked: self.favorite_btn.setText(_("★Favorite") if checked else _("☆Favorite")))
-        fav_score_layout.addWidget(self.favorite_btn)
         
-        fav_score_layout.addSpacing(15)
         score_label = QLabel(_("Score:"))
-        fav_score_layout.addWidget(score_label)
-        
         self.score_dial = CompactDial(self, digits=3, show_arrows=True)
+        
+        fav_score_layout.addWidget(self.favorite_btn)
+        fav_score_layout.addSpacing(15)
+        fav_score_layout.addWidget(score_label)
         fav_score_layout.addWidget(self.score_dial)
         fav_score_layout.addStretch()
         form.addRow("", fav_score_layout)
         
-        # App Preview Label with Image Drop support
+        # Preview Label
         self.preview_label = ImageDropLabel(self)
         self.preview_label.setFixedSize(160, 120)
         self.preview_label.image_dropped.connect(self._on_preview_image_dropped)
         form.addRow(_("Preview:"), self.preview_label)
 
-        # Executables Management (Phase 30)
-        self.exe_btn = QPushButton(_("🚀 Manage Executables..."))
-        self.exe_btn.clicked.connect(self._open_executables_manager)
-        self.exe_btn.setStyleSheet("background-color: #d35400; color: white;")
-        
-        self.exe_count_label = QLabel("(0)")
-        self.exe_count_label.setStyleSheet("color: #888;")
-        
-        exe_layout = QHBoxLayout()
-        exe_layout.addWidget(self.exe_btn)
-        exe_layout.addWidget(self.exe_count_label)
-        exe_layout.addStretch()
-        form.addRow(_("Executables:"), exe_layout)
-        
-        # URL Management (Phase 30)
-        self.url_btn = QPushButton(_("🌐 Manage URLs..."))
-        self.url_btn.clicked.connect(self._open_url_manager)
-        self.url_btn.setStyleSheet("background-color: #2980b9; color: white;")
-        
-        self.url_count_label = QLabel("(0)")
-        self.url_count_label.setStyleSheet("color: #888;")
-        
-        url_layout = QHBoxLayout()
-        url_layout.addWidget(self.url_btn)
-        url_layout.addWidget(self.url_count_label)
-        url_layout.addStretch()
-        form.addRow(_("URLs:"), url_layout)
+        # Managers
+        def create_manager_row(label_text, btn_text, color, count_attr, slot):
+            layout = QHBoxLayout()
+            btn = QPushButton(btn_text)
+            btn.clicked.connect(slot)
+            btn.setStyleSheet(f"background-color: {color}; color: white; min-width: 150px;")
+            count_lbl = QLabel("(0)")
+            count_lbl.setStyleSheet("color: #888;")
+            setattr(self, count_attr, count_lbl)
+            layout.addWidget(btn)
+            layout.addWidget(count_lbl)
+            layout.addStretch()
+            form.addRow(label_text, layout)
 
-        # Password Management (Phase 45: Per-App Password List)
-        self.pwd_btn = QPushButton(_("🔑 Manage Passwords..."))
-        self.pwd_btn.clicked.connect(self._open_password_manager)
-        self.pwd_btn.setStyleSheet("background-color: #8e44ad; color: white;")
+        create_manager_row(_("Executables:"), _("🚀 Manage Executables..."), "#d35400", "exe_count_label", self._open_executables_manager)
+        create_manager_row(_("URLs:"), _("🌐 Manage URLs..."), "#2980b9", "url_count_label", self._open_url_manager)
+        create_manager_row(_("Passwords:"), _("🔑 Manage Passwords..."), "#8e44ad", "pwd_count_label", self._open_password_manager)
         
-        self.pwd_count_label = QLabel("(0)")
-        self.pwd_count_label.setStyleSheet("color: #888;")
-        
-        pwd_layout = QHBoxLayout()
-        pwd_layout.addWidget(self.pwd_btn)
-        pwd_layout.addWidget(self.pwd_count_label)
-        pwd_layout.addStretch()
-        form.addRow(_("Passwords:"), pwd_layout)
-        
-        # Hidden field to store password JSON
+        # Hidden password field
         self.password_list_json = self.app_data.get('password_list', '[]') if self.app_data else '[]'
-        self.pwd_list_edit = ProtectedLineEdit() # Hidden storage
+        self.pwd_list_edit = ProtectedLineEdit()
         self.pwd_list_edit.setVisible(False)
         self.pwd_list_edit.setText(self.password_list_json)
         self._update_pwd_count()
         
-        layout.addLayout(form)
-        layout.addStretch()
+        content_layout.addLayout(form)
+        content_layout.addStretch()
         
-        # Actions
-        btn_layout = QHBoxLayout()
+        scroll.setWidget(content_widget)
+        # Use FramelessDialog's helper to set content
+        self.set_content_widget(scroll)
+        # dialog_layout.addWidget(scroll) # Removed
+
+        # Footer Actions (Static Bottom)
+        footer_widget = QWidget()
+        footer_widget.setStyleSheet("background-color: #2b2b2b; border-top: 1px solid #444;")
+        btn_layout = QHBoxLayout(footer_widget)
+        btn_layout.setContentsMargins(20, 10, 20, 10)
         
-        # Unregister Button (Phase 32)
         if self.app_data:
             self.unregister_btn = QPushButton(_("Unregister App"))
             self.unregister_btn.clicked.connect(self._on_unregister_clicked)
@@ -312,7 +305,7 @@ class AppRegistrationDialog(FramelessDialog):
 
         self.ok_btn = QPushButton(_("Save") if self.app_data else _("Register"))
         self.ok_btn.clicked.connect(self._on_save_clicked)
-        self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold;")
+        self.ok_btn.setStyleSheet("background-color: #2980b9; font-weight: bold; min-width: 100px;")
         
         self.cancel_btn = QPushButton(_("Cancel"))
         self.cancel_btn.clicked.connect(self.reject)
@@ -321,8 +314,8 @@ class AppRegistrationDialog(FramelessDialog):
         btn_layout.addWidget(self.ok_btn)
         btn_layout.addWidget(self.cancel_btn)
         
-        layout.addLayout(btn_layout)
-        self.set_content_widget(content_widget)
+        # Add to inherited content layout
+        self.content_layout.addWidget(footer_widget)
 
     def _on_unregister_clicked(self):
         """Confirm and set flag for deletion."""

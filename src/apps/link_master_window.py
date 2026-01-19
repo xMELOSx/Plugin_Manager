@@ -1465,24 +1465,29 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             QMessageBox.warning(self, "Error", f"Invalid target folder: {target_root}")
 
     def _load_apps(self):
-        apps = self.registry.get_apps()
-        # Sort: Favorites first by score desc, then others by name
-        favs = sorted([a for a in apps if a.get('is_favorite')], key=lambda x: x.get('score', 0), reverse=True)
-        others = sorted([a for a in apps if not a.get('is_favorite')], key=lambda x: x.get('name', ''))
-        sorted_apps = favs + others
-        
-        self.app_combo.clear()
-        self.app_combo.addItem("Select App...", None)
-        for app in sorted_apps:
-            display_name = f"★ {app['name']}" if app.get('is_favorite') else app['name']
-            self.app_combo.addItem(display_name, app)
+        # Block signals to prevent _on_app_changed from firing during population
+        self.app_combo.blockSignals(True)
+        try:
+            apps = self.registry.get_apps()
+            # Sort: Favorites first by score desc, then others by name
+            favs = sorted([a for a in apps if a.get('is_favorite')], key=lambda x: x.get('score', 0), reverse=True)
+            others = sorted([a for a in apps if not a.get('is_favorite')], key=lambda x: x.get('name', ''))
+            sorted_apps = favs + others
             
-        # Update quick switcher buttons in title bar
-        self._update_favorite_quick_switcher(favs)
-            
-        # Restore last opened state
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(100, self._restore_last_state)
+            self.app_combo.clear()
+            self.app_combo.addItem("Select App...", None)
+            for app in sorted_apps:
+                display_name = f"★ {app['name']}" if app.get('is_favorite') else app['name']
+                self.app_combo.addItem(display_name, app)
+                
+            # Update quick switcher buttons in title bar
+            self._update_favorite_quick_switcher(favs)
+                
+            # Restore last opened state
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self._restore_last_state)
+        finally:
+            self.app_combo.blockSignals(False)
 
     def _update_favorite_quick_switcher(self, fav_apps):
         """Update the quick switch buttons immediately after the title!"""
@@ -2556,16 +2561,27 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             try:
                 # Add to Registry
                 new_id = self.registry.add_app(data)
+                
+                # Reload Apps safely
                 self._load_apps()
                 
-                # Auto-select
+                # Auto-select without triggering multiple scans
+                self.app_combo.blockSignals(True)
+                target_idx = -1
                 for i in range(self.app_combo.count()):
                     item = self.app_combo.itemData(i)
                     if item and item.get('id') == new_id:
-                        self.app_combo.setCurrentIndex(i)
+                        target_idx = i
                         break
                 
-                # QMessageBox.information(self, "Success", f"Registered {data['name']}")
+                if target_idx != -1:
+                    self.app_combo.setCurrentIndex(target_idx)
+                self.app_combo.blockSignals(False)
+                
+                # Force manual trigger of _on_app_changed ONCE to start the scan
+                if target_idx != -1:
+                    self._on_app_changed(target_idx)
+                
                 Toast.show_toast(self, _("Application registered successfully"), preset="success")
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
@@ -2812,44 +2828,78 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                             self.logger.error(f"Failed to process app icon: {e}")
                             # Keep original path if fail
                 
-                # Update DB
+                # Update DB and Registry
                 self.registry.update_app(app_data['id'], data)
                 
-                # Phase 32: Reset Root Folder Config to ensure App Settings take precedence
-                try:
-                    if self.db:
-                        # Clear root display overrides
-                        # We utilize update_folder_config with explicit None/empty to remove overrides if the DB supports it,
-                        # or simply set them to match the new app defaults.
-                        # Best approach: If we could delete keys. But update_folder_config merges.
-                        # Let's check how update_folder_config handles None.
-                        # Assuming basic implementation, we might need to rely on the display logic prioritizing app settings if root config matches default?
-                        # No, user wants FORCE precedence.
-                        # Let's try to clear them by setting them to None explicitly if the DB logic supports unsetting.
-                        # If not, setting them to empty string might work if the getter handles empty string as "not set".
-                        self.db.update_folder_display_config("",
-                            display_style=None,
-                            display_style_package=None
-                        )
-                        self.logger.info("Cleared root folder display config to enforce App Settings.")
-                except Exception as e:
-                    self.logger.warning(f"Failed to reset root folder config: {e}")
+                # Sync logic: Update the CURRENT application's data in the combo box
+                # instead of a full reload which is heavy and causes flickering/stale state.
+                self._sync_app_data_to_ui(app_data['id'], data)
                 
-                # Reload Apps but keep selection
-                current_id = app_data['id']
-                self._load_apps()
+                # Phase 32 [REMOVED]: Do NOT reset root folder config.
+                # User complaint: "Display mode default specification should be initial settings... but it is implemented meaninglessly..."
+                # We should respect existing manual overrides on the root folder unless explicitly cleared.
+                # Forcefully clearing it here breaks the "Initial Default" contract.
                 
-                # Re-select
-                for i in range(self.app_combo.count()):
-                    if self.app_combo.itemData(i) and self.app_combo.itemData(i)['id'] == current_id:
-                        self.app_combo.setCurrentIndex(i)
-                        break
+                # Phase 42 [OPTIMIZATION]: Reduce Redundant Reloads
+                # _sync_app_data_to_ui already updates the current combo item text/icon.
+                # _manual_rebuild requests a full scan/refresh.
+                # _load_apps followed by re-selection is heavy and triggers unnecessary signals/scans.
+                # We only need _load_apps if SORT ORDER changes (e.g. Favorite/Score).
+                
+                # Check for sort-impacting changes
+                old_fav = app_data.get('is_favorite', 0)
+                new_fav = data.get('is_favorite', 0)
+                old_score = app_data.get('score', 0)
+                new_score = data.get('score', 0)
+                
+                needs_sort_refresh = (old_fav != new_fav) or (old_score != new_score)
+                
+                if needs_sort_refresh:
+                    # Do the heavy reload only if needed
+                    current_id = app_data['id']
+                    self.app_combo.blockSignals(True)
+                    self._load_apps()
+                    for i in range(self.app_combo.count()):
+                        if self.app_combo.itemData(i) and self.app_combo.itemData(i)['id'] == current_id:
+                            self.app_combo.setCurrentIndex(i)
+                            break
+                    self.app_combo.blockSignals(False)
+                # Else: _sync_app_data_to_ui updated the ItemData and Text in place.
                         
-                # QMessageBox.information(self, "Success", f"Updated {data['name']}")
                 Toast.show_toast(self, _("Application saved successfully"), preset="success")
                 self._manual_rebuild()
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
+
+    def _sync_app_data_to_ui(self, app_id: str, data_patch: dict):
+        """Phase 28/43: Synchronizes application data directly into UI components without full reload."""
+        # 1. Update Registry (if not already done)
+        # self.registry.update_app(app_id, data_patch) 
+        
+        # 2. Update Application Combo Box Item Data
+        for i in range(self.app_combo.count()):
+            item = self.app_combo.itemData(i)
+            if item and item.get('id') == app_id:
+                # Merge patch into existing item data
+                merged = {**item, **data_patch}
+                self.app_combo.setItemData(i, merged)
+                
+                # Update icon if changed
+                if 'cover_image' in data_patch:
+                    new_img = data_patch['cover_image']
+                    if new_img and os.path.exists(new_img):
+                        from PyQt6.QtGui import QIcon, QPixmap
+                        icon = QIcon(QPixmap(new_img).scaled(24, 24))
+                        self.app_combo.setItemIcon(i, icon)
+                break
+        
+        # 3. If it's the current app, ensure local references are updated
+        from src.core.link_master.database import get_lm_registry
+        if hasattr(self, 'current_app_id') and self.current_app_id == app_id:
+            # We don't typically store the whole dict in an attribute, 
+            # we rely on currentData() from app_combo.
+            # So updating combo box is enough.
+            pass
 
     def _icon_mouse_press(self, event):
         # Handle Alt+Click for Debug
@@ -3172,8 +3222,12 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         if not self.storage_root: return
         self.logger.info("Triggering manual rebuild (Full Re-scan).")
         
-        # Phase 22: Clear any internal cache in workers/scanner
-        # Both workers rely on the same scanner instance, we just force a scan.
+        # 1. Physical Crawl to update DB Cache (Synchronous/Blocking)
+        # We call the implementation in LMScanHandlerMixin
+        if hasattr(self, '_manual_rebuild_db_cache'):
+            self._manual_rebuild_db_cache()
+        
+        # 2. UI Refresh (Asynchronous/Worker)
         self._load_items_for_path(self.storage_root, force=True)
         
         # If a category is selected, refresh its contents too
