@@ -42,6 +42,158 @@ class JumpSlider(QSlider):
         super().mousePressEvent(event)
 
 
+
+class ResizableTextEdit(QWidget):
+    """
+    A wrapper around ProtectedTextEdit that adds a resize handle at the bottom.
+    Manual resizing of height is possible.
+    """
+    def __init__(self, parent=None, min_height=60, default_height=80):
+        super().__init__(parent)
+        self.setAcceptDrops(False)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+        
+        self.editor = ProtectedTextEdit()
+        self.editor.setMinimumHeight(min_height - 10) # Reserve space for handle
+        self.layout.addWidget(self.editor)
+        
+        # Resize Handle
+        self.handle = QFrame()
+        self.handle.setFixedHeight(8)
+        self.handle.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.handle.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border-top: 1px solid #444;
+                border-bottom: 1px solid #444;
+            }
+            QFrame:hover { background-color: #444; }
+        """)
+        
+        # Draw grip dots (optional visual cue)
+        
+        self.layout.addWidget(self.handle)
+        
+        # Wrapper initial height
+        self.setFixedHeight(default_height)
+        
+        self.handle.mousePressEvent = self._handle_press
+        self.handle.mouseMoveEvent = self._handle_move
+        self.handle.mouseReleaseEvent = self._handle_release
+        
+        self._dragging = False
+        self._drag_start_y = 0
+        self._original_height = 0
+
+    def _handle_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self._drag_start_y = event.globalPosition().y()
+            self._original_height = self.height()
+            event.accept()
+
+    def _handle_move(self, event):
+        if self._dragging: # and event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().y() - self._drag_start_y
+            new_height = max(60, self._original_height + int(delta))
+            self.setFixedHeight(new_height)
+            event.accept()
+
+    def _handle_release(self, event):
+        self._dragging = False
+
+    # Proxy methods to internal editor
+    def setText(self, text): self.editor.setText(text)
+    def toPlainText(self): return self.editor.toPlainText()
+    def setPlaceholderText(self, text): self.editor.setPlaceholderText(text)
+    def setMaximumHeight(self, h): pass # Ignore external max height caps if any
+    # def setMinimumHeight(self, h): super().setMinimumHeight(h) 
+
+
+class ResizableTextEdit(QWidget):
+    """
+    A wrapper around ProtectedTextEdit that adds a resize handle at the bottom.
+    Manual resizing of height is possible.
+    """
+    def __init__(self, parent=None, min_height=60, default_height=80):
+        super().__init__(parent)
+        self.setAcceptDrops(False)
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+        
+        self.editor = ProtectedTextEdit()
+        # Ensure editor minimum is respected
+        self.editor.setMinimumHeight(min_height - 10) 
+        self.layout.addWidget(self.editor)
+        
+        # Resize Handle
+        self.handle = QFrame()
+        self.handle.setFixedHeight(10)
+        self.handle.setCursor(Qt.CursorShape.SizeVerCursor)
+        self.handle.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border: none;
+                border-top: 1px solid #444;
+            }
+            QFrame:hover { background-color: #444; }
+        """)
+        
+        # Visual grip indicator (simple lines)
+        grip_layout = QHBoxLayout(self.handle)
+        grip_layout.setContentsMargins(0, 2, 0, 2)
+        grip_layout.setSpacing(2)
+        grip_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        for _ in range(3):
+           line = QFrame()
+           line.setFixedSize(20, 1)
+           line.setStyleSheet("background-color: #555;")
+           grip_layout.addWidget(line)
+           
+        self.layout.addWidget(self.handle)
+        
+        # Wrapper initial height
+        self.setFixedHeight(default_height)
+        
+        self.handle.mousePressEvent = self._handle_press
+        self.handle.mouseMoveEvent = self._handle_move
+        self.handle.mouseReleaseEvent = self._handle_release
+        
+        self._dragging = False
+        self._drag_start_y = 0
+        self._original_height = 0
+
+    def _handle_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            # Use global position for reliable deltas
+            self._drag_start_y = event.globalPosition().y()
+            self._original_height = self.height()
+            event.accept()
+
+    def _handle_move(self, event):
+        if self._dragging:
+            delta = event.globalPosition().y() - self._drag_start_y
+            # Limit min height to 60, max usually unconstrained but good to be safe
+            new_height = max(60, self._original_height + int(delta))
+            self.setFixedHeight(new_height)
+            event.accept()
+
+    def _handle_release(self, event):
+        self._dragging = False
+
+    # Proxy methods
+    def setText(self, text): self.editor.setText(text)
+    def toPlainText(self): return self.editor.toPlainText()
+    def setPlaceholderText(self, text): self.editor.setPlaceholderText(text)
+
+
 class PreviewWindow(FramelessDialog):
     """複数プレビューファイルを表示するウィンドウ + プロパティパネル。"""
     
@@ -90,6 +242,44 @@ class PreviewWindow(FramelessDialog):
             QTimer.singleShot(50, self._show_current)
         else:
             QTimer.singleShot(50, self._show_no_preview)
+            
+    # Resize Handle Persistence
+    def _save_desc_height(self):
+        try:
+             if hasattr(self, 'description_edit') and isinstance(self.description_edit, ResizableTextEdit):
+                h = self.description_edit.height()
+                parent = self.parent()
+                if parent and hasattr(parent, 'registry'):
+                    parent.registry.set_global('preview_desc_height', str(h))
+        except: pass
+
+    # Override closeEvent to save desc height
+    def closeEvent(self, event):
+        self._save_desc_height()
+        super().closeEvent(event) # Calls _save_window_size inside original if mapped, but wait...
+        # The original closeEvent calls _save_window_size which calls super().closeEvent
+        # I need to ensure _save_desc_height is called.
+        # Since I'm redefining methods in the `replace` block, I need to be careful not to overwrite the WHOLE class structure 
+        # but the replace tool works on line ranges.
+        # I am replacing lines 45 (PreviewWindow def) to 423 (Description widget init).
+        # This is too big chunk to manage with `replace`.
+        # I should split this into adding `ResizableTextEdit` class and then modifying the usage site.
+        
+    # Wait, the tool requires me to supply the lines I am replacing.
+    # I should use `TargetContent` if possible for precision, or line numbers.
+    # The user wants "handle to expand".
+    
+    # RE-EVALUATION:
+    # Adding a class definition `ResizableTextEdit` at the top of the file (after imports) is best.
+    # Then modifying `_create_properties_panel` to use it.
+    # Then modifying `_restore_window_size` to load the height.
+    # Then modifying `_save_window_size` to save the height.
+    
+    # This requires multiple edits.
+    pass
+
+# ABORTING SINGLE SWEEP REPLACEMENT. Switching to breakdown.
+
     
     def _show_no_preview(self):
         """プレビューがない場合のメッセージを表示。"""
@@ -323,7 +513,7 @@ class PreviewWindow(FramelessDialog):
         prop_scroll = QScrollArea()
         prop_scroll.setWidgetResizable(True)
         prop_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        prop_scroll.setMinimumWidth(100)
+        prop_scroll.setMinimumWidth(250)
         # Remove maximum width to allow full resizing of the preview area
         
         prop_container = QWidget()
@@ -417,9 +607,11 @@ class PreviewWindow(FramelessDialog):
         
         # Description
         prop_layout.addWidget(QLabel(_("Description:")))
-        self.description_edit = ProtectedTextEdit()
+        self.description_edit = ResizableTextEdit(self, min_height=60, default_height=80)
         self.description_edit.setPlaceholderText(_("Enter description..."))
-        self.description_edit.setMaximumHeight(80)
+        # Phase 33: Resizable handle integration
+        # self.description_edit.setMinimumHeight(60) # Handled by class
+        # self.description_edit.setMaximumHeight(150) # Removing max cap to allow user resizing
         prop_layout.addWidget(self.description_edit)
 
         # Author
@@ -1279,6 +1471,11 @@ class PreviewWindow(FramelessDialog):
                 left = int(parent.registry.get_global('preview_prop_splitter_left', 700))
                 right = int(parent.registry.get_global('preview_prop_splitter_right', 300))
                 self.splitter.setSizes([left, right])
+                
+                # Restore Description Field Height
+                desc_h = parent.registry.get_global('preview_desc_height', None)
+                if desc_h and hasattr(self, 'description_edit') and isinstance(self.description_edit, ResizableTextEdit):
+                    self.description_edit.setFixedHeight(int(desc_h))
             else:
                 # Fallback default
                 self.resize(1000, 600)
@@ -1297,6 +1494,10 @@ class PreviewWindow(FramelessDialog):
                 if len(sizes) >= 2:
                     parent.registry.set_global('preview_prop_splitter_left', str(sizes[0]))
                     parent.registry.set_global('preview_prop_splitter_right', str(sizes[1]))
+                
+                # Save Description Height
+                if hasattr(self, 'description_edit') and isinstance(self.description_edit, ResizableTextEdit):
+                    parent.registry.set_global('preview_desc_height', str(self.description_edit.height()))
         except Exception as e:
             print(f"[Warning] _save_window_size: {e}")
     
