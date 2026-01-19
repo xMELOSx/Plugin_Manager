@@ -724,19 +724,29 @@ class FramelessInputDialog(FramelessDialog):
             self.input_field.setEchoMode(echo_mode)
             self.input_field.returnPressed.connect(self.accept)
             
+            # Layout for input field and buttons
+            h_layout = QHBoxLayout()
+            h_layout.setSpacing(5)
+            h_layout.addWidget(self.input_field)
+
+            # Show Password Toggle
+            if echo_mode == QLineEdit.EchoMode.Password:
+                self.eye_btn = StyledButton("👁", style_type="Gray")
+                self.eye_btn.setFixedSize(35, 35)
+                self.eye_btn.setToolTip(_("Show/Hide Password"))
+                self.eye_btn.clicked.connect(self._toggle_password_visibility)
+                h_layout.addWidget(self.eye_btn)
+
+            # History Button
             if history is not None:
-                h_layout = QHBoxLayout()
-                h_layout.setSpacing(5)
-                h_layout.addWidget(self.input_field)
-                
-                self.hist_btn = StyledButton("▼", style_type="Gray")
-                self.hist_btn.setFixedSize(30, 35)
+                self.hist_btn = StyledButton("📜", style_type="Gray") # Scroll icon for history
+                self.hist_btn.setFixedSize(35, 35) 
                 self.hist_btn.setToolTip(_("Select from History"))
                 self.hist_btn.clicked.connect(lambda: self._show_history_menu(history))
                 h_layout.addWidget(self.hist_btn)
-                layout.addLayout(h_layout)
-            else:
-                layout.addWidget(self.input_field)
+            
+            # If neither, we still used h_layout in replacement, so we need to add logic to use it or just always use h_layout wrapper
+            layout.addLayout(h_layout)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
@@ -755,6 +765,14 @@ class FramelessInputDialog(FramelessDialog):
         layout.addLayout(btn_layout)
 
         self.set_content_widget(content)
+
+    def _toggle_password_visibility(self):
+        if self.input_field.echoMode() == QLineEdit.EchoMode.Password:
+            self.input_field.setEchoMode(QLineEdit.EchoMode.Normal)
+            self.eye_btn.setText("🔒") # Lock icon to hide
+        else:
+            self.input_field.setEchoMode(QLineEdit.EchoMode.Password)
+            self.eye_btn.setText("👁")
 
     def _show_history_menu(self, history):
         menu = QMenu(self)

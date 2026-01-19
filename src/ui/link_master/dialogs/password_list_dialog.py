@@ -91,11 +91,11 @@ class PasswordListDialog(FramelessDialog):
         del_btn.clicked.connect(self._remove_selected)
         
         up_btn = StyledButton("⬆", style_type="Gray")
-        up_btn.setFixedWidth(40)
+        up_btn.setFixedWidth(50)
         up_btn.clicked.connect(self._move_up)
         
         down_btn = StyledButton("⬇", style_type="Gray")
-        down_btn.setFixedWidth(40)
+        down_btn.setFixedWidth(50)
         down_btn.clicked.connect(self._move_down)
         
         btn_layout.addWidget(del_btn)

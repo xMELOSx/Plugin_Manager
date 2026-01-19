@@ -270,7 +270,7 @@ class AppRegistrationDialog(FramelessDialog):
         self.url_count_label.setStyleSheet("color: #888;")
         
         url_layout = QHBoxLayout()
-        
+        url_layout.addWidget(self.url_btn)
         url_layout.addWidget(self.url_count_label)
         url_layout.addStretch()
         form.addRow(_("URLs:"), url_layout)

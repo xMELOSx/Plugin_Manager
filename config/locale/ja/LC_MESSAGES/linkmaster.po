@@ -2879,3 +2879,44 @@ msgstr "編集がキャンセルされました"
 
 msgid "Allow Text Wrapping"
 msgstr "テキストを改行許可"
+
+# Password Management
+msgid "Manage Passwords"
+msgstr "パスワード管理"
+
+msgid "Stored Passwords:"
+msgstr "保存済みパスワード:"
+
+msgid "Enter Password"
+msgstr "パスワードを入力"
+
+msgid "Show/Hide Passwords"
+msgstr "パスワードを表示/非表示"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Password Required"
+msgstr "パスワードが必要です"
+
+msgid "Enter password for {file}:"
+msgstr "{file} のパスワードを入力:"
+
+msgid "Select from History"
+msgstr "履歴から選択"
+
+msgid "(No History)"
+msgstr "(履歴なし)"
+
+msgid "Manage URLs..."
+msgstr "URLを管理..."
+
+msgid "Manage Passwords..."
+msgstr "パスワードを管理..."
+
+msgid "Passwords:"
+msgstr "パスワード:"
+
+msgid "Show/Hide Password"
+msgstr "パスワードを表示/非表示"
+

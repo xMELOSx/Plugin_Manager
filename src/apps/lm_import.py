@@ -92,7 +92,7 @@ class LMImportMixin:
         # Determine target area based on drop position
         pos = event.position().toPoint()
         
-        target_type = "package"
+        target_type = "auto" # Default to auto detection (user request)
         widget = self.childAt(pos)
         while widget:
             if widget == self.cat_scroll:
@@ -199,6 +199,20 @@ class LMImportMixin:
         
         folder_name = os.path.basename(source_path)
         
+        # Auto-Detect Type logic
+        is_auto_detect = (target_type == "auto")
+        if is_auto_detect:
+            # If it's a folder, check its content to decide
+            try:
+                if os.path.isdir(source_path):
+                    has_subdirs = any(os.path.isdir(os.path.join(source_path, d)) for d in os.listdir(source_path))
+                    target_type = "category" if has_subdirs else "package"
+                else:
+                    # Files (archives etc) default to package, but we re-check after extraction
+                    target_type = "package"
+            except Exception:
+                target_type = "package" # Fallback
+        
         # Handle Archives (Zip / 7z / Rar)
         ext = os.path.splitext(source_path)[1].lower()
         if ext in ['.zip', '.7z', '.rar']:
@@ -233,6 +247,16 @@ class LMImportMixin:
 
                 if success:
                     self.logger.info(f"Successfully extracted {source_path}")
+                    
+                    # Post-Extraction Auto-Detection for Archives
+                    if is_auto_detect:
+                        try:
+                            has_subdirs = any(os.path.isdir(os.path.join(dest_path, d)) for d in os.listdir(dest_path))
+                            target_type = "category" if has_subdirs else "package"
+                            self.logger.info(f"Auto-detected type for extracted archive: {target_type}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to auto-detect type after extraction: {e}")
+
                 else:
                     from src.ui.common_widgets import FramelessMessageBox
                     msg = FramelessMessageBox(self)
@@ -317,23 +341,6 @@ class LMImportMixin:
                  
                  history = self._get_password_history()
                  
-                 # === Auto-Try from History ===
-                 if history:
-                     self.logger.info("Auto-trying passwords from history...")
-                     for h_pwd in history:
-                         try:
-                             with py7zr.SevenZipFile(source_path, mode='r', password=h_pwd) as z:
-                                 z.extractall(path=dest_path)
-                             self.logger.info(f"Auto-unlocked with history password.")
-                             self._save_password_history(h_pwd)
-                             return True
-                         except py7zr.exceptions.Bad7zFile:
-                             continue # Wrong password
-                         except py7zr.exceptions.PasswordRequired:
-                             continue
-                         except Exception:
-                             continue
-                 
                  while True:
                     pwd, ok = FramelessInputDialog.getText(
                         self, _("Password Required"),
@@ -383,24 +390,6 @@ class LMImportMixin:
                  from src.ui.common_widgets import FramelessInputDialog
                  
                  history = self._get_password_history()
-                 
-                 # === Auto-Try from History ===
-                 if history:
-                     self.logger.info("Auto-trying passwords from history (files only)...")
-                     # Note: rarfile check is tricky without full extract, so we try extractall directly
-                     # This might be slow if history is long and archive massive, but user requested brute-force.
-                     for h_pwd in history:
-                         try:
-                            with rarfile.RarFile(source_path) as rf:
-                                rf.setpassword(h_pwd)
-                                rf.extractall(dest_path)
-                            self.logger.info(f"Auto-unlocked with history password.")
-                            self._save_password_history(h_pwd)
-                            return True
-                         except (rarfile.PasswordRequired, rarfile.BadRarFile):
-                            continue
-                         except Exception:
-                            continue
 
                  while True:
                     pwd, ok = FramelessInputDialog.getText(
@@ -464,19 +453,6 @@ class LMImportMixin:
                          from src.ui.common_widgets import FramelessInputDialog
                          
                          history = self._get_password_history()
-                         
-                         # === Auto-Try from History ===
-                         if history:
-                             self.logger.info("Auto-trying passwords from history (External 7z)...")
-                             for h_pwd in history:
-                                 cmd_try = cmd + [f'-p{h_pwd}']
-                                 # Use -y to assume yes (overwrite) although we are extracting to new folder
-                                 # Also -pPASSWORD handles it.
-                                 res_try = subprocess.run(cmd_try, startupinfo=si, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-                                 if res_try.returncode == 0:
-                                     self.logger.info(f"Auto-unlocked with history password.")
-                                     self._save_password_history(h_pwd)
-                                     return True
                          
                          while True:
                             pwd, ok = FramelessInputDialog.getText(
