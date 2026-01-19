@@ -489,7 +489,12 @@ class ItemCard(QFrame):
             pass
 
         # 7. Refresh Detection
-        if 'link_status' not in kwargs:
+        # Phase 57: Skip status check if only visual params are being updated
+        # Visual-only params: show_link, show_deploy, text_wrap, deploy_button_opacity
+        visual_only_keys = {'show_link', 'show_deploy', 'text_wrap', 'deploy_button_opacity'}
+        is_visual_only_update = (len(kwargs) > 0 and set(kwargs.keys()).issubset(visual_only_keys))
+        
+        if 'link_status' not in kwargs and not is_visual_only_update and not kwargs.get('skip_status_check', False):
             self._check_link_status()
 
         # 8. Force Style/Overlay Update (Fixes 'Ghost' state)
