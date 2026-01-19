@@ -855,35 +855,100 @@ class Deployer:
             # Use 'exclude' list from rules
             import fnmatch
             excludes = rules.get('exclude', []) if (rules and isinstance(rules, dict)) else []
+            t_overrides = rules.get('transfer_overrides', {}) if (rules and isinstance(rules, dict)) else {}
+            # 🚨 PATH OVERRIDES: For redirecting files/folders to different target paths
+            path_overrides = rules.get('overrides', rules.get('rename', {})) if (rules and isinstance(rules, dict)) else {}
+            
+            self.logger.info(f"[Custom Deploy] Starting: source={source_path}, target={target_link_path}")
+            self.logger.info(f"[Custom Deploy] Rules: excludes={excludes}, path_overrides={list(path_overrides.keys())}, transfer_overrides={list(t_overrides.keys())}")
 
-            # Iterate source files
-            for item_name in os.listdir(source_path):
-                # Exclude Check
-                if excludes and any(fnmatch.fnmatch(item_name, pat) for pat in excludes):
-                    continue
+            # 🚨 FIX: Use os.walk() to recursively traverse, maintaining relative path structure
+            for root, dirs, files in os.walk(source_path):
+                # Calculate relative path from source root
+                rel_dir = os.path.relpath(root, source_path).replace('\\', '/')
+                if rel_dir == ".":
+                    rel_dir = ""
+                
+                # Filter dirs for walk optimization (exclude patterns)
+                dirs[:] = [d for d in dirs if not any(fnmatch.fnmatch(d, pat) for pat in excludes)]
+                
+                for item_name in files:
+                    # Build relative path for this file
+                    rel_path = f"{rel_dir}/{item_name}" if rel_dir else item_name
+                    
+                    # Exclude Check
+                    if excludes and any(fnmatch.fnmatch(rel_path, pat) or fnmatch.fnmatch(item_name, pat) for pat in excludes):
+                        self.logger.debug(f"[Custom Deploy] EXCLUDED: {rel_path}")
+                        continue
 
-                src_item = os.path.join(source_path, item_name)
-                dst_item = os.path.join(target_link_path, item_name)
-                
-                item_mode = transfer_mode # Default to App Default
-                
-                # Check granular rules if available
-                # USER FEEDBACK: JSON uses "transfer_overrides" key: {"file.ext": "copy"}
-                if rules and isinstance(rules, dict):
-                    t_overrides = rules.get('transfer_overrides', {})
-                    if item_name in t_overrides:
-                        val = t_overrides[item_name]
-                        if val in ['copy', 'symlink']: 
+                    src_item = os.path.join(root, item_name)
+                    
+                    # 🚨 PATH OVERRIDE CHECK: Check if this file or its parent folder has a path override
+                    dst_item = None
+                    override_applied = None
+                    
+                    # Priority 1: Exact file path match
+                    if rel_path in path_overrides:
+                        override_target = path_overrides[rel_path]
+                        dst_item = override_target
+                        override_applied = f"file exact match: {rel_path}"
+                    
+                    # Priority 2: Parent folder match (e.g., "Shaders" matches "Shaders/file.txt")
+                    if dst_item is None and rel_dir:
+                        # Check each level of the directory hierarchy
+                        path_parts = rel_dir.split('/')
+                        for i in range(len(path_parts), 0, -1):
+                            check_dir = '/'.join(path_parts[:i])
+                            if check_dir in path_overrides:
+                                override_target = path_overrides[check_dir]
+                                # Calculate remaining path after the matched folder
+                                remaining = '/'.join(path_parts[i:])
+                                if remaining:
+                                    dst_item = os.path.join(override_target, remaining, item_name)
+                                else:
+                                    dst_item = os.path.join(override_target, item_name)
+                                override_applied = f"folder match: {check_dir} -> {override_target}"
+                                break
+                    
+                    # Priority 3: Default - maintain relative path structure
+                    if dst_item is None:
+                        dst_item = os.path.join(target_link_path, rel_path.replace('/', os.sep))
+                        override_applied = "default (no override)"
+                    
+                    # Normalize the destination path
+                    dst_item = os.path.normpath(dst_item)
+                    
+                    item_mode = transfer_mode  # Default to App Default
+                    
+                    # Check transfer mode overrides (symlink/copy switch)
+                    if rel_path in t_overrides:
+                        val = t_overrides[rel_path]
+                        if val in ['copy', 'symlink']:
                             item_mode = val
-                            
-                # Execute Deployment
-                res = False
-                if item_mode == 'copy':
-                    res = self.deploy_copy(src_item, dst_item, conflict_policy)
-                else:
-                    res = self.deploy_link(src_item, dst_item, conflict_policy)
-                
-                if not res: success_all = False
+                    elif item_name in t_overrides:
+                        val = t_overrides[item_name]
+                        if val in ['copy', 'symlink']:
+                            item_mode = val
+                    
+                    # 🚨 DETAILED PATH DECISION LOG
+                    self.logger.info(f"[Custom Deploy] PATH DECISION: rel_path={rel_path}, override={override_applied}, mode={item_mode}")
+                    self.logger.info(f"[Custom Deploy]   src: {src_item}")
+                    self.logger.info(f"[Custom Deploy]   dst: {dst_item}")
+                    
+                    # Ensure parent directory exists
+                    dst_parent = os.path.dirname(dst_item)
+                    if dst_parent and not os.path.exists(dst_parent):
+                        os.makedirs(dst_parent, exist_ok=True)
+                                
+                    # Execute Deployment
+                    res = False
+                    if item_mode == 'copy':
+                        res = self.deploy_copy(src_item, dst_item, conflict_policy)
+                    else:
+                        res = self.deploy_link(src_item, dst_item, conflict_policy)
+                    
+                    if not res:
+                        success_all = False
                 
             return success_all
 
