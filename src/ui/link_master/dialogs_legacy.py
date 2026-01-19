@@ -3557,9 +3557,9 @@ class ImportTypeDialog(FramelessDialog):
         btn_folder.clicked.connect(lambda: self._set_result("folder"))
         layout.addWidget(btn_folder)
         
-        btn_zip = QPushButton(_("📦 Zip File"))
+        btn_zip = QPushButton(_("📦 Archive File"))
         btn_zip.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_zip.clicked.connect(lambda: self._set_result("zip"))
+        btn_zip.clicked.connect(lambda: self._set_result("archive"))
         layout.addWidget(btn_zip)
         
         btn_explorer = QPushButton(_("🔍 Open Explorer"))

@@ -95,9 +95,14 @@ class LMImportMixin:
                 type_name = _("Folder") if target_type == "category" else _("Package")
                 path = QFileDialog.getExistingDirectory(self, _("Select Folder to Import as {type}").format(type=type_name))
                 paths = [path] if path else []
-            elif result == "zip":
+            elif result == "archive":
                 type_name = _("Folder") if target_type == "category" else _("Package")
-                paths, _filter = QFileDialog.getOpenFileNames(self, _("Select Zip(s) to Import as {type}").format(type=type_name), "", _("Zip Files (*.zip);;All Files (*.*)"))
+                paths, _filter = QFileDialog.getOpenFileNames(
+                    self, 
+                    _("Select Archive(s) to Import as {type}").format(type=type_name), 
+                    "", 
+                    _("Archives (*.zip *.7z *.rar);;Zip Files (*.zip);;7z Files (*.7z);;Rar Files (*.rar);;All Files (*.*)")
+                )
             else:
                 return
 
@@ -144,8 +149,9 @@ class LMImportMixin:
         
         folder_name = os.path.basename(source_path)
         
-        # Handle Zip
-        if source_path.lower().endswith('.zip'):
+        # Handle Archives (Zip / 7z / Rar)
+        ext = os.path.splitext(source_path)[1].lower()
+        if ext in ['.zip', '.7z', '.rar']:
             folder_name = os.path.splitext(folder_name)[0]
             dest_path = os.path.join(target_dir, folder_name)
             
@@ -154,13 +160,38 @@ class LMImportMixin:
                 dest_path = f"{dest_path}_{int(time.time())}"
                 folder_name = os.path.basename(dest_path)
             
+            self.logger.info(f"Extracting archive {source_path} to {dest_path}")
+            
             try:
-                with zipfile.ZipFile(source_path, 'r') as zip_ref:
-                    zip_ref.extractall(dest_path)
-                self.logger.info(f"Extracted {source_path} to {dest_path}")
+                success = False
+                if ext == '.zip':
+                    with zipfile.ZipFile(source_path, 'r') as zip_ref:
+                        zip_ref.extractall(dest_path)
+                    success = True
+                        
+                elif ext == '.7z':
+                    if self._extract_7z_internal(source_path, dest_path):
+                        success = True
+                    else:
+                        success = self._extract_with_external(source_path, dest_path)
+
+                elif ext == '.rar':
+                    if self._extract_rar_internal(source_path, dest_path):
+                        success = True
+                    else:
+                        success = self._extract_with_external(source_path, dest_path)
+
+                if success:
+                    self.logger.info(f"Successfully extracted {source_path}")
+                else:
+                    QMessageBox.warning(self, _("Extraction Failed"), _("Failed to extract archive. Please ensure py7zr/rarfile is installed OR WinRAR/7-Zip is available."))
+                    return
+
             except Exception as e:
-                QMessageBox.critical(self, _("Error"), _("Failed to extract zip: {error}").format(error=e))
+                QMessageBox.critical(self, _("Error"), _("Failed to extract archive: {error}").format(error=e))
                 return
+
+
         # Handle Folder
         elif os.path.isdir(source_path):
             dest_path = os.path.join(target_dir, folder_name)
@@ -199,3 +230,88 @@ class LMImportMixin:
             is_visible=1
         )
         self.logger.info(f"Registered dropped item as {target_type}: {rel_path}")
+
+    def _extract_7z_internal(self, source_path, dest_path):
+        """Try extracting with py7zr."""
+        try:
+            import py7zr
+            with py7zr.SevenZipFile(source_path, mode='r') as z:
+                z.extractall(path=dest_path)
+            return True
+        except ImportError:
+            self.logger.warning("py7zr not found. Falling back to external.")
+            return False
+        except Exception as e:
+            self.logger.error(f"py7zr extraction error: {e}")
+            return False
+
+    def _extract_rar_internal(self, source_path, dest_path):
+        """Try extracting with rarfile."""
+        try:
+            import rarfile
+            # Check for unrar
+            try:
+                rarfile.tool_setup()
+            except rarfile.RarCannotExec:
+                self.logger.warning("rarfile: UnRAR not found. Falling back to external.")
+                return False
+                
+            with rarfile.RarFile(source_path) as rf:
+                rf.extractall(dest_path)
+            return True
+        except ImportError:
+            self.logger.warning("rarfile library not found. Falling back to external.")
+            return False
+        except Exception as e:
+             self.logger.error(f"rarfile extraction error: {e}")
+             return False
+
+    def _extract_with_external(self, source_path, dest_path):
+        """Fallback: try to find WinRAR or 7-Zip installed on the system and use them."""
+        import subprocess
+        
+        # 1. 7-Zip (64-bit and 32-bit candidates)
+        seven_zip_paths = [
+            r"C:\Program Files\7-Zip\7z.exe",
+            r"C:\Program Files (x86)\7-Zip\7z.exe"
+        ]
+        
+        for exe in seven_zip_paths:
+            if os.path.exists(exe):
+                try:
+                    self.logger.info(f"Attempting extraction with 7-Zip: {exe}")
+                    # 7z x "source" -o"dest" -y
+                    cmd = [exe, 'x', source_path, f'-o{dest_path}', '-y']
+                    # Create startup info to hide console window
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    subprocess.run(cmd, check=True, startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return True
+                except subprocess.CalledProcessError:
+                    continue
+        
+        # 2. WinRAR
+        winrar_paths = [
+            r"C:\Program Files\WinRAR\WinRAR.exe",
+            r"C:\Program Files (x86)\WinRAR\WinRAR.exe"
+        ]
+        
+        for exe in winrar_paths:
+            if os.path.exists(exe):
+                try:
+                    self.logger.info(f"Attempting extraction with WinRAR: {exe}")
+                    # WinRAR x -ibck -inul "source" "dest\"
+                    # Note: WinRAR expects dest folder to end with backslash for extraction to folder
+                    dest_arg = dest_path if dest_path.endswith(os.sep) else dest_path + os.sep
+                    cmd = [exe, 'x', '-ibck', '-inul', source_path, dest_arg]
+                    
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    subprocess.run(cmd, check=True, startupinfo=si)
+                    return True
+                except subprocess.CalledProcessError:
+                    continue
+                    
+        return False

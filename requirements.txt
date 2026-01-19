@@ -13,5 +13,9 @@ Pillow>=10.0.0
 # Note: Standard library modules used but not listed:
 # - os, json, logging, sqlite3, zipfile, shutil, subprocess, hashlib
 
+# Archive support
+py7zr>=0.20.0
+rarfile>=4.0
+
 # Build dependencies
 pyinstaller>=5.13.0
