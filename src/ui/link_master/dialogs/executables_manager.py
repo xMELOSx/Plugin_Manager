@@ -116,10 +116,21 @@ class ExecutablesManagerDialog(FramelessDialog):
 
     def _pick_btn_color(self):
         from PyQt6.QtWidgets import QColorDialog
-        # Phase 45: Fix black screen by avoiding native dialog
+        # Phase 45: Fix black screen by avoiding native dialog AND forcing styles
         dlg = QColorDialog(QColor(self.btn_color), self)
         dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
         dlg.setWindowTitle(_("Select Button Color"))
+        
+        # Enforce white text and dark background for all child widgets to override global styling/black-on-black issues
+        dlg.setStyleSheet("""
+            QDialog { background-color: #2b2b2b; color: #ffffff; }
+            QLabel { color: #ffffff; background: transparent; }
+            QSpinBox { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            QLineEdit { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            QPushButton { background-color: #444; color: #ffffff; border: 1px solid #666; padding: 4px 12px; border-radius: 4px; }
+            QPushButton:hover { background-color: #555; }
+            QPushButton:pressed { background-color: #333; }
+        """)
         
         if dlg.exec():
             color = dlg.currentColor()
@@ -129,10 +140,21 @@ class ExecutablesManagerDialog(FramelessDialog):
 
     def _pick_txt_color(self):
         from PyQt6.QtWidgets import QColorDialog
-        # Phase 45: Fix black screen by avoiding native dialog
+        # Phase 45: Fix black screen by avoiding native dialog AND forcing styles
         dlg = QColorDialog(QColor(self.txt_color), self)
         dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
         dlg.setWindowTitle(_("Select Text Color"))
+        
+        # Enforce white text and dark background
+        dlg.setStyleSheet("""
+            QDialog { background-color: #2b2b2b; color: #ffffff; }
+            QLabel { color: #ffffff; background: transparent; }
+            QSpinBox { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            QLineEdit { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            QPushButton { background-color: #444; color: #ffffff; border: 1px solid #666; padding: 4px 12px; border-radius: 4px; }
+            QPushButton:hover { background-color: #555; }
+            QPushButton:pressed { background-color: #333; }
+        """)
         
         if dlg.exec():
             color = dlg.currentColor()
