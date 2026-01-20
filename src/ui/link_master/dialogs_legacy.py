@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit,
                              QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
                              QTextEdit, QApplication, QMessageBox, QMenu, QSpinBox, QStyle,
                               QRadioButton, QButtonGroup, QFrame, QSplitter)
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect, QPoint, QRectF, QTimer, QEvent
 from PyQt6.QtGui import QMouseEvent, QAction, QIcon, QPainter, QPen, QColor, QPixmap, QPainterPath
 from src.ui.flow_layout import FlowLayout
 from src.ui.link_master.dialogs.library_usage_dialog import LibraryUsageDialog
@@ -2615,16 +2615,18 @@ class TagManagerDialog(FramelessDialog):
         self.tag_table.setColumnWidth(3, 60)  # Inherit
         # Display (表示) will stretch or be minimal
         
+        # Drag and Drop settings
         self.tag_table.itemClicked.connect(self._on_table_clicked)
         self.tag_table.setDragEnabled(True)
         self.tag_table.setAcceptDrops(True)
         self.tag_table.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.tag_table.setDragDropOverwriteMode(False) # Prevent overwriting rows on drop
+        self.tag_table.setDragDropOverwriteMode(False)
         self.tag_table.setDropIndicatorShown(True)
         self.tag_table.setDefaultDropAction(Qt.DropAction.MoveAction)
         
-        # Sync tags after manual reorder
+        # Sync tags after manual reorder - Signal is good, but EventFilter is MORE certain for drops
         self.tag_table.model().rowsMoved.connect(self._on_rows_moved)
+        self.tag_table.viewport().installEventFilter(self)
         
         left_layout.addWidget(self.tag_table)
         self.splitter.addWidget(left_panel)
@@ -2933,26 +2935,47 @@ class TagManagerDialog(FramelessDialog):
         QTimer.singleShot(0, self._sync_tags_from_table)
         self._dirty = True
 
+    def eventFilter(self, source, event):
+        """Catch Drop events on the table viewport to trigger sync."""
+        if source is self.tag_table.viewport() and event.type() == QEvent.Type.Drop:
+            # Drop happened! Wait a bit for model to settle, then sync.
+            QTimer.singleShot(100, self._sync_tags_from_table)
+            self._dirty = True
+        return super().eventFilter(source, event)
+
     def _sync_tags_from_table(self):
-        """Update self.tags list from the current order of the table."""
+        """Update self.tags list from the current order of the table with detailed logging."""
         if self._loading: return
         new_tags = []
-        for i in range(self.tag_table.rowCount()):
+        rowCount = self.tag_table.rowCount()
+        expected = len(self.tags)
+        
+        print(f"[TagManager] --- Sync Starting (Table Rows: {rowCount}, Expected Data: {expected}) ---")
+        
+        for i in range(rowCount):
             item = self.tag_table.item(i, 0)
             if item:
                 tag_data = item.data(Qt.ItemDataRole.UserRole)
-                if tag_data:
+                if isinstance(tag_data, dict):
                     new_tags.append(tag_data)
+                else:
+                    print(f"[TagManager] Row {i}: item has INVALID UserRole data type={type(tag_data)}")
+            else:
+                # If we find a None item, the table model is currently in-flux or corrupted
+                print(f"[TagManager] Row {i}: item is None (empty cell detected during sync)")
         
         # Phase 58: Strict Integrity check
-        # Only update if we didn't lose any data objects that were in the original list
-        if len(new_tags) == len(self.tags):
+        if len(new_tags) == expected:
             self.tags = new_tags
-            print(f"[TagManager] tags synchronized from table ({len(self.tags)} items)")
+            print(f"[TagManager] SUCCESS: tags synchronized ({len(self.tags)} items)")
         else:
-            print(f"[TagManager] SKIPPED SYNC: Table state inconsistent (original={len(self.tags)}, found={len(new_tags)})")
-            # If discrepancy is found, refresh table from self.tags AFTER things settle
-            QTimer.singleShot(200, self._refresh_table)
+            print(f"[TagManager] FAILURE: Table state inconsistent (found {len(new_tags)} items, expected {expected})")
+            # CRITICAL: Table got messed up (likely a drop into 'nowhere' or a race condition)
+            # Rollback: Refresh the table from the last known good self.tags
+            print(f"[TagManager] Triggering auto-rollback to restore table state...")
+            self._loading = True
+            QTimer.singleShot(100, self._refresh_table)
+            self._loading = False
 
     def _find_row_for_tag(self, tag_ref):
         """Find the row index containing the given tag data object."""
