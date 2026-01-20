@@ -122,10 +122,56 @@ class ExecutablesManagerDialog(FramelessDialog):
         dlg.setWindowTitle(_("Select Button Color"))
         
         # Enforce white text and dark background for all child widgets to override global styling/black-on-black issues
+        # Also fix QSpinBox arrows which might be invisible due to global 'image: none' or lack of contrast
         dlg.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLabel { color: #ffffff; background: transparent; }
-            QSpinBox { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            
+            QSpinBox { 
+                background-color: #444; 
+                color: #ffffff; 
+                border: 1px solid #666; 
+                padding-right: 15px; /* Make room for buttons */
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 16px;
+                border-left: 1px solid #666;
+                border-bottom: 1px solid #666;
+                background-color: #555;
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 16px;
+                border-left: 1px solid #666;
+                border-top: 0px solid #666;
+                background-color: #555;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #666;
+            }
+            QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
+                background-color: #333;
+            }
+            
+            /* CSS Triangle Arrows */
+            QSpinBox::up-arrow {
+                width: 0px;
+                height: 0px;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 4px solid white;
+            }
+            QSpinBox::down-arrow {
+                width: 0px;
+                height: 0px;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid white;
+            }
+
             QLineEdit { background-color: #444; color: #ffffff; border: 1px solid #666; }
             QPushButton { background-color: #444; color: #ffffff; border: 1px solid #666; padding: 4px 12px; border-radius: 4px; }
             QPushButton:hover { background-color: #555; }
@@ -149,7 +195,51 @@ class ExecutablesManagerDialog(FramelessDialog):
         dlg.setStyleSheet("""
             QDialog { background-color: #2b2b2b; color: #ffffff; }
             QLabel { color: #ffffff; background: transparent; }
-            QSpinBox { background-color: #444; color: #ffffff; border: 1px solid #666; }
+            
+            QSpinBox { 
+                background-color: #444; 
+                color: #ffffff; 
+                border: 1px solid #666; 
+                padding-right: 15px; 
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 16px;
+                border-left: 1px solid #666;
+                border-bottom: 1px solid #666;
+                background-color: #555;
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 16px;
+                border-left: 1px solid #666;
+                border-top: 0px solid #666;
+                background-color: #555;
+            }
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #666;
+            }
+            QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
+                background-color: #333;
+            }
+            
+            QSpinBox::up-arrow {
+                width: 0px;
+                height: 0px;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-bottom: 4px solid white;
+            }
+            QSpinBox::down-arrow {
+                width: 0px;
+                height: 0px;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid white;
+            }
+
             QLineEdit { background-color: #444; color: #ffffff; border: 1px solid #666; }
             QPushButton { background-color: #444; color: #ffffff; border: 1px solid #666; padding: 4px 12px; border-radius: 4px; }
             QPushButton:hover { background-color: #555; }
