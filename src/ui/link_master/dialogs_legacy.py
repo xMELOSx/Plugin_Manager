@@ -2475,8 +2475,10 @@ class TagManagerDialog(FramelessDialog):
         self.setWindowTitle(_("Manage Quick Tags"))
         self.resize(500, 400)
         self.tags = [] 
+        self.current_tag_ref = None  # Reference to currently-selected tag's data object
         self._dirty = False 
-        self._loading = False 
+        self._loading = False
+        self._is_dragging = False  # Flag to track D&D operations for sync logic
         
         # FramelessDialog setup
         self._init_ui()
@@ -2856,13 +2858,9 @@ class TagManagerDialog(FramelessDialog):
         self._on_item_clicked(main_item)
 
     def _on_item_clicked(self, item):
-        # Phase 58: Auto-save PREVIOUS selection before switching to another item
-        if self.current_tag_ref and not self._loading:
-            try:
-                # IMPORTANT: We must save to the OLD reference, not the current row (which might have already changed if clicked)
-                self._save_tag_data_from_ui(self.current_tag_ref)
-            except Exception as e:
-                print(f"[TagManager] Auto-save error: {e}")
+        # NOTE: Auto-save on selection change was removed due to unstable reference tracking.
+        # Users must explicitly use the "Overwrite Save" button to save changes.
+
 
         if not item:
             self.edit_container.setVisible(False)
@@ -2936,46 +2934,64 @@ class TagManagerDialog(FramelessDialog):
         self._dirty = True
 
     def eventFilter(self, source, event):
-        """Catch Drop events on the table viewport to trigger sync."""
-        if source is self.tag_table.viewport() and event.type() == QEvent.Type.Drop:
-            # Drop happened! Wait a bit for model to settle, then sync.
-            QTimer.singleShot(100, self._sync_tags_from_table)
-            self._dirty = True
+        """Catch Drag/Drop events on the table viewport for validation without blocking normal interaction."""
+        if source is self.tag_table.viewport():
+            if event.type() == QEvent.Type.DragEnter:
+                self._is_dragging = True  # Mark that a D&D operation is in progress
+            if event.type() == QEvent.Type.DragMove:
+                # Proactively ignore drops on 'nothing' (far below last row)
+                pos = event.position().toPoint()
+                index = self.tag_table.indexAt(pos)
+                if not index.isValid():
+                    last_row = self.tag_table.rowCount() - 1
+                    if last_row >= 0:
+                        last_row_bottom = self.tag_table.rowViewportPosition(last_row) + self.tag_table.rowHeight(last_row)
+                        if pos.y() > last_row_bottom + 10:
+                            event.ignore()
+                            return True
+                return False
+            elif event.type() == QEvent.Type.Drop:
+                self.tag_table.setUpdatesEnabled(False)
+                QTimer.singleShot(30, self._sync_tags_from_table)
+                self._dirty = True
+                return False
         return super().eventFilter(source, event)
 
     def _sync_tags_from_table(self):
-        """Update self.tags list from the current order of the table with detailed logging."""
-        if self._loading: return
-        new_tags = []
-        rowCount = self.tag_table.rowCount()
-        expected = len(self.tags)
-        
-        print(f"[TagManager] --- Sync Starting (Table Rows: {rowCount}, Expected Data: {expected}) ---")
-        
-        for i in range(rowCount):
-            item = self.tag_table.item(i, 0)
-            if item:
-                tag_data = item.data(Qt.ItemDataRole.UserRole)
-                if isinstance(tag_data, dict):
-                    new_tags.append(tag_data)
-                else:
-                    print(f"[TagManager] Row {i}: item has INVALID UserRole data type={type(tag_data)}")
+        """Update self.tags list from the current order of the table. Only triggers rollback if a D&D was in progress."""
+        try:
+            if self._loading: 
+                self.tag_table.setUpdatesEnabled(True)
+                return
+            
+            new_tags = []
+            rowCount = self.tag_table.rowCount()
+            expected = len(self.tags)
+            
+            for i in range(rowCount):
+                item = self.tag_table.item(i, 0)
+                if item:
+                    tag_data = item.data(Qt.ItemDataRole.UserRole)
+                    if isinstance(tag_data, dict):
+                        new_tags.append(tag_data)
+            
+            if len(new_tags) == expected:
+                self.tags = new_tags
+                print(f"[TagManager] SUCCESS: tags synchronized ({len(self.tags)} items)")
             else:
-                # If we find a None item, the table model is currently in-flux or corrupted
-                print(f"[TagManager] Row {i}: item is None (empty cell detected during sync)")
-        
-        # Phase 58: Strict Integrity check
-        if len(new_tags) == expected:
-            self.tags = new_tags
-            print(f"[TagManager] SUCCESS: tags synchronized ({len(self.tags)} items)")
-        else:
-            print(f"[TagManager] FAILURE: Table state inconsistent (found {len(new_tags)} items, expected {expected})")
-            # CRITICAL: Table got messed up (likely a drop into 'nowhere' or a race condition)
-            # Rollback: Refresh the table from the last known good self.tags
-            print(f"[TagManager] Triggering auto-rollback to restore table state...")
-            self._loading = True
-            QTimer.singleShot(100, self._refresh_table)
-            self._loading = False
+                print(f"[TagManager] FAILURE: Table state inconsistent (found {len(new_tags)} items, expected {expected})")
+                # Only trigger rollback if this was caused by a D&D operation
+                if self._is_dragging:
+                    print(f"[TagManager] Auto-rollback triggered (D&D detected).")
+                    self._loading = True
+                    self._refresh_table()
+                    self._loading = False
+        except Exception as e:
+            print(f"[TagManager] Sync error: {e}")
+        finally:
+            self._is_dragging = False  # Clear the D&D flag
+            self.tag_table.setUpdatesEnabled(True)
+            self.tag_table.repaint()
 
     def _find_row_for_tag(self, tag_ref):
         """Find the row index containing the given tag data object."""
@@ -2987,10 +3003,13 @@ class TagManagerDialog(FramelessDialog):
 
     def _save_tag_data_from_ui(self, tag):
         """Standardized logic to save current UI input fields into a tag record and update its table row."""
-        if not tag: return
+        if not tag: 
+            print(f"[TagManager] _save_tag_data_from_ui: tag is None, skipping")
+            return
         
         if not tag.get('is_sep'):
             # Update data object
+            old_name = tag.get('name', '')
             tag['name'] = self.name_edit.text().strip() or 'Unnamed'
             tag['value'] = tag['name'] 
             tag['emoji'] = self.emoji_edit.text().strip()
@@ -2998,11 +3017,15 @@ class TagManagerDialog(FramelessDialog):
             tag['display_mode'] = self.display_mode_combo.currentData()
             tag['is_inheritable'] = self.inheritable_check.isChecked()
             
+            print(f"[TagManager] Saving: '{old_name}' -> '{tag['name']}' (id={id(tag)})")
+            
             # Find row and update UI
             row = self._find_row_for_tag(tag)
+            print(f"[TagManager] _find_row_for_tag returned: {row}")
             if row >= 0:
                 item0 = self.tag_table.item(row, 0)
                 if item0:
+
                     if tag['icon'] and os.path.exists(tag['icon']):
                         from PyQt6.QtGui import QPixmap
                         pix = QPixmap(tag['icon']).scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -3011,34 +3034,45 @@ class TagManagerDialog(FramelessDialog):
                         item0.setIcon(QIcon())
                 
                 # Update other columns
+                # Symbol (Col 1)
                 self.tag_table.setItem(row, 1, QTableWidgetItem(tag['emoji']))
                 self.tag_table.item(row, 1).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 
-                self.tag_table.setItem(row, 2, QTableWidgetItem(tag['name']))
+                # Tag Name (Col 2)
+                name_item = QTableWidgetItem(tag['name'])
+                name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                name_item.setForeground(QColor("#eeeeee"))
+                self.tag_table.setItem(row, 2, name_item)
                 
+                # Inherit (Col 3)
                 inherit_text = _("Yes") if tag['is_inheritable'] else _("No")
                 inh_item = QTableWidgetItem(inherit_text)
                 inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                inh_item.setForeground(QColor("#eeeeee"))
                 self.tag_table.setItem(row, 3, inh_item)
                 
+                # Mode labels (consistent with refresh_table)
                 mode_labels = {
                     'text': _("Text"), 'symbol': _("Sym"), 'text_symbol': _("Sym+Text"),
                     'image': _("Img"), 'image_text': _("Img+Text")
                 }
                 mode_item = QTableWidgetItem(mode_labels.get(tag['display_mode'], tag['display_mode']))
                 mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                mode_item.setForeground(QColor("#eeeeee"))
                 self.tag_table.setItem(row, 4, mode_item)
                 
                 # Re-apply flags if item was reset
                 for col in range(5):
                     it = self.tag_table.item(row, col)
                     if it: it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+                
+                print(f"[TagManager] Saved changes to row {row}: {tag['name']}")
         self._dirty = True
 
     def _add_tag_default(self):
-        # Phase 58: Auto-save previous before adding new
-        if self.current_tag_ref and not self._loading:
-            self._save_tag_data_from_ui(self.current_tag_ref)
+        # Auto-save previous selection before adding new (uses direct row access)
+        if not self._loading:
+            self._save_current_item_data()
 
         name = "Tag"
         new_tag = {
@@ -3052,15 +3086,98 @@ class TagManagerDialog(FramelessDialog):
         self._dirty = True
     
     def _save_current_item_data(self):
-        """Manual overwrite of the CURRENTLY SELECTED row."""
-        if self.current_tag_ref:
-            self._save_tag_data_from_ui(self.current_tag_ref)
-            self._dirty = True
+        """Manual overwrite of the CURRENTLY SELECTED row - uses current selection directly."""
+        row = self.tag_table.currentRow()
+        if row < 0:
+            print("[TagManager] _save_current_item_data: No row selected")
+            return
         
+        item = self.tag_table.item(row, 0)
+        if not item:
+            print(f"[TagManager] _save_current_item_data: Row {row} has no item")
+            return
+            
+        tag = item.data(Qt.ItemDataRole.UserRole)
+        if not tag:
+            print(f"[TagManager] _save_current_item_data: Row {row} item has no UserRole data")
+            return
+            
+        if tag.get('is_sep'):
+            print("[TagManager] _save_current_item_data: Cannot save separator")
+            return
+        
+        # Update the data object directly
+        old_name = tag.get('name', '')
+        tag['name'] = self.name_edit.text().strip() or 'Unnamed'
+        tag['value'] = tag['name']
+        tag['emoji'] = self.emoji_edit.text().strip()
+        tag['icon'] = self.icon_edit.text().strip()
+        tag['display_mode'] = self.display_mode_combo.currentData()
+        tag['is_inheritable'] = self.inheritable_check.isChecked()
+        
+        # CRITICAL: Ensure self.tags is also updated (explicit copy if identity mismatch)
+        # Find the matching tag in self.tags by identity or position
+        if row < len(self.tags) and self.tags[row] is tag:
+            print(f"[TagManager] Identity OK: self.tags[{row}] is same object")
+        else:
+            # Object mismatch - explicitly update self.tags
+            print(f"[TagManager] Identity MISMATCH: updating self.tags[{row}] explicitly")
+            if row < len(self.tags):
+                self.tags[row] = tag
+            else:
+                print(f"[TagManager] ERROR: row {row} out of bounds for self.tags (len={len(self.tags)})")
+        
+        print(f"[TagManager] Saved row {row}: '{old_name}' -> '{tag['name']}' | Verification: self.tags[{row}]['name'] = '{self.tags[row].get('name', '?') if row < len(self.tags) else 'OOB'}'")
+        
+
+        # Update the visual table cells
+        if tag['icon'] and os.path.exists(tag['icon']):
+            from PyQt6.QtGui import QPixmap
+            pix = QPixmap(tag['icon']).scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            item.setIcon(QIcon(pix))
+        else:
+            item.setIcon(QIcon())
+        
+        # Symbol
+        self.tag_table.setItem(row, 1, QTableWidgetItem(tag['emoji']))
+        self.tag_table.item(row, 1).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Name
+        name_item = QTableWidgetItem(tag['name'])
+        name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        name_item.setForeground(QColor("#eeeeee"))
+        self.tag_table.setItem(row, 2, name_item)
+        
+        # Inherit
+        inherit_text = _("Yes") if tag['is_inheritable'] else _("No")
+        inh_item = QTableWidgetItem(inherit_text)
+        inh_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        inh_item.setForeground(QColor("#eeeeee"))
+        self.tag_table.setItem(row, 3, inh_item)
+        
+        # Mode
+        mode_labels = {
+            'text': _("Text"), 'symbol': _("Sym"), 'text_symbol': _("Sym+Text"),
+            'image': _("Img"), 'image_text': _("Img+Text")
+        }
+        mode_item = QTableWidgetItem(mode_labels.get(tag['display_mode'], tag['display_mode']))
+        mode_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        mode_item.setForeground(QColor("#eeeeee"))
+        self.tag_table.setItem(row, 4, mode_item)
+        
+        # Re-apply flags
+        for col in range(5):
+            it = self.tag_table.item(row, col)
+            if it: 
+                it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled)
+        
+        self._dirty = True
+        
+
     def _add_sep(self):
-        # Phase 58: Auto-save previous before adding new
-        if self.current_tag_ref and not self._loading:
-            self._save_tag_data_from_ui(self.current_tag_ref)
+        # Auto-save previous selection before adding new (uses direct row access)
+        if not self._loading:
+            self._save_current_item_data()
         
         new_tag = {"name": "|", "value": "|", "emoji": "", "icon": "", "is_sep": True, "is_inheritable": True}
         self.tags.append(new_tag)
@@ -3068,24 +3185,51 @@ class TagManagerDialog(FramelessDialog):
         self.tag_table.selectRow(self.tag_table.rowCount()-1)
         self._dirty = True
 
+
     def _remove_tag(self):
         row = self.tag_table.currentRow()
-        if row >= 0:
-            # Robust removal: use the data object from the row, not just the index
-            item = self.tag_table.item(row, 0)
-            if not item: return
-            tag_to_remove = item.data(Qt.ItemDataRole.UserRole)
-            if not tag_to_remove: return
+        print(f"[TagManager] _remove_tag called: currentRow={row}, self.tags length={len(self.tags)}")
+        
+        if row < 0:
+            print("[TagManager] _remove_tag: No row selected")
+            return
+            
+        item = self.tag_table.item(row, 0)
+        if not item: 
+            print(f"[TagManager] _remove_tag: Row {row} has no item")
+            return
+        tag_to_remove = item.data(Qt.ItemDataRole.UserRole)
+        if not tag_to_remove: 
+            print(f"[TagManager] _remove_tag: Row {row} has no UserRole data")
+            return
 
-            self._loading = True
-            self.current_tag_ref = None # Clear before removal to avoid auto-save of zombie
-            
-            if tag_to_remove in self.tags:
-                self.tags.remove(tag_to_remove)
-            
-            self._refresh_table()
-            self._loading = False
-            self._dirty = True
+        self._loading = True
+        self.current_tag_ref = None
+        
+        # Try identity-based removal first
+        found = False
+        for i, tag in enumerate(self.tags):
+            if tag is tag_to_remove:
+                print(f"[TagManager] Removing by identity: index {i}")
+                del self.tags[i]
+                found = True
+                break
+        
+        # Fallback: if identity match failed, remove by position
+        if not found:
+            print(f"[TagManager] Identity match failed, removing by position: row {row}")
+            if row < len(self.tags):
+                del self.tags[row]
+            else:
+                print(f"[TagManager] ERROR: row {row} out of bounds")
+        
+        print(f"[TagManager] After removal: self.tags length={len(self.tags)}")
+        
+        self._refresh_table()
+        self._loading = False
+        self._dirty = True
+
+
 
     def _clear_icon(self):
         self.icon_edit.clear()
