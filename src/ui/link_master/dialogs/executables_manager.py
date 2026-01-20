@@ -116,17 +116,29 @@ class ExecutablesManagerDialog(FramelessDialog):
 
     def _pick_btn_color(self):
         from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor(self.btn_color), self, _("Select Button Color"))
-        if color.isValid():
-            self.btn_color = color.name()
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
+        # Phase 45: Fix black screen by avoiding native dialog
+        dlg = QColorDialog(QColor(self.btn_color), self)
+        dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+        dlg.setWindowTitle(_("Select Button Color"))
+        
+        if dlg.exec():
+            color = dlg.currentColor()
+            if color.isValid():
+                self.btn_color = color.name()
+                self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
 
     def _pick_txt_color(self):
         from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor(self.txt_color), self, _("Select Text Color"))
-        if color.isValid():
-            self.txt_color = color.name()
-            self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
+        # Phase 45: Fix black screen by avoiding native dialog
+        dlg = QColorDialog(QColor(self.txt_color), self)
+        dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+        dlg.setWindowTitle(_("Select Text Color"))
+        
+        if dlg.exec():
+            color = dlg.currentColor()
+            if color.isValid():
+                self.txt_color = color.name()
+                self.btn_color_preview.setStyleSheet(f"background-color: {self.btn_color}; color: {self.txt_color}; border: 1px solid #555;")
 
     def _browse_exe(self):
         path, _filter = QFileDialog.getOpenFileName(self, _("Select Executable"), "", _("Executables (*.exe);;All Files (*)"))

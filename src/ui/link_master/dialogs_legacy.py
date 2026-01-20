@@ -18,6 +18,7 @@ from src.ui.slide_button import SlideButton
 from src.core.lang_manager import _
 from src.ui.window_mixins import OptionsMixin
 from src.ui.common_widgets import ProtectedLineEdit, ProtectedTextEdit, StyledComboBox, StyledSpinBox, StyledButton
+from src.core.file_handler import FileHandler
 import os
 import subprocess
 import shutil
@@ -2540,6 +2541,7 @@ class TagManagerDialog(FramelessDialog):
             QLineEdit, QComboBox { background-color: #1e1e1e; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px; }
             QPushButton { background-color: #3b3b3b; color: white; border-radius: 4px; padding: 6px; }
             QPushButton:hover { background-color: #4a4a4a; }
+            QPushButton:pressed { background-color: #222222; margin-top: 1px; margin-left: 1px; }
             QLabel { color: #ddd; }
         """)
         
@@ -2717,23 +2719,44 @@ class TagManagerDialog(FramelessDialog):
         
         self.overwrite_btn = QPushButton(_("Overwrite Current"))
         self.overwrite_btn.clicked.connect(self._save_current_item_data)
-        self.overwrite_btn.setStyleSheet("background-color: #2980b9; color: white;")
+        self.overwrite_btn.setStyleSheet("""
+            QPushButton { background-color: #2980b9; color: white; border: none; padding: 6px; border-radius: 4px; }
+            QPushButton:hover { background-color: #3498db; }
+            QPushButton:pressed { background-color: #1a5276; margin-top: 1px; margin-left: 1px; }
+            QPushButton:disabled { background-color: #444; color: #888; }
+        """)
         
         self.add_btn = QPushButton(_("Add New Tag"))
         self.add_btn.clicked.connect(self._add_tag_default)
-        self.add_btn.setStyleSheet("background-color: #e67e22; color: white;")
+        self.add_btn.setStyleSheet("""
+            QPushButton { background-color: #e67e22; color: white; border: none; padding: 6px; border-radius: 4px; }
+            QPushButton:hover { background-color: #f39c12; }
+            QPushButton:pressed { background-color: #d35400; margin-top: 1px; margin-left: 1px; }
+        """)
         
         self.add_sep_btn = QPushButton(_("Add Separator"))
         self.add_sep_btn.clicked.connect(self._add_sep)
-        self.add_sep_btn.setStyleSheet("background-color: #555; color: white;")
+        self.add_sep_btn.setStyleSheet("""
+            QPushButton { background-color: #555555; color: white; border: none; padding: 6px; border-radius: 4px; }
+            QPushButton:hover { background-color: #666666; }
+            QPushButton:pressed { background-color: #333333; margin-top: 1px; margin-left: 1px; }
+        """)
         
         self.remove_btn = QPushButton(_("Remove Selected"))
         self.remove_btn.clicked.connect(self._remove_tag)
-        self.remove_btn.setStyleSheet("background-color: #c0392b; color: white;")
+        self.remove_btn.setStyleSheet("""
+            QPushButton { background-color: #c0392b; color: white; border: none; padding: 6px; border-radius: 4px; }
+            QPushButton:hover { background-color: #e74c3c; }
+            QPushButton:pressed { background-color: #922b21; margin-top: 1px; margin-left: 1px; }
+        """)
         
         self.save_btn = QPushButton(_("Confirm"))
         self.save_btn.clicked.connect(self._save_and_close)
-        self.save_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; margin-top: 10px;")
+        self.save_btn.setStyleSheet("""
+            QPushButton { background-color: #27ae60; color: white; font-weight: bold; margin-top: 10px; border: none; padding: 6px; border-radius: 4px; }
+            QPushButton:hover { background-color: #2ecc71; }
+            QPushButton:pressed { background-color: #1e8449; margin-top: 11px; margin-left: 1px; }
+        """)
         
         btn_layout.addWidget(self.overwrite_btn)
         btn_layout.addWidget(self.add_btn)
@@ -2747,10 +2770,12 @@ class TagManagerDialog(FramelessDialog):
         self.set_content_widget(content_widget)
 
     def _load_tags(self):
-        if not self.db: return
         self._loading = True
         try:
             import json
+            # Use App-Specific DB (self.db) to match Main Window logic
+            if not self.db: return
+            
             raw = self.db.get_setting('frequent_tags_config', '[]')
             try:
                 self.tags = json.loads(raw)
@@ -2857,6 +2882,10 @@ class TagManagerDialog(FramelessDialog):
         main_item = self.tag_table.item(row, 0)
         self._on_item_clicked(main_item)
 
+
+    def _on_item_clicked(self, item):
+        # NOTE: Auto-save on selection change was removed due to unstable reference tracking.
+        # Users must explicitly use the "Overwrite Save" button to save changes.
 
         if not item:
             self.edit_container.setVisible(False)
@@ -2999,8 +3028,9 @@ class TagManagerDialog(FramelessDialog):
 
     def _save_tag_data_from_ui(self, tag):
         """Standardized logic to save current UI input fields into a tag record and update its table row."""
+        import logging
         if not tag: 
-            import logging; logging.debug(f"[TagManager] _save_tag_data_from_ui: tag is None, skipping")
+            logging.debug(f"[TagManager] _save_tag_data_from_ui: tag is None, skipping")
             return
         
         if not tag.get('is_sep'):
@@ -3013,7 +3043,7 @@ class TagManagerDialog(FramelessDialog):
             tag['display_mode'] = self.display_mode_combo.currentData()
             tag['is_inheritable'] = self.inheritable_check.isChecked()
             
-            import logging; logging.debug(f"[TagManager] Saving: '{old_name}' -> '{tag['name']}' (id={id(tag)})")
+            logging.debug(f"[TagManager] Saving: '{old_name}' -> '{tag['name']}' (id={id(tag)})")
             
             # Find row and update UI
             row = self._find_row_for_tag(tag)
@@ -3026,8 +3056,13 @@ class TagManagerDialog(FramelessDialog):
                         from PyQt6.QtGui import QPixmap
                         pix = QPixmap(tag['icon']).scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                         item0.setIcon(QIcon(pix))
+                        item0.setText("")
                     else:
                         item0.setIcon(QIcon())
+                        item0.setText("❓")
+                    
+                    # CRITICAL: Explicitly update the UserRole data in the item to ensure it's not stale
+                    item0.setData(Qt.ItemDataRole.UserRole, tag)
                 
                 # Update other columns
                 # Symbol (Col 1)
@@ -3083,19 +3118,21 @@ class TagManagerDialog(FramelessDialog):
     
     def _save_current_item_data(self):
         """Manual overwrite of the CURRENTLY SELECTED row - uses current selection directly."""
+        import logging
+        
         row = self.tag_table.currentRow()
         if row < 0:
-            import logging; logging.debug("[TagManager] _save_current_item_data: No row selected")
+            logging.debug("[TagManager] _save_current_item_data: No row selected")
             return
         
         item = self.tag_table.item(row, 0)
         if not item:
-            import logging; logging.debug(f"[TagManager] _save_current_item_data: Row {row} has no item")
+            logging.debug(f"[TagManager] _save_current_item_data: Row {row} has no item")
             return
             
         tag = item.data(Qt.ItemDataRole.UserRole)
         if not tag:
-            import logging; logging.debug(f"[TagManager] _save_current_item_data: Row {row} item has no UserRole data")
+            logging.debug(f"[TagManager] _save_current_item_data: Row {row} item has no UserRole data")
             return
             
         if tag.get('is_sep'):
@@ -3127,12 +3164,18 @@ class TagManagerDialog(FramelessDialog):
         
 
         # Update the visual table cells
+        # Update the visual table cells
         if tag['icon'] and os.path.exists(tag['icon']):
             from PyQt6.QtGui import QPixmap
             pix = QPixmap(tag['icon']).scaled(18, 18, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             item.setIcon(QIcon(pix))
+            item.setText("")
         else:
             item.setIcon(QIcon())
+            item.setText("❓")
+
+        # CRITICAL: Explicitly update the UserRole data in the item to ensure it's not stale
+        item.setData(Qt.ItemDataRole.UserRole, tag)
         
         # Symbol
         self.tag_table.setItem(row, 1, QTableWidgetItem(tag['emoji']))
@@ -3183,8 +3226,9 @@ class TagManagerDialog(FramelessDialog):
 
 
     def _remove_tag(self):
+        import logging
         row = self.tag_table.currentRow()
-        import logging; logging.debug(f"[TagManager] _remove_tag called: currentRow={row}, self.tags length={len(self.tags)}")
+        logging.debug(f"[TagManager] _remove_tag called: currentRow={row}, self.tags length={len(self.tags)}")
         
         if row < 0:
             logging.debug("[TagManager] _remove_tag: No row selected")
@@ -3236,7 +3280,9 @@ class TagManagerDialog(FramelessDialog):
     def _process_and_set_icon(self, path):
         try:
             from PyQt6.QtGui import QImage
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+            from PyQt6.QtGui import QImage
+            from src.core.file_handler import FileHandler
+            project_root = FileHandler().project_root
             res_dir = os.path.join(project_root, "resource", "tags")
             os.makedirs(res_dir, exist_ok=True)
             dest_path = os.path.join(res_dir, os.path.basename(path))
@@ -3261,8 +3307,12 @@ class TagManagerDialog(FramelessDialog):
         # テーブルのUserRoleデータをself.tagsに同期（位置変更なしでも編集内容を反映）
         self._sync_tags_from_table()
         import json
-        # 読み込み位置 (self.db.get_setting('frequent_tags_config')) と一致させる
-        self.db.set_setting('frequent_tags_config', json.dumps(self.tags))
+        
+        if self.db:
+             self.db.set_setting('frequent_tags_config', json.dumps(self.tags))
+        else:
+             import logging
+             logging.error("[TagManager] Cannot save tags: No db available")
         # Close dialog first
         self.accept()
         # Use main window for toast so it persists

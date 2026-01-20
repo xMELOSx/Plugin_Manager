@@ -2836,6 +2836,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 # instead of a full reload which is heavy and causes flickering/stale state.
                 self._sync_app_data_to_ui(app_data['id'], data)
                 
+                # Phase 45: Refresh Title Bar Buttons immediately
+                self._update_exe_links(data)
+                
                 # Phase 32 [REMOVED]: Do NOT reset root folder config.
                 # User complaint: "Display mode default specification should be initial settings... but it is implemented meaninglessly..."
                 # We should respect existing manual overrides on the root folder unless explicitly cleared.

@@ -475,6 +475,19 @@ class StyledButton(QPushButton):
         self.style_type = style_type
         self._apply_style()
 
+class ProtectedLabel(QLabel):
+    """
+    A QLabel that uses the StandardEditMenu for its context menu.
+    Allows copying text with a styled, translated menu.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
+
+    def contextMenuEvent(self, event):
+        menu = StandardEditMenu(self)
+        menu.exec(event.globalPos())
+
 class FramelessMessageBox(FramelessDialog):
     """
     Standardized Frameless Message Box to replace native QMessageBox.
@@ -545,7 +558,7 @@ class FramelessMessageBox(FramelessDialog):
         self.right_layout = QVBoxLayout()
         self.right_layout.setSpacing(20)
         
-        self.text_lbl = QLabel()
+        self.text_lbl = ProtectedLabel()
         self.text_lbl.setWordWrap(True)
         self.text_lbl.setStyleSheet("color: #eeeeee; font-size: 13px;")
         self.text_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
