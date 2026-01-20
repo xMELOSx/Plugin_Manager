@@ -2857,10 +2857,6 @@ class TagManagerDialog(FramelessDialog):
         main_item = self.tag_table.item(row, 0)
         self._on_item_clicked(main_item)
 
-    def _on_item_clicked(self, item):
-        # NOTE: Auto-save on selection change was removed due to unstable reference tracking.
-        # Users must explicitly use the "Overwrite Save" button to save changes.
-
 
         if not item:
             self.edit_container.setVisible(False)
@@ -2977,17 +2973,17 @@ class TagManagerDialog(FramelessDialog):
             
             if len(new_tags) == expected:
                 self.tags = new_tags
-                print(f"[TagManager] SUCCESS: tags synchronized ({len(self.tags)} items)")
+                import logging; logging.debug(f"[TagManager] SUCCESS: tags synchronized ({len(self.tags)} items)")
             else:
-                print(f"[TagManager] FAILURE: Table state inconsistent (found {len(new_tags)} items, expected {expected})")
+                import logging; logging.debug(f"[TagManager] FAILURE: Table state inconsistent (found {len(new_tags)} items, expected {expected})")
                 # Only trigger rollback if this was caused by a D&D operation
                 if self._is_dragging:
-                    print(f"[TagManager] Auto-rollback triggered (D&D detected).")
+                    logging.debug(f"[TagManager] Auto-rollback triggered (D&D detected).")
                     self._loading = True
                     self._refresh_table()
                     self._loading = False
         except Exception as e:
-            print(f"[TagManager] Sync error: {e}")
+            import logging; logging.debug(f"[TagManager] Sync error: {e}")
         finally:
             self._is_dragging = False  # Clear the D&D flag
             self.tag_table.setUpdatesEnabled(True)
@@ -3004,7 +3000,7 @@ class TagManagerDialog(FramelessDialog):
     def _save_tag_data_from_ui(self, tag):
         """Standardized logic to save current UI input fields into a tag record and update its table row."""
         if not tag: 
-            print(f"[TagManager] _save_tag_data_from_ui: tag is None, skipping")
+            import logging; logging.debug(f"[TagManager] _save_tag_data_from_ui: tag is None, skipping")
             return
         
         if not tag.get('is_sep'):
@@ -3017,11 +3013,11 @@ class TagManagerDialog(FramelessDialog):
             tag['display_mode'] = self.display_mode_combo.currentData()
             tag['is_inheritable'] = self.inheritable_check.isChecked()
             
-            print(f"[TagManager] Saving: '{old_name}' -> '{tag['name']}' (id={id(tag)})")
+            import logging; logging.debug(f"[TagManager] Saving: '{old_name}' -> '{tag['name']}' (id={id(tag)})")
             
             # Find row and update UI
             row = self._find_row_for_tag(tag)
-            print(f"[TagManager] _find_row_for_tag returned: {row}")
+            logging.debug(f"[TagManager] _find_row_for_tag returned: {row}")
             if row >= 0:
                 item0 = self.tag_table.item(row, 0)
                 if item0:
@@ -3089,21 +3085,21 @@ class TagManagerDialog(FramelessDialog):
         """Manual overwrite of the CURRENTLY SELECTED row - uses current selection directly."""
         row = self.tag_table.currentRow()
         if row < 0:
-            print("[TagManager] _save_current_item_data: No row selected")
+            import logging; logging.debug("[TagManager] _save_current_item_data: No row selected")
             return
         
         item = self.tag_table.item(row, 0)
         if not item:
-            print(f"[TagManager] _save_current_item_data: Row {row} has no item")
+            import logging; logging.debug(f"[TagManager] _save_current_item_data: Row {row} has no item")
             return
             
         tag = item.data(Qt.ItemDataRole.UserRole)
         if not tag:
-            print(f"[TagManager] _save_current_item_data: Row {row} item has no UserRole data")
+            import logging; logging.debug(f"[TagManager] _save_current_item_data: Row {row} item has no UserRole data")
             return
             
         if tag.get('is_sep'):
-            print("[TagManager] _save_current_item_data: Cannot save separator")
+            logging.debug("[TagManager] _save_current_item_data: Cannot save separator")
             return
         
         # Update the data object directly
@@ -3118,16 +3114,16 @@ class TagManagerDialog(FramelessDialog):
         # CRITICAL: Ensure self.tags is also updated (explicit copy if identity mismatch)
         # Find the matching tag in self.tags by identity or position
         if row < len(self.tags) and self.tags[row] is tag:
-            print(f"[TagManager] Identity OK: self.tags[{row}] is same object")
+            logging.debug(f"[TagManager] Identity OK: self.tags[{row}] is same object")
         else:
             # Object mismatch - explicitly update self.tags
-            print(f"[TagManager] Identity MISMATCH: updating self.tags[{row}] explicitly")
+            logging.debug(f"[TagManager] Identity MISMATCH: updating self.tags[{row}] explicitly")
             if row < len(self.tags):
                 self.tags[row] = tag
             else:
-                print(f"[TagManager] ERROR: row {row} out of bounds for self.tags (len={len(self.tags)})")
+                logging.debug(f"[TagManager] ERROR: row {row} out of bounds for self.tags (len={len(self.tags)})")
         
-        print(f"[TagManager] Saved row {row}: '{old_name}' -> '{tag['name']}' | Verification: self.tags[{row}]['name'] = '{self.tags[row].get('name', '?') if row < len(self.tags) else 'OOB'}'")
+        logging.debug(f"[TagManager] Saved row {row}: '{old_name}' -> '{tag['name']}' | Verification: self.tags[{row}]['name'] = '{self.tags[row].get('name', '?') if row < len(self.tags) else 'OOB'}'")
         
 
         # Update the visual table cells
@@ -3188,19 +3184,19 @@ class TagManagerDialog(FramelessDialog):
 
     def _remove_tag(self):
         row = self.tag_table.currentRow()
-        print(f"[TagManager] _remove_tag called: currentRow={row}, self.tags length={len(self.tags)}")
+        import logging; logging.debug(f"[TagManager] _remove_tag called: currentRow={row}, self.tags length={len(self.tags)}")
         
         if row < 0:
-            print("[TagManager] _remove_tag: No row selected")
+            logging.debug("[TagManager] _remove_tag: No row selected")
             return
             
         item = self.tag_table.item(row, 0)
         if not item: 
-            print(f"[TagManager] _remove_tag: Row {row} has no item")
+            logging.debug(f"[TagManager] _remove_tag: Row {row} has no item")
             return
         tag_to_remove = item.data(Qt.ItemDataRole.UserRole)
         if not tag_to_remove: 
-            print(f"[TagManager] _remove_tag: Row {row} has no UserRole data")
+            logging.debug(f"[TagManager] _remove_tag: Row {row} has no UserRole data")
             return
 
         self._loading = True
@@ -3210,20 +3206,20 @@ class TagManagerDialog(FramelessDialog):
         found = False
         for i, tag in enumerate(self.tags):
             if tag is tag_to_remove:
-                print(f"[TagManager] Removing by identity: index {i}")
+                logging.debug(f"[TagManager] Removing by identity: index {i}")
                 del self.tags[i]
                 found = True
                 break
         
         # Fallback: if identity match failed, remove by position
         if not found:
-            print(f"[TagManager] Identity match failed, removing by position: row {row}")
+            logging.debug(f"[TagManager] Identity match failed, removing by position: row {row}")
             if row < len(self.tags):
                 del self.tags[row]
             else:
-                print(f"[TagManager] ERROR: row {row} out of bounds")
+                logging.debug(f"[TagManager] ERROR: row {row} out of bounds")
         
-        print(f"[TagManager] After removal: self.tags length={len(self.tags)}")
+        logging.debug(f"[TagManager] After removal: self.tags length={len(self.tags)}")
         
         self._refresh_table()
         self._loading = False
