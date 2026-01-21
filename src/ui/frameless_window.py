@@ -699,7 +699,7 @@ class FramelessDialog(QDialog, Win32Mixin):
                     "Browser", "Web", "Stacked", "ToolBox", 
                     "Check", "Radio", "Group", "Menu", "Indicator", "Icon",
                     "ScrollBar", "ItemCard", "TagBar", "TagWidget", "TagFlowPreview", "TagChipInput",
-                    "CropLabel"  # Phase 42: Allow interaction with crop dialog selection frame
+                    "CropLabel", "ColorMapWidget", "HueSlider"  # Phase 45: Custom Color Picker whitelists
                 ]) or "Clickable" in cname or oname in ["titlebar_icon", "titlebar_close", "titlebar_maximize", "titlebar_minimize"]:
                      return False, 1 # HTCLIENT
                 
