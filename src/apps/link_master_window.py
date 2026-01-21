@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QDir, QSize, QEvent
 from PyQt6.QtGui import QFileSystemModel, QPixmap, QIcon, QColor, QImage
 from src.core.lang_manager import _
 from src.ui.toast import Toast
+from src.ui.common_widgets import FramelessMessageBox
 from src.ui.styles import apply_common_dialog_style
 
 from src.ui.frameless_window import FramelessWindow
@@ -3308,8 +3309,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                 }}
             """)
             
-            # Capture path/args for lambda
-            def make_launcher(p, a):
+            # Capture storage_root and path/args for lambda
+            storage_root = app_data.get('storage_root')
+            def make_launcher(p, a, s_root=None):
                 def launch():
                     try:
                         if not p: return
@@ -3320,11 +3322,19 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         
                         target_path = p
                         if not os.path.isabs(target_path):
-                            if getattr(sys, 'frozen', False):
-                                base_dir = os.path.dirname(sys.executable)
+                            # Try resolving relative to app's storage_root first if available
+                            if s_root and os.path.exists(os.path.join(s_root, target_path)):
+                                target_path = os.path.join(s_root, target_path)
                             else:
-                                base_dir = os.getcwd()
-                            target_path = os.path.join(base_dir, target_path)
+                                # Fallback to PM executable dir (backwards compatibility)
+                                if getattr(sys, 'frozen', False):
+                                    base_dir = os.path.dirname(sys.executable)
+                                else:
+                                    base_dir = os.getcwd()
+                                target_path = os.path.join(base_dir, target_path)
+                        
+                        target_path = os.path.normpath(os.path.abspath(target_path))
+                        logging.debug(f"[Launch] Resolved: {target_path} (exists: {os.path.exists(target_path)})")
                             
                         # Set working directory to the target app's folder
                         # This is crucial for many apps to find their resources/DLLs
@@ -3335,8 +3345,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         else:
                             subprocess.Popen([target_path], cwd=work_dir)
                     except OSError as e:
-                        # Handle UAC Elevation Requirement (WinError 740)
-                        if getattr(e, 'winerror', 0) == 740:
+                        # Handle UAC Elevation Requirement (WinError 740) or Access Denied (WinError 5)
+                        if getattr(e, 'winerror', 0) in (740, 5):
                             try:
                                 import ctypes
                                 # ShellExecuteW(hwnd, verb, file, args, cwd, show_cmd)
@@ -3345,31 +3355,18 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                                 )
                                 # ShellExecute returns >32 on success
                                 if ret <= 32:
-                                    raise OSError(f"Elevation failed with code {ret}")
+                                    raise OSError(f"Elevation failed with code {ret} (Target: {target_path})")
                                 return
                             except Exception as uac_err:
+                                logging.error(f"[Launch] Elevation failure: {uac_err}")
                                 e = uac_err # Fallthrough to show dialog
 
-                        from src.ui.common_widgets import FramelessMessageBox
-                        from src.core.lang_manager import _
-                        
-                        err_box = FramelessMessageBox(self)
-                        err_box.setIcon(FramelessMessageBox.Icon.Critical)
-                        err_box.setWindowTitle(_("Launch Error"))
-                        err_box.setText(_("Failed to launch application.\n\nError: {e}").format(e=e))
-                        err_box.exec()
+                        FramelessMessageBox.critical(self, _("Launch Error"), _("Failed to launch application.\n\nError: {e}").format(e=e))
                     except Exception as e:
-                        from src.ui.common_widgets import FramelessMessageBox
-                        from src.core.lang_manager import _
-                        
-                        err_box = FramelessMessageBox(self)
-                        err_box.setIcon(FramelessMessageBox.Icon.Critical)
-                        err_box.setWindowTitle(_("Launch Error"))
-                        err_box.setText(_("Failed to launch application.\n\nError: {e}").format(e=e))
-                        err_box.exec()
+                        FramelessMessageBox.critical(self, _("Launch Error"), _("Failed to launch application.\n\nError: {e}").format(e=e))
                 return launch
             
-            btn.clicked.connect(make_launcher(path, args))
+            btn.clicked.connect(make_launcher(path, args, storage_root))
             
             # Phase 1.1.110: Apply TooltipStyles and set native tooltip
             from src.ui.styles import TooltipStyles
@@ -3386,7 +3383,8 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
         
         app_data = self.app_combo.currentData()
         if not app_data:
-            QMessageBox.warning(self, "Error", "アプリを選択してください。")
+            from src.ui.common_widgets import FramelessMessageBox
+            FramelessMessageBox.warning(self, _("Error"), _("Please select an application."))
             return
         
         exe_json = app_data.get('executables', '[]')

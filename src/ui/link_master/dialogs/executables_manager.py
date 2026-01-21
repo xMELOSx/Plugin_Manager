@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from src.ui.frameless_window import FramelessDialog
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from src.ui.common_widgets import ProtectedLineEdit
+from src.ui.common_widgets import ProtectedLineEdit, FramelessMessageBox
 from src.ui.action_button import ActionButton
 from src.core.lang_manager import _
 import os
@@ -151,7 +151,7 @@ class ExecutablesManagerDialog(FramelessDialog):
         args = self.args_edit.text().strip()
         
         if not name or not path:
-            QMessageBox.warning(self, _("Error"), _("Name and Path are required."))
+            FramelessMessageBox.warning(self, _("Error"), _("Name and Path are required."))
             return
         
         new_exe = {

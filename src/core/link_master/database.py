@@ -247,7 +247,7 @@ class LinkMasterDB:
             '''CREATE TABLE IF NOT EXISTS lm_folder_config (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 rel_path TEXT NOT NULL,
-                folder_type TEXT DEFAULT 'package',
+                folder_type TEXT DEFAULT 'auto',
                 display_style TEXT DEFAULT 'image',
                 display_name TEXT,
                 image_path TEXT,
@@ -762,6 +762,12 @@ class LinkMasterDB:
                         if k in valid_cols and v is not None:
                             insert_cols.append(k)
                             insert_params.append(v)
+                    
+                    # Ensure folder_type defaults to 'auto' if not provided (overriding potential old DB defaults)
+                    if 'folder_type' not in kwargs:
+                        insert_cols.append('folder_type')
+                        insert_params.append('auto')
+
                     placeholders = ['?'] * len(insert_cols)
                     sql = f"INSERT INTO lm_folder_config ({', '.join(insert_cols)}) VALUES ({', '.join(placeholders)})"
                     logging.debug(f"[DB] INSERT: {rel_path} with {kwargs}")
