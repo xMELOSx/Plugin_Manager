@@ -890,8 +890,6 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             if scanned_at:
                 size_text += _(" (Scanned: {date})").format(date=scanned_at[:16].replace('T', ' '))
             
-            self.set_content_widget(content_widget)
-            
             self.size_edit = ProtectedLineEdit()
             self.size_edit.setText(size_text)
             self.size_edit.setReadOnly(True)
@@ -1404,8 +1402,12 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
                     target_set = True
 
         if not target_set:
-            # Default to Primary
-            idx = self.target_combo.findData(1)
+            # Default to Primary (or KEEP in batch mode)
+            if self.batch_mode:
+                idx = self.target_combo.findData("KEEP")
+            else:
+                idx = self.target_combo.findData(1)
+            
             if idx >= 0: self.target_combo.setCurrentIndex(idx)
             else: self.target_combo.setCurrentIndex(0)
         
@@ -1441,7 +1443,11 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         self.deploy_rule_override_combo.addItem(_("Custom"), "custom")
         
         # Initial Rule for current target
-        initial_rule = self.deploy_rules.get(self.prev_target_data, "inherit")
+        if self.batch_mode:
+            initial_rule = "KEEP"
+        else:
+            initial_rule = self.deploy_rules.get(self.prev_target_data, "inherit")
+        
         idx = self.deploy_rule_override_combo.findData(initial_rule)
         if idx >= 0:
             self.deploy_rule_override_combo.setCurrentIndex(idx)
@@ -1685,6 +1691,9 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         
         # Phase 33: Ensure Left Column Stretches appropriately
         layout.addStretch()
+        
+        # Set content widget (moved outside batch_mode check to fix batch dialog display)
+        self.set_content_widget(content_widget)
         
         # Update preview if image exists, or try managed thumbnail, or first preview
         if self.current_config.get('image_path'):
