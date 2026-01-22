@@ -248,7 +248,7 @@ class LinkMasterDB:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 rel_path TEXT NOT NULL,
                 folder_type TEXT DEFAULT 'auto',
-                display_style TEXT DEFAULT 'image',
+                display_style TEXT,
                 display_name TEXT,
                 image_path TEXT,
                 manual_preview_path TEXT, -- Phase 16.5
@@ -409,7 +409,7 @@ class LinkMasterDB:
                 cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN is_intentional INTEGER DEFAULT 0")
             except: pass
             try:
-                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN display_style_package TEXT DEFAULT 'image'")
+                cursor.execute("ALTER TABLE lm_folder_config ADD COLUMN display_style_package TEXT")
             except: pass
             try:
                 cursor.execute("ALTER TABLE lm_presets ADD COLUMN folder TEXT")

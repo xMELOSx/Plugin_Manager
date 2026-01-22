@@ -456,108 +456,56 @@ class Deployer:
         """
         Checks if the target_link_path is a valid link to expected_source.
         Returns {'status': 'linked'|'conflict'|'none', 'type': 'symlink'|'junction'|'file'|'dir'}
-        
-        Args:
-            target_link_path: The path where the link should be.
-            expected_source: The source path it should point to.
-            expected_transfer_mode: 'symlink' or 'copy'. If 'copy', physical files are valid links.
-            deploy_rule: 'folder', 'files', 'tree', etc. used for specialized checks.
-            rules: (dict) Optional deployment rules for Custom/Tree modes.
         """
         # -------------------------------------------------------------------------
         # 🚨 Phase 58: MTIME-BASED CACHING (Optimization for recurring scans)
-        # Skip recursion if source and target mtimes haven't changed in the last 1s.
         # -------------------------------------------------------------------------
         cache_key = (target_link_path, expected_source, deploy_rule)
         now = time.time()
         
-        # Helper to get mtime safely
         def get_mtime(p):
             try: return os.path.getmtime(p) if os.path.exists(p) else 0
             except: return 0
 
         if cache_key in self._status_cache:
             c_time, c_src_m, c_tgt_m, c_res = self._status_cache[cache_key]
-            # 1 second TTL OR strict mtime match
-            if now - c_time < 0.8: # Very recent scan (e.g. rapid refresh)
-                res_to_cache = c_res
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+            if now - c_time < 0.8: 
+                return c_res
             
             src_m = get_mtime(expected_source) if expected_source else 0
             tgt_m = get_mtime(target_link_path)
             
             if src_m == c_src_m and tgt_m == c_tgt_m:
-                # Update timestamp to keep it in cache
                 self._status_cache[cache_key] = (now, src_m, tgt_m, c_res)
-                res_to_cache = c_res
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                return c_res
+
+        # -------------------------------------------------------------------------
+        # Core Detection Logic
+        # -------------------------------------------------------------------------
+        res = {"status": "none", "type": "none"}
 
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
-            result = {"status": "none", "type": "none"}
-            # Cache the 'none' status as well
-            tgt_m = get_mtime(target_link_path)
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-            tgt_m = get_mtime(target_link_path)
-            self._status_cache[cache_key] = (now, src_m, tgt_m, res_to_cache)
-            return res_to_cache
-        
-        # Phase 42: Declarative State Check - Removed premature return to ensure disk verification
-
-        # -------------------------------------------------------------------------
-        # 🚨 Phase 57: OPTIMIZED FOLDER-LINK CHECK FOR 'tree' AND 'folder' MODES
-        # If the target is itself a symlink pointing to expected_source, we're done.
-        # This is MUCH faster than iterating through every file for large folders.
-        # -------------------------------------------------------------------------
-        if deploy_rule in ('folder', 'tree') and os.path.islink(target_link_path):
+            res = {"status": "none", "type": "none"}
+        elif deploy_rule in ('folder', 'tree') and os.path.islink(target_link_path):
             try:
                 link_target = os.path.realpath(target_link_path)
                 expected_real = os.path.realpath(expected_source) if expected_source else None
                 if expected_real and os.path.normcase(link_target) == os.path.normcase(expected_real):
-                    res_to_cache = {"status": "linked", "type": "symlink", "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                    res = {"status": "linked", "type": "symlink", "is_intentional": False}
                 else:
-                    res_to_cache = {"status": "conflict", "type": "symlink", "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-            except Exception:
-                pass  # Fall through to detailed check
-
-        # Check for Copy Mode validity FIRST (Physical Tree / Physical Copy Fix)
-        # 🚨 Safety: If we expect a copy, we only treat it as linked if metadata exists 
-        # OR if it's a file. If it's a directory, it might just be the search root (collision!).
-
-        # -------------------------------------------------------------------------
-        # 🚨 UNIFIED FLATTEN (FILES) MODE CHECK
-        # This block handles BOTH Copy and Symlink detection for 'files' mode identically.
-        # It relies on strict source-file enumeration to avoid ghost detection in target roots.
-        # -------------------------------------------------------------------------
-        if (deploy_rule in ('files', 'custom', 'tree')) and expected_source and os.path.isdir(expected_source):
-             # -------------------------------------------------------------------------
-             # 🚨 UNIFIED MIRROR/FLATTEN CHECK (Multi-mode aware)
-             # This block handles detection for 'files', 'custom', and 'tree' modes.
-             # -------------------------------------------------------------------------
+                    res = {"status": "conflict", "type": "symlink", "is_intentional": False}
+            except:
+                res = {"status": "none", "type": "symlink"}
+        elif (deploy_rule in ('files', 'custom', 'tree')) and expected_source and os.path.isdir(expected_source):
              if os.path.exists(target_link_path):
                  files_found = 0
                  files_total = 0
                  missing_samples = []
-                 
                  excludes = []
+                 path_overrides = {}
+                 has_overrides = False
+
                  if deploy_rule == 'custom':
-                     # Phase 53: Auto-load rules from disk if not provided (Fix for missing exclusions)
                      if not rules and os.path.isdir(expected_source):
                          json_path = os.path.join(expected_source, 'deployment.json')
                          if os.path.exists(json_path):
@@ -566,332 +514,142 @@ class Deployer:
                                  with open(json_path, 'r', encoding='utf-8') as f:
                                      rules = json.load(f)
                              except: pass
-
                      if rules:
                          excludes = rules.get('exclude', [])
+                         path_overrides = rules.get('overrides', rules.get('rename', {}))
+                         has_overrides = len(path_overrides) > 0
                  
                  try:
                      import fnmatch
-                     # 🚨 Load path_overrides for custom mode detection
-                     path_overrides = rules.get('overrides', rules.get('rename', {})) if (rules and isinstance(rules, dict) and deploy_rule == 'custom') else {}
-                     has_overrides = len(path_overrides) > 0
-                     
                      if deploy_rule in ('tree', 'custom'):
-                         # Recursive check for tree and custom modes
                          for root, dirs, files in os.walk(expected_source):
                              rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
-                             if rel_dir == ".":
-                                 rel_dir = ""
-                             
+                             if rel_dir == ".": rel_dir = ""
                              for name in files:
                                  rel_path = f"{rel_dir}/{name}" if rel_dir else name
-                                 
-                                 # Exclude Check
                                  if excludes and any(fnmatch.fnmatch(rel_path, pat) or fnmatch.fnmatch(name, pat) for pat in excludes):
                                      continue
-                                     
                                  files_total += 1
                                  item_src = os.path.join(root, name)
-                                 
-                                 # 🚨 OVERRIDE-AWARE TARGET PATH CALCULATION (same logic as deploy)
                                  item_tgt = None
-                                 
-                                 # Priority 1: Exact file path match
                                  if rel_path in path_overrides:
                                      item_tgt = path_overrides[rel_path]
-                                 
-                                 # Priority 2: Parent folder match
-                                 if item_tgt is None and rel_dir and path_overrides:
+                                 elif rel_dir and path_overrides:
                                      path_parts = rel_dir.split('/')
                                      for i in range(len(path_parts), 0, -1):
                                          check_dir = '/'.join(path_parts[:i])
                                          if check_dir in path_overrides:
                                              override_target = path_overrides[check_dir]
                                              remaining = '/'.join(path_parts[i:])
-                                             if remaining:
-                                                 item_tgt = os.path.join(override_target, remaining, name)
-                                             else:
-                                                 item_tgt = os.path.join(override_target, name)
+                                             item_tgt = os.path.join(override_target, remaining, name) if remaining else os.path.join(override_target, name)
                                              break
-                                 
-                                 # Priority 3: Default path
                                  if item_tgt is None:
                                      item_tgt = os.path.join(target_link_path, rel_path.replace('/', os.sep))
-                                 
                                  item_tgt = os.path.normpath(item_tgt)
-                                 
                                  is_valid = False
                                  if os.path.islink(item_tgt):
                                      real = os.readlink(item_tgt)
-                                     if not os.path.isabs(real):
-                                         real = os.path.join(os.path.dirname(item_tgt), real)
+                                     if not os.path.isabs(real): real = os.path.join(os.path.dirname(item_tgt), real)
                                      if self._normalize_path(real) == self._normalize_path(item_src):
                                          files_found += 1
                                          is_valid = True
                                  elif os.path.exists(item_tgt):
                                      files_found += 1
                                      is_valid = True
-                                 
                                  if not is_valid and len(missing_samples) < 3:
                                      missing_samples.append(rel_path)
-                     else:
-                         # Flat check for 'files'
+                     else: # files mode
                          for f in os.listdir(expected_source):
+                             item_src = os.path.join(expected_source, f)
+                             if not os.path.isfile(item_src): continue
                              if excludes and any(fnmatch.fnmatch(f, pat) for pat in excludes):
                                  continue
-                                 
                              files_total += 1
-                             item_src = os.path.join(expected_source, f)
                              item_tgt = os.path.join(target_link_path, f)
-                             
                              is_valid = False
                              if os.path.islink(item_tgt):
                                  real = os.readlink(item_tgt)
-                                 if not os.path.isabs(real):
-                                     real = os.path.join(os.path.dirname(item_tgt), real)
+                                 if not os.path.isabs(real): real = os.path.join(os.path.dirname(item_tgt), real)
                                  if self._normalize_path(real) == self._normalize_path(item_src):
                                      files_found += 1
                                      is_valid = True
                              elif os.path.exists(item_tgt):
                                  files_found += 1
                                  is_valid = True
-                             
                              if not is_valid and len(missing_samples) < 3:
                                  missing_samples.append(f)
- 
-                 except Exception as e:
-                     # self.logger.warning(f"Detection error for {deploy_rule}: {e}")
-                     pass
+                 except: pass
                  
                  res = {
                      "status": "none", 
                      "type": expected_transfer_mode if expected_transfer_mode else "dir",
-                     "missing_samples": missing_samples,
-                     "files_found": files_found,
-                     "files_total": files_total,
-                     "is_intentional": False # Default
+                     "missing_samples": missing_samples, "files_found": files_found, "files_total": files_total,
+                     "is_intentional": False
                  }
-                 
-                 # Logic for mirrored modes (files, tree, custom)
                  if files_total > 0:
                      if files_found >= files_total:
                          res["status"] = "linked"
-                         # 🚨 INTENTIONAL CHECK: If custom mode with overrides or excludes, it's intentional
-                         if deploy_rule == 'custom' and (has_overrides or excludes):
-                             res["is_intentional"] = True
-                         elif deploy_rule == 'custom' and rules:
-                             # Legacy check: compare source file count vs deployed count
-                             try:
-                                 abs_total = 0
-                                 if os.path.isdir(expected_source):
-                                     for _, d, f in os.walk(expected_source): abs_total += len(f)
-                                 if abs_total > files_total:
-                                     res["is_intentional"] = True
-                             except: pass
+                         if deploy_rule == 'custom' and (has_overrides or excludes): res["is_intentional"] = True
                      elif files_found > 0:
-                         # 🚨 PARTIAL: If overrides exist and we found SOME files, likely intentional partial
                          if has_overrides:
                              res["status"] = "linked"
                              res["is_intentional"] = True
                          else:
-                             res["status"] = "partial"  # Accidental loss relative to rules
-                     else:
-                         res["status"] = "none"
-                 else:
-                     # No items found in source to check (empty or all excluded)
-                     if rules and os.path.exists(target_link_path) and deploy_rule == 'custom':
-                          res["status"] = "linked"
-                          res["is_intentional"] = True  # All excluded = intentional partial
-                     else:
-                          res["status"] = "none"
-                 
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-
-        # Standard Folder Symlink Check (for 'folder' mode)
-        if deploy_rule == 'folder' and expected_source and os.path.isdir(expected_source):
+                             res["status"] = "partial"
+                     else: res["status"] = "none"
+                 elif rules and deploy_rule == 'custom' and os.path.exists(target_link_path):
+                      res["status"] = "linked"
+                      res["is_intentional"] = True
+             else: res = {"status": "none", "type": "none"}
+        elif deploy_rule == 'folder' and expected_source and os.path.isdir(expected_source):
             if os.path.islink(target_link_path):
                 real_target = os.readlink(target_link_path)
-                norm_real = self._normalize_path(real_target).replace('\\', '/')
-                norm_exp = self._normalize_path(expected_source).replace('\\', '/')
-                if norm_real == norm_exp:
-                    res_to_cache = {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                if self._normalize_path(real_target) == self._normalize_path(expected_source):
+                    res = {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
                 else:
-                    res_to_cache = {"status": "conflict", "type": "symlink", "target": real_target}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-            
-            if os.path.isdir(target_link_path) and expected_transfer_mode == 'copy':
-                # Phase 51: Verify Folder Copy Completion (Recursive)
+                    res = {"status": "conflict", "type": "symlink", "target": real_target}
+            elif os.path.isdir(target_link_path) and expected_transfer_mode == 'copy':
                 try:
                     files_found = 0
                     files_total = 0
                     missing_samples = []
-                    
                     for root, dirs, files in os.walk(expected_source):
                         rel_dir = os.path.relpath(root, expected_source).replace('\\', '/')
                         for name in files + dirs:
                             rel_path = name if rel_dir == "." else f"{rel_dir}/{name}"
                             files_total += 1
-                            
                             item_tgt = os.path.join(target_link_path, rel_path)
-                            if os.path.exists(item_tgt):
-                                files_found += 1
-                            elif len(missing_samples) < 3:
-                                missing_samples.append(rel_path)
-                    
+                            if os.path.exists(item_tgt): files_found += 1
+                            elif len(missing_samples) < 3: missing_samples.append(rel_path)
                     if files_total > 0:
                         if files_found >= files_total:
-                             res_to_cache = {"status": "linked", "type": "copy", "files_found": files_found, "files_total": files_total, "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                             res = {"status": "linked", "type": "copy", "files_found": files_found, "files_total": files_total, "is_intentional": False}
                         elif files_found > 0:
-                             res_to_cache = {
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-                                 "status": "partial", 
-                                 "type": "copy", 
-                                 "missing_samples": missing_samples,
-                                 "files_found": files_found,
-                                 "files_total": files_total,
-                                 "is_intentional": False
-                             }
-                        else:
-                             res_to_cache = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-                    
-                    # No files in source
-                    res_to_cache = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-                except:
-                    # On walk error, don't assume linked. Return none but with dir type.
-                    res_to_cache = {"status": "none", "type": "dir", "is_intentional": False}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-
-        if expected_transfer_mode == 'copy':
-             is_link = os.path.islink(target_link_path)
-             exists = os.path.exists(target_link_path)
-             
-             if exists and not is_link:
-                 
-                 if os.path.isfile(target_link_path):
-                     # If it's a file, we can't easily verify source without metadata, 
-                     # but it's better than incorrectly flagging search roots as linked.
-                     res_to_cache = {"status": "linked", "type": "copy"}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-
-                 # For directories, existence is NOT enough if it could be a search root.
-                 from src.core.link_master.database import LinkMasterRegistry
-                 registry = LinkMasterRegistry()
-                 all_apps = registry.get_apps()
-                 protected_roots = set()
-                 for app in all_apps:
-                     for key in ['target_root', 'target_root_2', 'target_root_3']:
-                         if app.get(key): protected_roots.add(os.path.normpath(app.get(key)).lower())
-                 
-                 if os.path.normpath(target_link_path).lower() in protected_roots:
-                     res_to_cache = {"status": "none", "type": "search_root"}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-                 
-                 # If it's a subfolder that is NOT a search root, it's likely our folder-level deployment.
-                 res_to_cache = {"status": "linked", "type": "copy"}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-             
-             # If it IS a symlink but we expected copy, it's technically a conflict (or user change)
-             # But let's fall through to standard check.
-
-        # Standard Symlink Check
-        if os.path.islink(target_link_path):
-            real_target = os.readlink(target_link_path)
-            if expected_source:
-                norm_real = self._normalize_path(real_target).replace('\\', '/')
-                norm_exp = self._normalize_path(expected_source).replace('\\', '/')
-                if norm_real == norm_exp:
-                    res_to_cache = {"status": "linked", "target": real_target}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                             res = {"status": "partial", "type": "copy", "missing_samples": missing_samples, "files_found": files_found, "files_total": files_total, "is_intentional": False}
+                        else: res = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                    else: res = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                except: res = {"status": "none", "type": "dir", "is_intentional": False}
+        else:
+            # Fallback symlink/copy check
+            if os.path.islink(target_link_path):
+                real_target = os.readlink(target_link_path)
+                if expected_source and self._normalize_path(real_target) == self._normalize_path(expected_source):
+                    res = {"status": "linked", "target": real_target}
                 else:
-                    res_to_cache = {"status": "conflict", "target": real_target}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-            res_to_cache = {"status": "linked", "target": real_target}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
-            
-        # If it's a directory, it MIGHT be a partial deployment or a physical copy
-        if os.path.isdir(target_link_path):
-            if expected_source:
-                exp_norm = self._normalize_path(expected_source)
-            pass
-            
-            # 2. DB-based directory detection (Phase 43)
-            # This handles physical "tree" deployments where files are registered but the root folder is not.
-            if self._db.is_directory_ours(target_link_path, expected_source_prefix=expected_source):
-                res_to_cache = {"status": "linked", "type": "copy"}
-                  src_m = get_mtime(expected_source) if expected_source else 0
-                  tgt_m = get_mtime(target_link_path)
-                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
-                  return res
+                    res = {"status": "conflict", "target": real_target}
+            elif os.path.exists(target_link_path):
+                db_source = self._db.get_deployed_file_source(target_link_path) if hasattr(self, '_db') else None
+                if db_source and expected_source and self._normalize_path(db_source) == self._normalize_path(expected_source):
+                    res = {"status": "linked", "type": "copy"}
+                else:
+                    res = {"status": "none", "type": "exists_no_meta"}
 
-            # Phase 42: Exact DB match for the directory itself (folder-level copy)
-            db_source = self._db.get_deployed_file_source(target_link_path)
-            if db_source and expected_source:
-                if self._normalize_path(db_source) == self._normalize_path(expected_source):
-                    return {"status": "linked", "type": "copy"}
-            
-            # If expected_source is specified but no link to it was found, treat as 'none'
-            return {"status": "none", "type": "dir_no_match"}
-        
-        # Final result collection
-        db_source = self._db.get_deployed_file_source(target_link_path)
-        final_res = {"status": "conflict", "type": "file"}
-        
-        if db_source and expected_source:
-            if self._normalize_path(db_source) == self._normalize_path(expected_source):
-                final_res = {"status": "linked", "type": "copy"}
-        
-        # UPDATE CACHE BEFORE RETURN
+        # Final Cache Update
         src_m = get_mtime(expected_source) if expected_source else 0
         tgt_m = get_mtime(target_link_path)
-        self._status_cache[cache_key] = (now, src_m, tgt_m, final_res)
-        
-        return final_res
+        self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+        return res
+
     
     
     def undeploy_copy(self, target_path: str, force: bool = False) -> bool:

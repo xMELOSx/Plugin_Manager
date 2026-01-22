@@ -1,32 +1,38 @@
 
+import os
+
 path = r'c:\Users\xMELOSx\.gemini\antigravity\scratch\Projects\Plugin_Manager\src\core\link_master\deployer.py'
+
 with open(path, 'r', encoding='utf-8') as f:
     lines = f.readlines()
 
-output = []
-skip_next = 0
-for i, line in enumerate(lines):
-    if skip_next > 0:
-        skip_next -= 1
-        continue
+new_lines = []
+skip_patterns = [
+    'src_m = get_mtime(expected_source)',
+    'tgt_m = get_mtime(target_link_path)',
+    'self._status_cache[cache_key] = (now, src_m, tgt_m, res)',
+    'return res'
+]
+
+# Specifically lines that were injected with too much indentation (17+ spaces) or inside blocks where they shouldn't be.
+# However, the caching logic should only happen once at the end.
+
+# Let's try to remove all occurrences of these 4 consecutive lines if they are indented weirdly.
+
+i = 0
+while i < len(lines):
+    line = lines[i]
+    # Check if this is the start of an injection block
+    if 'src_m = get_mtime(expected_source)' in line and line.strip().startswith('src_m ='):
+        # Peak next lines
+        if i + 3 < len(lines) and 'tgt_m = get_mtime' in lines[i+1] and 'self._status_cache' in lines[i+2] and 'return res' in lines[i+3]:
+            # This is definitely an injection block. Skip 4 lines.
+            i += 4
+            continue
     
-    # Detect redundant/badly indented blocks
-    if '# UPDATE CACHE BEFORE RETURN' in line:
-        # Check if the next line is indented correctly or not
-        next_line = lines[i+1] if i+1 < len(lines) else ""
-        if next_line.startswith(' ' * 16 + 'src_m ='):
-             # This is a bad block from previous failed edit. Skip it.
-             # Look for how many lines to skip (until return or next UPDATE CACHE)
-             skip = 1
-             while i+skip < len(lines) and not lines[i+skip].strip().startswith('return') and not lines[i+skip].strip().startswith('res_to_cache'):
-                 skip += 1
-             # If it doesn't end in return, it's definitely garbage
-             if not lines[i+skip].strip().startswith('return'):
-                 skip_next = skip
-                 continue
-    
-    output.append(line)
+    new_lines.append(line)
+    i += 1
 
 with open(path, 'w', encoding='utf-8') as f:
-    f.writelines(output)
-print("Cleanup applied successfully")
+    f.writelines(new_lines)
+print(f"Cleaned {path}")

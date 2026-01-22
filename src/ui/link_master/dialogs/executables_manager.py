@@ -147,7 +147,8 @@ class ExecutablesManagerDialog(FramelessDialog):
 
     def _add_or_update_exe(self):
         name = self.name_edit.text().strip()
-        path = self.path_edit.text().strip()
+        # Strip quotes that may have been pasted from Windows properties/cmd
+        path = self.path_edit.text().strip().strip('"').strip("'")
         args = self.args_edit.text().strip()
         
         if not name or not path:

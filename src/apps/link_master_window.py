@@ -3320,7 +3320,9 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
                         import sys
                         import os
                         
-                        target_path = p
+                        # Strip leading/trailing quotes that may have been saved in the path
+                        target_path = p.strip('"').strip("'")
+                        
                         if not os.path.isabs(target_path):
                             # Try resolving relative to app's storage_root first if available
                             if s_root and os.path.exists(os.path.join(s_root, target_path)):

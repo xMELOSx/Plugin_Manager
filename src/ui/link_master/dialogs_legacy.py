@@ -2048,6 +2048,10 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
 
     def _update_tree_skip_visibility(self):
         """Show/Hide Tree Skip Levels based on Deploy Rule. Also handles Transfer Mode state."""
+        from PyQt6 import sip
+        # Guard against accessing deleted widgets
+        if sip.isdeleted(self) or not hasattr(self, 'deploy_rule_override_combo') or sip.isdeleted(self.deploy_rule_override_combo):
+            return
         rule = self.deploy_rule_override_combo.currentData()
         is_tree = rule == "tree"
         self.skip_levels_spin.setVisible(is_tree)
