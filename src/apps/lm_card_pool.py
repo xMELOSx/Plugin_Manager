@@ -175,20 +175,13 @@ class LMCardPoolMixin:
         if hasattr(self, '_on_request_focus_library'):
             card.request_focus_library.connect(self._on_request_focus_library)
         
-        if is_package:
-            card.single_clicked.connect(lambda p: self._handle_item_click(p, "package"))
-            # Phase 28: Open property view instead of batch edit
-            if hasattr(self, '_show_property_view_for_card'):
-                card.double_clicked.connect(lambda p: self._show_property_view_for_card(p))
-            else:
-                self.logger.error("[Pool] _show_property_view_for_card not available for package double-click!")
-        else:
-            card.single_clicked.connect(lambda p: self._handle_item_click(p, "category"))
-            # Phase 28: Debug - verify method exists before connecting
-            if hasattr(self, '_navigate_to_path'):
-                card.double_clicked.connect(self._navigate_to_path)
-            else:
-                self.logger.error("[Pool] _navigate_to_path not available for double-click connection!")
+        
+        # Unified Dispatch (Phase 58 Fix for dynamic type changing)
+        # Pass click events to dynamic dispatchers that check CURRENT card state.
+        # This ensures that if a card changes from Package to Category in batch edit,
+        # its click behavior (Navigation vs Properties) updates immediately.
+        card.single_clicked.connect(self._dispatch_single_click)
+        card.double_clicked.connect(self._dispatch_double_click)
             
         return card
 
@@ -296,6 +289,7 @@ class LMCardPoolMixin:
             target = os.path.normpath(path).replace('\\', '/').lower()
         except: return None
         
+        
         for card in self._active_cat_cards + self._active_pkg_cards:
             if not sip.isdeleted(card):
                 try:
@@ -308,3 +302,26 @@ class LMCardPoolMixin:
                         return card
                 except: continue
         return None
+
+    def _dispatch_single_click(self, path):
+        """Dynamic dispatch for single click based on CURRENT card state."""
+        card = self._get_active_card_by_path(path)
+        if not card: return
+        
+        # Determine logical area based on current flag, not creation time flag
+        area = "package" if card.is_package else "category"
+        
+        if hasattr(self, '_handle_item_click'):
+            self._handle_item_click(path, area)
+
+    def _dispatch_double_click(self, path):
+        """Dynamic dispatch for double click based on CURRENT card state."""
+        card = self._get_active_card_by_path(path)
+        if not card: return
+        
+        if card.is_package:
+            if hasattr(self, '_show_property_view_for_card'):
+                self._show_property_view_for_card(path)
+        else:
+            if hasattr(self, '_navigate_to_path'):
+                self._navigate_to_path(path)

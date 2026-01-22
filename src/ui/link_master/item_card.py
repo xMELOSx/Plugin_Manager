@@ -310,14 +310,27 @@ class ItemCard(QFrame):
         self.storage_root = kwargs.get('storage_root', self.storage_root)
 
         # Support 'name' and 'display_name' with robust fallback
+        # Phase 59: Apply prefix stripping logic during metadata updates to prevent hidden keys exposure
+        import re
+        def sanitize(n):
+            n = re.sub(r'[\ue000-\uf8ff]', u'', n) # Strip Private Use
+            n = re.sub(r'^\d+[\.\s_\-]*', '', n) # Strip Sort Keys
+            if n.startswith('_') and not n.startswith('__'): n = n[1:]
+            return n
+
         if 'display_name' in kwargs or 'name' in kwargs:
-            self.display_name = kwargs.get('display_name') or kwargs.get('name') or self.folder_name
+            val = kwargs.get('display_name') or kwargs.get('name')
+            if val:
+                self.display_name = val
+            else:
+                self.display_name = sanitize(self.folder_name)
+
             # Ensure display_name is updated in the card state immediately
             if 'name' in kwargs and 'display_name' not in kwargs:
                 kwargs['display_name'] = kwargs['name']
         elif self.path != old_path:
             # If path changed and no name provided, reset to folder name
-            self.display_name = self.folder_name
+            self.display_name = sanitize(self.folder_name)
 
         # 2. Update Session Managers (Optional but safer)
         if 'loader' in kwargs: self.loader = kwargs['loader']
@@ -362,12 +375,19 @@ class ItemCard(QFrame):
 
         self.has_logical_conflict = bool(incoming_logical) if incoming_logical is not None else getattr(self, 'has_logical_conflict', False)
 
-        # If successfully linked, clear any persistent logical conflict marker
-        if self.link_status == 'linked':
+        # If successfully linked or partial, clear any persistent logical conflict marker
+        # unless explicitly re-asserted by incoming_logical (which is checked above)
+        # Fixes persistent red border when status improves to partial but stale flag remains.
+        if self.link_status in ('linked', 'partial') and not incoming_logical:
             self.has_logical_conflict = False
 
         self.has_name_conflict = kwargs.get('has_name_conflict', getattr(self, 'has_name_conflict', False))
         self.has_target_conflict = kwargs.get('has_target_conflict', getattr(self, 'has_target_conflict', False))
+        
+        # Phase 60: Auto-clear target/name conflict if linked/partial to be safe
+        if self.link_status in ('linked', 'partial'):
+             if 'has_name_conflict' not in kwargs: self.has_name_conflict = False
+             if 'has_target_conflict' not in kwargs: self.has_target_conflict = False
 
         # Child Status Flags (Folders)
         self.has_linked_children = kwargs.get('has_linked', getattr(self, 'has_linked_children', False))
@@ -439,6 +459,12 @@ class ItemCard(QFrame):
         self.show_link_overlay = kwargs.get('show_link', getattr(self, 'show_link_overlay', True))
         self.show_deploy_btn = kwargs.get('show_deploy', getattr(self, 'show_deploy_btn', True))
         self._deploy_btn_opacity = kwargs.get('deploy_button_opacity', getattr(self, '_deploy_btn_opacity', 0.8))
+
+        # Phase 58: Apply per-folder Display Style overrides
+        # This fixes Batch Edit not applying display styles (text/image mode) visually
+        target_style = kwargs.get('display_style_package') if self.is_package else kwargs.get('display_style')
+        if target_style and target_style != "KEEP":
+            self.set_display_mode(target_style)
 
         # 4. Reset Interaction State (ALWAYS reset when card is reused for a different path)
         if self.path != old_path:

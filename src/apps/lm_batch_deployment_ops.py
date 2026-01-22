@@ -875,6 +875,16 @@ class LMDeploymentOpsMixin:
         import json
         if not os.path.isdir(source_path): return 0
         if not os.path.isdir(target_base): return 0
+
+        # CRITICAL SAFETY CHECK: Prevent deletion if target resolves to source itself
+        try:
+            src_abs = os.path.abspath(source_path).lower()
+            tgt_abs = os.path.abspath(target_base).lower()
+            if src_abs == tgt_abs or tgt_abs.startswith(src_abs + os.sep):
+                self.logger.critical(f"SafeBatchUndeploy BLOCKED: Target {target_base} overlaps Source {source_path}")
+                return 0
+        except:
+            pass
         
         # Parse rules
         rules = {}
@@ -924,6 +934,15 @@ class LMDeploymentOpsMixin:
 
                 target_file = os.path.join(target_base, deploy_path.replace('/', os.sep))
                 
+                # 🚨 SAFU CHECK: Fix for "Source File Deletion" Issue 🚨
+                # If target configuration aligns with source path (e.g. mismatch target root), 
+                # target_file might calculate to be the SAME as the source file.
+                # We must NEVER delete the file we are iterating over as source!
+                src_file_abs = os.path.join(root, name)
+                if os.path.normpath(target_file).lower() == os.path.normpath(src_file_abs).lower():
+                    self.logger.critical(f"[SafeUndeploy] BLOCKING SELF-DELETION of source file: {src_file_abs}")
+                    continue
+
                 if os.path.lexists(target_file):
                     try:
                         if os.path.islink(target_file):

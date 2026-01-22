@@ -610,8 +610,9 @@ class LMScanHandlerMixin:
                 
                 # Also check External Tag Conflict for this child tag
                 if not has_internal_conflict and hasattr(self, '_check_tag_conflict'):
-                     # Note: we pass card_rel as context to ignore itself, but here context is folder_rel
-                     ext_conflict = self._check_tag_conflict(folder_rel, {'conflict_tag': ctag_str}, app_data)
+                     # FIX: Pass CHILD's relative path 'rel' to ignore itself during conflict check.
+                     # Previously passed 'folder_rel' (parent), causing the child to conflict with its own DB entry.
+                     ext_conflict = self._check_tag_conflict(rel, {'conflict_tag': ctag_str}, app_data)
                      if ext_conflict:
                          has_internal_conflict = True
 
