@@ -304,24 +304,42 @@ class LMCardPoolMixin:
         return None
 
     def _dispatch_single_click(self, path):
-        """Dynamic dispatch for single click based on CURRENT card state."""
+        """Dynamic dispatch for single click based on CURRENT card state and layout area."""
         card = self._get_active_card_by_path(path)
         if not card: return
         
-        # Determine logical area based on current flag, not creation time flag
-        area = "package" if card.is_package else "category"
+        # 🚨 Fix Phase 62: Determine area based on physical layout container
+        # This prevents sub-categories in the package view from triggering navigation on single click.
+        area = "package"
+        if hasattr(self, 'cat_container') and card.parent() == self.cat_container:
+            area = "category"
+        elif hasattr(self, 'pkg_container') and card.parent() == self.pkg_container:
+            area = "package"
+        else:
+            # Fallback to logical type if containers are not accessible
+            area = "package" if card.is_package else "category"
         
         if hasattr(self, '_handle_item_click'):
             self._handle_item_click(path, area)
 
     def _dispatch_double_click(self, path):
-        """Dynamic dispatch for double click based on CURRENT card state."""
+        """Dynamic dispatch for double click based on CURRENT card state and layout area."""
         card = self._get_active_card_by_path(path)
         if not card: return
         
-        if card.is_package:
+        # 🚨 Fix Phase 62: Items in the Package View ALWAYS show properties on double click,
+        # even if they are technically folders (categories) used as packages.
+        is_in_pkg_area = hasattr(self, 'pkg_container') and card.parent() == self.pkg_container
+        
+        if is_in_pkg_area:
+            # Package Area: Double-click = Property View
             if hasattr(self, '_show_property_view_for_card'):
                 self._show_property_view_for_card(path)
         else:
-            if hasattr(self, '_navigate_to_path'):
-                self._navigate_to_path(path)
+            # Category Area: Double-click = Navigate
+            if card.is_package:
+                if hasattr(self, '_show_property_view_for_card'):
+                    self._show_property_view_for_card(path)
+            else:
+                if hasattr(self, '_navigate_to_path'):
+                    self._navigate_to_path(path)

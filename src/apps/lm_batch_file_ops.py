@@ -272,7 +272,12 @@ class LMFileOpsMixin:
         # 1. Determine changes and impacted items
         updates_to_apply = data
         if is_batch:
-            updates_to_apply = {k: v for k, v in data.items() if v is not None and v != "KEEP"}
+            # Phase 61: Allow None for certain keys (Restoring Default)
+            allow_none_keys = {'display_style', 'display_style_package'}
+            updates_to_apply = {
+                k: v for k, v in data.items() 
+                if (v is not None or k in allow_none_keys) and v != "KEEP"
+            }
             if not updates_to_apply: return
 
         for abs_path in target_paths:

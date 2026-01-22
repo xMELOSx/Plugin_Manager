@@ -376,9 +376,9 @@ class ItemCard(QFrame):
         self.has_logical_conflict = bool(incoming_logical) if incoming_logical is not None else getattr(self, 'has_logical_conflict', False)
 
         # If successfully linked or partial, clear any persistent logical conflict marker
-        # unless explicitly re-asserted by incoming_logical (which is checked above)
-        # Fixes persistent red border when status improves to partial but stale flag remains.
-        if self.link_status in ('linked', 'partial') and not incoming_logical:
+        # Phase 61: FORCIBLY clear logical conflict if linked/partial, regardless of incoming_logical.
+        # This satisfies the user request: "Remove red border if partially linked".
+        if self.link_status in ('linked', 'partial'):
             self.has_logical_conflict = False
 
         self.has_name_conflict = kwargs.get('has_name_conflict', getattr(self, 'has_name_conflict', False))

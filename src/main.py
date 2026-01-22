@@ -24,14 +24,7 @@ def set_app_user_model_id():
         except Exception as e:
             logging.error(f"Failed to set AppUserModelID: {e}")
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        # For development, assume project root is 2 levels up from src/main.py
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
+from src.utils.path_utils import get_resource_path
 
 def main():
     # Windows Taskbar Icon Fix: Set AppUserModelID BEFORE any windows are created.
@@ -48,10 +41,9 @@ def main():
         app.setStyleSheet(TooltipStyles.DARK)
         
         # アイコンの読み込み (EXE対応)
-        # We now have high-res, transparent icon.ico generated from icon.jpg
-        icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
+        icon_path = get_resource_path(os.path.join("src", "resource", "icon", "icon.ico"))
         if not os.path.exists(icon_path):
-            icon_path = resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
+            icon_path = get_resource_path(os.path.join("src", "resource", "icon", "icon.jpg"))
             
         if os.path.exists(icon_path):
             app.setWindowIcon(QIcon(icon_path))

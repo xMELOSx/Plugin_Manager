@@ -22,6 +22,7 @@ from src.core.file_handler import FileHandler
 import os
 import subprocess
 import shutil
+from src.utils.path_utils import get_user_data_path, ensure_dir
 from src.ui.link_master.dialogs.executables_manager import ExecutablesManagerDialog
 from src.ui.link_master.dialogs.library_dialogs import LibraryDependencyDialog, LibraryRegistrationDialog
 from src.ui.link_master.dialogs.url_list_dialog import URLListDialog
@@ -620,11 +621,9 @@ class AppRegistrationDialog(FramelessDialog):
         # Save clipboard image if pending
         cover_path = self.cover_edit.text()
         if self.pending_cover_pixmap and cover_path in [" [ Clipboard Image ] ", "[Cropped from Clipboard]"]:
-            # Save to a temp location within Project Root / resource / app
-            # From src/ui/link_master/ -> root is 3 levels up
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-            save_dir = os.path.join(project_root, "resource", "app", "_covers")
-            os.makedirs(save_dir, exist_ok=True)
+            # Phase 63: Use APPDATA for app covers in EXE mode
+            save_dir = get_user_data_path(os.path.join("resource", "app", "_covers"))
+            ensure_dir(save_dir)
             filename = f"cover_{uuid.uuid4().hex[:8]}.png"
             full_path = os.path.join(save_dir, filename)
             if self.pending_cover_pixmap.save(full_path, "PNG"):
@@ -1182,24 +1181,24 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         # Terminal Flag Removed (Phase 12)
         
         # Phase 18.14: Hide Flag (is_visible)
-        hide_container = QHBoxLayout()
-        self.hide_checkbox = SlideButton()
-        is_visible = self.current_config.get('is_visible', 1)
-        self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
-        
-        # Phase 26/58: Batch mode visibility toggle
-        self.batch_visibility_toggle = None
+        # Phase 61: Use ComboBox for visibility in Batch Mode to avoid confusion with double-toggles
         if self.batch_mode:
-            self.hide_checkbox.setEnabled(False)
-            self.batch_visibility_toggle = SlideButton()
-            self.batch_visibility_toggle.setChecked(False)
-            self.batch_visibility_toggle.toggled.connect(self.hide_checkbox.setEnabled)
-            hide_container.addWidget(self.batch_visibility_toggle)
-            hide_container.addSpacing(10)
+            self.hide_combo = StyledComboBox()
+            self.hide_combo.addItem(_("--- No Change ---"), "KEEP")
+            self.hide_combo.addItem(_("Visible (Show)"), 1)
+            self.hide_combo.addItem(_("Hidden (Hide)"), 0)
+            self.hide_combo.setCurrentIndex(0)
+            attr_form.addRow(_("Visibility:"), self.hide_combo)
+            self.hide_checkbox = None
+        else:
+            hide_container = QHBoxLayout()
+            self.hide_checkbox = SlideButton()
+            is_visible = self.current_config.get('is_visible', 1)
+            self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
             
-        hide_container.addWidget(self.hide_checkbox)
-        hide_container.addStretch()
-        attr_form.addRow(_("Hide from View:"), hide_container)
+            hide_container.addWidget(self.hide_checkbox)
+            hide_container.addStretch()
+            attr_form.addRow(_("Hide from View:"), hide_container)
         
         # Quick Tag Selector (Top Position - Phase 18 Swap)
         self.tag_panel = QWidget()
@@ -2208,11 +2207,9 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         import os
         import time
         
-        # Cache directory is now relative to Project Root / resource / app / <app_name>
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        cache_dir = os.path.join(project_root, "resource", "app", self.app_name, ".icon_cache")
-            
-        os.makedirs(cache_dir, exist_ok=True)
+        # Phase 63: Use APPDATA for icon cache in EXE mode
+        cache_dir = get_user_data_path(os.path.join("resource", "app", self.app_name, ".icon_cache"))
+        ensure_dir(cache_dir)
         
         unique_key = f"{original_source}_{time.time()}"
         hash_name = hashlib.md5(unique_key.encode()).hexdigest()[:12]
@@ -2228,11 +2225,9 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         import hashlib
         import time
         
-        # Cache directory is now relative to Project Root / resource / app / <app_name>
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        cache_dir = os.path.join(project_root, "resource", "app", self.app_name, ".icon_cache")
-            
-        os.makedirs(cache_dir, exist_ok=True)
+        # Phase 63: Use APPDATA for icon cache in EXE mode
+        cache_dir = get_user_data_path(os.path.join("resource", "app", self.app_name, ".icon_cache"))
+        ensure_dir(cache_dir)
         
         unique_key = f"{source_path}_{time.time()}"
         hash_name = hashlib.md5(unique_key.encode()).hexdigest()[:12]
@@ -2421,7 +2416,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             'display_style': self.style_combo.currentData(),
             'display_style_package': self.style_combo_pkg.currentData(),
             'tags': ", ".join(all_tags) if all_tags else None,
-            'is_visible': (0 if self.hide_checkbox.isChecked() else 1) if not self.batch_mode or (self.batch_visibility_toggle and self.batch_visibility_toggle.isChecked()) else "KEEP",
+            'is_visible': self.hide_combo.currentData() if self.batch_mode else (0 if self.hide_checkbox.isChecked() else 1),
             
             # Use cached values for all targets
             # Phase 42 Fix: Do NOT save per-target rules automatically to prevent unintended overwrites
@@ -2480,7 +2475,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
                 # If we specifically want to clear a field, it will be None or "" (not KEEP)
                 if v is None and k not in [
                     'image_path', 'manual_preview_path', 'tags', 'deployment_rules', 
-                    'description', 'author', 'url_list', 'conflict_tag', 'target_override'
+                    'description', 'author', 'url_list', 'conflict_tag', 'target_override',
+                    'display_style', 'display_style_package'
                 ]: 
                     continue 
                 
@@ -3318,11 +3314,9 @@ class TagManagerDialog(FramelessDialog):
     def _process_and_set_icon(self, path):
         try:
             from PyQt6.QtGui import QImage
-            from PyQt6.QtGui import QImage
-            from src.core.file_handler import FileHandler
-            project_root = FileHandler().project_root
-            res_dir = os.path.join(project_root, "resource", "tags")
-            os.makedirs(res_dir, exist_ok=True)
+            # Phase 63: Use APPDATA for tag icons in EXE mode
+            res_dir = get_user_data_path(os.path.join("resource", "tags"))
+            ensure_dir(res_dir)
             dest_path = os.path.join(res_dir, os.path.basename(path))
             img = QImage(path)
             if not img.isNull():

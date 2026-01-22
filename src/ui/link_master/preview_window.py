@@ -821,14 +821,14 @@ class PreviewWindow(FramelessDialog):
         try:
             # 親ウィンドウから頻繁なタグを取得
             window = self.parent()
-            # Traverse up the parent chain to find the main window that has _load_frequent_tags
+            # Traverse up the parent chain to find the main window that has _load_quick_tags
             while window:
-                if hasattr(window, '_load_frequent_tags'):
+                if hasattr(window, '_load_quick_tags'):
                     break
                 window = window.parent()
 
-            if window and hasattr(window, '_load_frequent_tags'):
-                frequent_tags = window._load_frequent_tags()
+            if window and hasattr(window, '_load_quick_tags'):
+                frequent_tags = window._load_quick_tags()
                 for t in frequent_tags:
                     if t.get('is_sep'): continue
                     name = t.get('name')

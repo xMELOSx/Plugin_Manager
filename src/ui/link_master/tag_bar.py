@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QMimeData
 from PyQt6.QtGui import QMouseEvent, QWheelEvent, QDragEnterEvent, QDropEvent, QPixmap
 from src.ui.styles import TooltipStyles
 import os
+from src.utils.path_utils import get_resource_path, get_user_data_path, ensure_dir
 
 class TagWidget(QLabel):
     clicked = pyqtSignal(str, bool) # tag_value, is_right_click
@@ -21,8 +22,17 @@ class TagWidget(QLabel):
             emoji = tag_data.get('emoji', '')
             icon_path = tag_data.get('icon', '')
             
-            if not prefer_emoji and icon_path and os.path.exists(icon_path):
-                self.setText("")
+            if not prefer_emoji and icon_path:
+                # Resolve relative paths (defaults) or absolute paths (user/persist)
+                if not os.path.isabs(icon_path):
+                    actual_path = get_resource_path(icon_path)
+                else:
+                    actual_path = icon_path
+                
+                if os.path.exists(actual_path):
+                    self.setText("")
+                else:
+                    self.setText(emoji or tag_data.get('name', ''))
             else:
                 self.setText(emoji or tag_data.get('name', ''))
             
@@ -32,6 +42,8 @@ class TagWidget(QLabel):
         
         if not is_special_btn and not self.tag_data.get('prefer_emoji') and self.tag_data.get('icon'):
             icon_path = self.tag_data.get('icon')
+            if not os.path.isabs(icon_path):
+                icon_path = get_resource_path(icon_path)
             if os.path.exists(icon_path):
                  self._set_icon(icon_path)
 
@@ -67,9 +79,16 @@ class TagWidget(QLabel):
         
         self.setPixmap(QPixmap()) # Clear icon first
         
-        if mode == 'image' and icon_path and os.path.exists(icon_path):
-            self.setText("")
-            self._set_icon(icon_path)
+        if mode == 'image' and icon_path:
+            # Resolve
+            if not os.path.isabs(icon_path):
+                icon_path = get_resource_path(icon_path)
+                
+            if os.path.exists(icon_path):
+                self.setText("")
+                self._set_icon(icon_path)
+            else:
+                self.setText(self.tag_data.get('name', ''))
         elif mode == 'symbol' and emoji:
             self.setText(emoji)
         elif mode == 'text_symbol' and emoji:
@@ -151,9 +170,9 @@ class TagWidget(QLabel):
                     try:
                         from PyQt6.QtGui import QImage
                         import os
-                        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-                        res_dir = os.path.join(project_root, "resource", "tags")
-                        if not os.path.exists(res_dir): os.makedirs(res_dir)
+                        # Phase 63: Use APPDATA for user-dropped tag icons in EXE mode
+                        res_dir = get_user_data_path(os.path.join("resource", "tags"))
+                        ensure_dir(res_dir)
                         
                         tag_val = self.tag_data.get('value', 'unknown')
                         dest_name = f"tag_{tag_val}_{os.path.basename(path)}"
