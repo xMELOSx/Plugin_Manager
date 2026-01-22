@@ -139,6 +139,10 @@ class Deployer:
         self.max_workers = min(count, 60)
         self.allow_symlinks = True  # Phase 1: Set by LinkMasterWindow based on capability test
         self._db_instance = None
+        
+        # Phase 58: Performance Optimization - Link Status Cache
+        # Stores {cache_key: (timestamp, src_mtime, tgt_mtime, result)}
+        self._status_cache = {}
     
     @property
     def _db(self):
@@ -460,8 +464,51 @@ class Deployer:
             deploy_rule: 'folder', 'files', 'tree', etc. used for specialized checks.
             rules: (dict) Optional deployment rules for Custom/Tree modes.
         """
+        # -------------------------------------------------------------------------
+        # 🚨 Phase 58: MTIME-BASED CACHING (Optimization for recurring scans)
+        # Skip recursion if source and target mtimes haven't changed in the last 1s.
+        # -------------------------------------------------------------------------
+        cache_key = (target_link_path, expected_source, deploy_rule)
+        now = time.time()
+        
+        # Helper to get mtime safely
+        def get_mtime(p):
+            try: return os.path.getmtime(p) if os.path.exists(p) else 0
+            except: return 0
+
+        if cache_key in self._status_cache:
+            c_time, c_src_m, c_tgt_m, c_res = self._status_cache[cache_key]
+            # 1 second TTL OR strict mtime match
+            if now - c_time < 0.8: # Very recent scan (e.g. rapid refresh)
+                res_to_cache = c_res
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
+            
+            src_m = get_mtime(expected_source) if expected_source else 0
+            tgt_m = get_mtime(target_link_path)
+            
+            if src_m == c_src_m and tgt_m == c_tgt_m:
+                # Update timestamp to keep it in cache
+                self._status_cache[cache_key] = (now, src_m, tgt_m, c_res)
+                res_to_cache = c_res
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
+
         if not os.path.exists(target_link_path) and not os.path.islink(target_link_path):
-            return {"status": "none", "type": "none"}
+            result = {"status": "none", "type": "none"}
+            # Cache the 'none' status as well
+            tgt_m = get_mtime(target_link_path)
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
+            tgt_m = get_mtime(target_link_path)
+            self._status_cache[cache_key] = (now, src_m, tgt_m, res_to_cache)
+            return res_to_cache
         
         # Phase 42: Declarative State Check - Removed premature return to ensure disk verification
 
@@ -475,9 +522,17 @@ class Deployer:
                 link_target = os.path.realpath(target_link_path)
                 expected_real = os.path.realpath(expected_source) if expected_source else None
                 if expected_real and os.path.normcase(link_target) == os.path.normcase(expected_real):
-                    return {"status": "linked", "type": "symlink", "is_intentional": False}
+                    res_to_cache = {"status": "linked", "type": "symlink", "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                 else:
-                    return {"status": "conflict", "type": "symlink", "is_intentional": False}
+                    res_to_cache = {"status": "conflict", "type": "symlink", "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
             except Exception:
                 pass  # Fall through to detailed check
 
@@ -650,7 +705,10 @@ class Deployer:
                      else:
                           res["status"] = "none"
                  
-                 return res
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
 
         # Standard Folder Symlink Check (for 'folder' mode)
         if deploy_rule == 'folder' and expected_source and os.path.isdir(expected_source):
@@ -659,9 +717,17 @@ class Deployer:
                 norm_real = self._normalize_path(real_target).replace('\\', '/')
                 norm_exp = self._normalize_path(expected_source).replace('\\', '/')
                 if norm_real == norm_exp:
-                    return {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
+                    res_to_cache = {"status": "linked", "type": "symlink", "files_found": 1, "files_total": 1, "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                 else:
-                    return {"status": "conflict", "type": "symlink", "target": real_target}
+                    res_to_cache = {"status": "conflict", "type": "symlink", "target": real_target}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
             
             if os.path.isdir(target_link_path) and expected_transfer_mode == 'copy':
                 # Phase 51: Verify Folder Copy Completion (Recursive)
@@ -684,9 +750,17 @@ class Deployer:
                     
                     if files_total > 0:
                         if files_found >= files_total:
-                             return {"status": "linked", "type": "copy", "files_found": files_found, "files_total": files_total, "is_intentional": False}
+                             res_to_cache = {"status": "linked", "type": "copy", "files_found": files_found, "files_total": files_total, "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                         elif files_found > 0:
-                             return {
+                             res_to_cache = {
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                                  "status": "partial", 
                                  "type": "copy", 
                                  "missing_samples": missing_samples,
@@ -695,13 +769,25 @@ class Deployer:
                                  "is_intentional": False
                              }
                         else:
-                             return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                             res_to_cache = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                     
                     # No files in source
-                    return {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                    res_to_cache = {"status": "none", "type": "copy", "files_found": 0, "files_total": files_total, "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                 except:
                     # On walk error, don't assume linked. Return none but with dir type.
-                    return {"status": "none", "type": "dir", "is_intentional": False}
+                    res_to_cache = {"status": "none", "type": "dir", "is_intentional": False}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
 
         if expected_transfer_mode == 'copy':
              is_link = os.path.islink(target_link_path)
@@ -712,7 +798,11 @@ class Deployer:
                  if os.path.isfile(target_link_path):
                      # If it's a file, we can't easily verify source without metadata, 
                      # but it's better than incorrectly flagging search roots as linked.
-                     return {"status": "linked", "type": "copy"}
+                     res_to_cache = {"status": "linked", "type": "copy"}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
 
                  # For directories, existence is NOT enough if it could be a search root.
                  from src.core.link_master.database import LinkMasterRegistry
@@ -724,10 +814,18 @@ class Deployer:
                          if app.get(key): protected_roots.add(os.path.normpath(app.get(key)).lower())
                  
                  if os.path.normpath(target_link_path).lower() in protected_roots:
-                     return {"status": "none", "type": "search_root"}
+                     res_to_cache = {"status": "none", "type": "search_root"}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                  
                  # If it's a subfolder that is NOT a search root, it's likely our folder-level deployment.
-                 return {"status": "linked", "type": "copy"}
+                 res_to_cache = {"status": "linked", "type": "copy"}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
              
              # If it IS a symlink but we expected copy, it's technically a conflict (or user change)
              # But let's fall through to standard check.
@@ -739,10 +837,22 @@ class Deployer:
                 norm_real = self._normalize_path(real_target).replace('\\', '/')
                 norm_exp = self._normalize_path(expected_source).replace('\\', '/')
                 if norm_real == norm_exp:
-                    return {"status": "linked", "target": real_target}
+                    res_to_cache = {"status": "linked", "target": real_target}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
                 else:
-                    return {"status": "conflict", "target": real_target}
-            return {"status": "linked", "target": real_target}
+                    res_to_cache = {"status": "conflict", "target": real_target}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
+            res_to_cache = {"status": "linked", "target": real_target}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
             
         # If it's a directory, it MIGHT be a partial deployment or a physical copy
         if os.path.isdir(target_link_path):
@@ -753,7 +863,11 @@ class Deployer:
             # 2. DB-based directory detection (Phase 43)
             # This handles physical "tree" deployments where files are registered but the root folder is not.
             if self._db.is_directory_ours(target_link_path, expected_source_prefix=expected_source):
-                return {"status": "linked", "type": "copy"}
+                res_to_cache = {"status": "linked", "type": "copy"}
+                  src_m = get_mtime(expected_source) if expected_source else 0
+                  tgt_m = get_mtime(target_link_path)
+                  self._status_cache[cache_key] = (now, src_m, tgt_m, res)
+                  return res
 
             # Phase 42: Exact DB match for the directory itself (folder-level copy)
             db_source = self._db.get_deployed_file_source(target_link_path)
@@ -764,13 +878,20 @@ class Deployer:
             # If expected_source is specified but no link to it was found, treat as 'none'
             return {"status": "none", "type": "dir_no_match"}
         
-        # Check DB for copy deployment (Phase 42)
+        # Final result collection
         db_source = self._db.get_deployed_file_source(target_link_path)
+        final_res = {"status": "conflict", "type": "file"}
+        
         if db_source and expected_source:
             if self._normalize_path(db_source) == self._normalize_path(expected_source):
-                return {"status": "linked", "type": "copy"}
-             
-        return {"status": "conflict", "type": "file"}
+                final_res = {"status": "linked", "type": "copy"}
+        
+        # UPDATE CACHE BEFORE RETURN
+        src_m = get_mtime(expected_source) if expected_source else 0
+        tgt_m = get_mtime(target_link_path)
+        self._status_cache[cache_key] = (now, src_m, tgt_m, final_res)
+        
+        return final_res
     
     
     def undeploy_copy(self, target_path: str, force: bool = False) -> bool:
