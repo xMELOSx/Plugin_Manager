@@ -310,10 +310,11 @@ class LMFileOpsMixin:
                     impacts_link = any(k in updates_to_apply for k in self.LINK_AFFECTING_KEYS)
                 
                 # Capture current link status BEFORE any updates
-                # This prevents a race condition where ItemCard.update_data re-checks status 
-                # using the NEW rules before we've had a chance to sweep the old ones.
+                # Phase 28: Use robust normalization matching the improved _get_active_card_by_path
+                search_path = abs_path.replace('\\', '/')
+                card = self._get_active_card_by_path(search_path)
+                
                 was_linked = False
-                card = self._get_active_card_by_path(abs_path.replace('\\', '/'))
                 if card:
                     was_linked = (card.link_status in ('linked', 'partial'))
                 else:
@@ -329,18 +330,19 @@ class LMFileOpsMixin:
                     card.update_data(**updates_to_apply)
                     
                     # Trigger Sweep/Deploy if WAS linked and configuration changed.
-                    # This ensures the transitional sweep correctly cleans up old rules.
                     if impacts_link and was_linked:
                         self.logger.info(f"[Property-Sync] Config changed for linked item {rel}. Triggering forceful sweep.")
                         self._deploy_single(rel, update_ui=True, force_sweep=True)
                     else:
                         # Even if not link-impacting, we might need a status refresh (e.g. metadata only)
                         card.update_link_status()
-                
-                # If no card but WAS linked, we should still sweep
-                elif impacts_link and was_linked:
-                     self.logger.info(f"[Property-Sync] No card found but linked item {rel} changed. Sweeping.")
-                     self._deploy_single(rel, update_ui=False, force_sweep=True)
+                else:
+                    self.logger.debug(f"[Batch-UI] No active card found for path: {search_path}")
+                    
+                    # If no card but WAS linked, we should still sweep
+                    if impacts_link and was_linked:
+                         self.logger.info(f"[Property-Sync] No card found but linked item {rel} changed. Sweeping.")
+                         self._deploy_single(rel, update_ui=False, force_sweep=True)
 
             except Exception as e:
                 self.logger.error(f"Failed to apply update for {abs_path}: {e}")

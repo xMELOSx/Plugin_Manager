@@ -1287,16 +1287,36 @@ class Deployer:
         orphan_links = set()
         empty_dirs = set() # Use set to avoid duplicates
         
+        # Normalize search roots for safety check
+        search_roots_norm = [self._normalize_path(r).rstrip('\\/') for r in search_roots]
+
         # 1.1 DB-backed Discovery (Declarative & Fast)
         try:
             if hasattr(self, '_db'):
+                # Ensure we match full directory prefix to avoid partial name matches (e.g. MyMod vs MyMod2)
+                # We use a trailing slash for the LIKE pattern
                 source_root_db = source_root_norm.replace('\\', '/')
+                source_prefix = source_root_db if source_root_db.endswith('/') else source_root_db + '/'
+                
                 with self._db.get_connection() as conn:
                     cursor = conn.cursor()
-                    # Find all files registered as deployed from this source tree
-                    cursor.execute("SELECT target_path FROM lm_deployed_files WHERE source_path LIKE ?", (f"{source_root_db}%",))
+                    # Find all files registered as deployed from this source tree (Exact match OR sub-item match)
+                    cursor.execute("""
+                        SELECT target_path FROM lm_deployed_files 
+                        WHERE source_path = ? OR source_path LIKE ?
+                    """, (source_root_db, f"{source_prefix}%"))
+                    
                     db_items = [row[0] for row in cursor.fetchall()]
                     for item_path in db_items:
+                        # 🚨 CRITICAL SAFETY: Only sweep items that are actually INSIDE the intended search roots.
+                        # This prevents deleting source files if they were accidentally registered as targets.
+                        item_path_norm = self._normalize_path(item_path)
+                        is_inside_target = any(item_path_norm.startswith(r + os.sep) or item_path_norm.startswith(r + "/") or item_path_norm == r for r in search_roots_norm)
+                        
+                        if not is_inside_target:
+                            self.logger.warning(f"[Sweep-Safety] Skipping registered item OUTSIDE search roots: {item_path}")
+                            continue
+
                         if os.path.exists(item_path) or os.path.islink(item_path):
                             orphan_links.add(item_path)
                             self.logger.debug(f"[Sweep-DB] Found registered item: {item_path}")
@@ -1363,14 +1383,23 @@ class Deployer:
         failed_paths = []
         if orphan_links:
             def _unlink_safe(path):
-                if self._normalize_path(path) in preserve_paths_norm:
+                path_norm = self._normalize_path(path)
+                if path_norm in preserve_paths_norm:
                      self.logger.info(f"[Sweep-Preserve] Skipping preserved path: {path}")
                      return True
                      
                 try:
+                    # 🚨 Re-verify inside search roots (Defense in depth)
+                    is_inside_target = any(path_norm.startswith(r + os.sep) or path_norm.startswith(r + "/") or path_norm == r for r in search_roots_norm)
+                    if not is_inside_target:
+                        self.logger.error(f"[Sweep-CRITICAL] Blocked attempt to delete path OUTSIDE search roots: {path}")
+                        return False
+
                     if os.path.islink(path):
                         os.unlink(path)
                     elif os.path.isdir(path):
+                        # Use rmtree only for REAL directories that are verified as part of a deployment
+                        self.logger.warning(f"[Sweep-Action] Removing legacy directory tree: {path}")
                         shutil.rmtree(path)
                     else:
                         os.remove(path)

@@ -292,13 +292,19 @@ class LMCardPoolMixin:
         """Utility to find an already visible card. Robust normalization."""
         if not path: return None
         try:
-            target = os.path.normpath(path).lower()
+            # Phase 28 Fix: Always normalize to forward slashes for reliable matching regardless of input source
+            target = os.path.normpath(path).replace('\\', '/').lower()
         except: return None
         
         for card in self._active_cat_cards + self._active_pkg_cards:
             if not sip.isdeleted(card):
                 try:
-                    if os.path.normpath(card.path).lower() == target:
+                    # Use ItemCard's pre-calculated norm_path for speed and stability
+                    card_path = getattr(card, 'norm_path', '').lower()
+                    if not card_path:
+                        card_path = os.path.normpath(card.path).replace('\\', '/').lower()
+
+                    if card_path == target:
                         return card
                 except: continue
         return None

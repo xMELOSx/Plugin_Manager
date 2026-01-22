@@ -943,6 +943,17 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             QPushButton:pressed { background-color: #2c3e50; }
         """)
         self.favorite_btn.toggled.connect(self._on_favorite_toggled_dialog)
+        
+        # Phase 26/58: Batch mode favorite toggle
+        self.batch_favorite_toggle = None
+        if self.batch_mode:
+            self.favorite_btn.setEnabled(False) # Disabled by default in batch mode
+            self.batch_favorite_toggle = SlideButton()
+            self.batch_favorite_toggle.setChecked(False)
+            self.batch_favorite_toggle.toggled.connect(self.favorite_btn.setEnabled)
+            fav_layout.addWidget(self.batch_favorite_toggle)
+            fav_layout.addSpacing(5)
+
         fav_layout.addWidget(self.favorite_btn)
         
         fav_layout.addSpacing(10)
@@ -1171,10 +1182,24 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         # Terminal Flag Removed (Phase 12)
         
         # Phase 18.14: Hide Flag (is_visible)
+        hide_container = QHBoxLayout()
         self.hide_checkbox = SlideButton()
         is_visible = self.current_config.get('is_visible', 1)
         self.hide_checkbox.setChecked(is_visible == 0)  # Checked = hidden
-        attr_form.addRow(_("Hide from View:"), self.hide_checkbox)
+        
+        # Phase 26/58: Batch mode visibility toggle
+        self.batch_visibility_toggle = None
+        if self.batch_mode:
+            self.hide_checkbox.setEnabled(False)
+            self.batch_visibility_toggle = SlideButton()
+            self.batch_visibility_toggle.setChecked(False)
+            self.batch_visibility_toggle.toggled.connect(self.hide_checkbox.setEnabled)
+            hide_container.addWidget(self.batch_visibility_toggle)
+            hide_container.addSpacing(10)
+            
+        hide_container.addWidget(self.hide_checkbox)
+        hide_container.addStretch()
+        attr_form.addRow(_("Hide from View:"), hide_container)
         
         # Quick Tag Selector (Top Position - Phase 18 Swap)
         self.tag_panel = QWidget()
@@ -2390,13 +2415,13 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             'manual_preview_path': self.full_preview_edit.text().strip() or None,
             'author': self.author_edit.text().strip() or None,
             'url_list': self.url_list_edit.text() if self.url_list_edit.text() != '[]' else None,
-            'is_favorite': 1 if self.favorite_btn.isChecked() else 0,
+            'is_favorite': (1 if self.favorite_btn.isChecked() else 0) if not self.batch_mode or (self.batch_favorite_toggle and self.batch_favorite_toggle.isChecked()) else "KEEP",
             'score': self.score_dial.value() if not self.batch_mode or (getattr(self, 'batch_update_score_toggle', None) and self.batch_update_score_toggle.isChecked()) else "KEEP",
             'folder_type': self.type_combo.currentData(),
             'display_style': self.style_combo.currentData(),
             'display_style_package': self.style_combo_pkg.currentData(),
             'tags': ", ".join(all_tags) if all_tags else None,
-            'is_visible': 0 if self.hide_checkbox.isChecked() else 1,
+            'is_visible': (0 if self.hide_checkbox.isChecked() else 1) if not self.batch_mode or (self.batch_visibility_toggle and self.batch_visibility_toggle.isChecked()) else "KEEP",
             
             # Use cached values for all targets
             # Phase 42 Fix: Do NOT save per-target rules automatically to prevent unintended overwrites
