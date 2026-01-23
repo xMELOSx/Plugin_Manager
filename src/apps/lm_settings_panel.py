@@ -173,8 +173,8 @@ class LMSettingsPanelMixin:
         # Final Fallback
         if not cur_mode:
             mapping = {'image': 'mini_image', 'text': 'text_list', 'both': 'image_text'}
-            app_cat_default = self.app_data.get('default_category_style', 'image') if hasattr(self, 'app_data') and self.app_data else 'image'
-            cur_mode = mapping.get(app_cat_default, 'mini_image')
+            app_cat_default = self.app_data.get('default_category_style', 'image_text') if hasattr(self, 'app_data') and self.app_data else 'image_text'
+            cur_mode = mapping.get(app_cat_default, 'image_text')
 
         mode_to_tab = {"text_list": 0, "mini_image": 1, "image_text": 2}
         

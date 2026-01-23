@@ -2081,7 +2081,7 @@ class LinkMasterWindow(LMCardPoolMixin, LMTagsMixin, LMFileManagementMixin, LMPo
             override = getattr(self, f'{prefix}_display_override', None)
             
             # Use stored persistent mode if no override, to avoid jumps
-            stored_mode = getattr(self, f'current_{prefix}_display_mode', 'mini_image')
+            stored_mode = getattr(self, f'current_{prefix}_display_mode', 'image_text')
             active_mode = override if override is not None else stored_mode
             
             # Fetch scale/params

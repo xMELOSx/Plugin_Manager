@@ -1132,10 +1132,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             if idx >= 0 and not self.batch_mode:
                 self.style_combo.setCurrentIndex(idx)
         elif not self.batch_mode:
-            # Select App Default (which has None as data)
-            idx = self.style_combo.findData(None)
-            if idx >= 0:
-                self.style_combo.setCurrentIndex(idx)
+            # Select App Default (index 0 in non-batch mode) - don't use findData(None) as Qt may not match None correctly
+            self.style_combo.setCurrentIndex(0)
         
         if self.batch_mode:
             self.style_combo.setCurrentIndex(0)
@@ -1160,10 +1158,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
             if idx_pkg >= 0 and not self.batch_mode:
                 self.style_combo_pkg.setCurrentIndex(idx_pkg)
         elif not self.batch_mode:
-            # Select App Default (which has None as data)
-            idx_pkg = self.style_combo_pkg.findData(None)
-            if idx_pkg >= 0:
-                self.style_combo_pkg.setCurrentIndex(idx_pkg)
+            # Select App Default (index 0 in non-batch mode) - don't use findData(None) as Qt may not match None correctly
+            self.style_combo_pkg.setCurrentIndex(0)
         
         if self.batch_mode:
             self.style_combo_pkg.setCurrentIndex(0)

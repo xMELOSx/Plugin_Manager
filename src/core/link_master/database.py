@@ -765,7 +765,7 @@ class LinkMasterDB:
                     insert_cols = ['rel_path']
                     insert_params = [rel_path]
                     for k, v in kwargs.items():
-                        if k in valid_cols and v is not None:
+                        if k in valid_cols:
                             insert_cols.append(k)
                             insert_params.append(v)
                     

@@ -218,8 +218,8 @@ class LMFileOpsMixin:
                 thumbnail_manager=self.thumbnail_manager,
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
-                app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image')
+                app_cat_style_default=app_data.get('default_category_style', 'image_text'),
+                app_pkg_style_default=app_data.get('default_package_style', 'image_text')
             )
         else:
             # Batch Mode
@@ -233,8 +233,8 @@ class LMFileOpsMixin:
                 thumbnail_manager=self.thumbnail_manager,
                 app_deploy_default=app_data.get('deployment_type', 'folder'),
                 app_conflict_default=app_data.get('conflict_policy', 'backup'),
-                app_cat_style_default=app_data.get('default_category_style', 'image'),
-                app_pkg_style_default=app_data.get('default_package_style', 'image')
+                app_cat_style_default=app_data.get('default_category_style', 'image_text'),
+                app_pkg_style_default=app_data.get('default_package_style', 'image_text')
             )
             current_config = {}
 
