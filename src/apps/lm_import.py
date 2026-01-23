@@ -208,7 +208,94 @@ class LMImportMixin:
         
         # Handle Archives (Zip / 7z / Rar)
         ext = os.path.splitext(source_path)[1].lower()
-        if ext in ['.zip', '.7z', '.rar']:
+        img_exts = ['.png', '.jpg', '.jpeg', '.webp', '.bmp']
+        
+        if ext in img_exts:
+            # Phase 66: Image Drop to Folder Import
+            from src.ui.common_widgets import FramelessMessageBox
+            msg = FramelessMessageBox(self)
+            msg.setWindowTitle(_("Create Folder from Image"))
+            msg.setText(_("Would you like to create an empty folder named '{name}' and use this image as its icon?").format(name=folder_name))
+            msg.setIcon(FramelessMessageBox.Icon.Question)
+            
+            # 3-Choice UI: Normal, Prefix, Cancel
+            # Using Yes/No/Cancel as proxies for Normal/Prefix/Cancel
+            # Actually, let's use custom buttons if possible, or just re-mapped StandardButtons
+            btn_normal = msg.addButton(_("Yes (Normal)"), FramelessMessageBox.ButtonRole.YesRole)
+            btn_prefix = msg.addButton(_("Yes (\ue000\ue001_ Prefix)"), FramelessMessageBox.ButtonRole.YesRole)
+            btn_cancel = msg.addButton(_("No / Cancel"), FramelessMessageBox.ButtonRole.NoRole)
+            
+            msg.setDefaultButton(btn_normal)
+            msg.exec()
+            
+            clicked = msg.clickedButton()
+            if clicked == btn_cancel:
+                return False
+            
+            use_prefix = (clicked == btn_prefix)
+            
+            base_name = os.path.splitext(folder_name)[0]
+            if use_prefix:
+                base_name = f"\ue000\ue001_{base_name}"
+            
+            dest_path = os.path.join(target_dir, base_name)
+            
+            # Ensure unique name
+            if os.path.exists(dest_path):
+                import time
+                dest_path = f"{dest_path}_{int(time.time())}"
+                base_name = os.path.basename(dest_path)
+            
+            try:
+                # 1. Create Empty Folder
+                os.makedirs(dest_path, exist_ok=True)
+                self.logger.info(f"Created empty folder from image drop: {dest_path}")
+                
+                # 2. Copy Image to Icon Cache
+                # We reuse the logic from FolderPropertiesDialog or similar
+                from src.core.file_handler import get_user_data_path, ensure_dir
+                import hashlib
+                import time
+                import shutil
+                
+                app_name = app_data.get('name', 'Unknown')
+                cache_dir = get_user_data_path(os.path.join("resource", "app", app_name, ".icon_cache"))
+                ensure_dir(cache_dir)
+                
+                unique_key = f"{source_path}_{time.time()}"
+                hash_name = hashlib.md5(unique_key.encode()).hexdigest()[:12]
+                cache_ext = os.path.splitext(source_path)[1].lower()
+                cache_filename = f"drop_{hash_name}{cache_ext}"
+                cache_path = os.path.join(cache_dir, cache_filename)
+                
+                shutil.copy2(source_path, cache_path)
+                self.logger.info(f"Copied dropped image to icon cache: {cache_path}")
+                
+                # 3. Register in DB with image_path
+                abs_dest = os.path.abspath(dest_path)
+                abs_storage = os.path.abspath(self.storage_root)
+                rel_path = os.path.relpath(abs_dest, abs_storage).replace('\\', '/')
+                
+                self.db.update_folder_display_config(
+                    rel_path,
+                    display_name=base_name,
+                    image_path=cache_path,
+                    folder_type=target_type,
+                    is_visible=1
+                )
+                self.logger.info(f"Registered folder with image icon: {rel_path}")
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"Failed to create folder from image drop: {e}")
+                msg_err = FramelessMessageBox(self)
+                msg_err.setWindowTitle(_("Error"))
+                msg_err.setText(_("Failed to create folder: {error}").format(error=e))
+                msg_err.setIcon(FramelessMessageBox.Icon.Critical)
+                msg_err.exec()
+                return False
+
+        elif ext in ['.zip', '.7z', '.rar']:
             folder_name = os.path.splitext(folder_name)[0]
             dest_path = os.path.join(target_dir, folder_name)
             
