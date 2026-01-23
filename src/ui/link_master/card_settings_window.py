@@ -270,12 +270,12 @@ class CardSettingsWindow(FramelessDialog):
         val = int(self.settings.get(attr, 1.0) * 100)
         
         slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setRange(50, 200) # 50% to 200%
+        slider.setRange(10, 300) # 10% to 300%
         slider.setValue(val)
         row.addWidget(slider)
         
         spin = StyledSpinBox()
-        spin.setRange(50, 200)
+        spin.setRange(10, 300)
         spin.setValue(val)
         spin.setSuffix("%")
         spin.setFixedWidth(50)

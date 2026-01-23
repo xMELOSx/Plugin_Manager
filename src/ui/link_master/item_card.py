@@ -477,7 +477,7 @@ class ItemCard(QFrame):
             
             # Fallback to App Default if folder style is None (Restoring Default)
             if target_style is None:
-                target_style = getattr(self, 'app_pkg_style_default' if self.is_package else 'app_cat_style_default', 'image')
+                target_style = getattr(self, 'app_pkg_style_default' if self.is_package else 'app_cat_style_default', 'image_text')
             
             if target_style != "KEEP":
                 self.set_display_mode(target_style)

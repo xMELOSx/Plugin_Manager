@@ -103,7 +103,7 @@ class LMDisplayMixin:
             apply_mode = self.cat_display_override
         else:
             # Blue for Default
-            app_cat_default = app_data.get('default_category_style', 'image')
+            app_cat_default = app_data.get('default_category_style', 'image_text')
             folder_mode = mapping.get(view_config.get('display_style'), view_config.get('display_style') or mapping.get(app_cat_default, app_cat_default))
             target = {
                 'text_list': self.btn_cat_text,
@@ -202,7 +202,7 @@ class LMDisplayMixin:
             apply_mode = self.pkg_display_override
         else:
             # Blue for Default
-            app_pkg_default = app_data.get('default_package_style', 'image')
+            app_pkg_default = app_data.get('default_package_style', 'image_text')
             folder_pkg_mode = view_config.get('display_style_package') or view_config.get('display_style') or mapping.get(app_pkg_default, app_pkg_default)
             folder_pkg_mode = mapping.get(folder_pkg_mode, folder_pkg_mode)
             target = {

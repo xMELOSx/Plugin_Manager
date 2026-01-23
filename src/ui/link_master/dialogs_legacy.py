@@ -2373,6 +2373,8 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
                 display_name = "KEEP" # No change if toggle is OFF
             elif not display_name:
                 display_name = "" # Explicitly clear if toggle is ON and field is empty
+        # Non-batch mode: if empty, it's already None due to 'or None' above.
+        # This will trigger ItemCard.update_data's fallback to sanitized folder name.
         
         # Phase 40: Target-Specific Rule Switching (Restored logic)
         # Update current selected target's rule in cache before collecting everything
