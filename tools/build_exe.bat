@@ -38,8 +38,14 @@ pause
 exit /b 1
 
 :PY_OK
+echo [1.5/3] Cleaning up previous build artifacts...
+if exist "build" rd /s /q "build"
+if exist "dist\Dionys Control.exe" del /f /q "dist\Dionys Control.exe"
+
+echo [2/3] Building EXE with PyInstaller...
 pyinstaller --noconsole ^
             --onefile ^
+            --clean ^
             --icon "src\resource\icon\icon.ico" ^
             --add-data "src/resource/icon;src/resource/icon" ^
             --add-data "src/resource/se;src/resource/se" ^

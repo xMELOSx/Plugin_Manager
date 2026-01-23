@@ -2979,3 +2979,28 @@ msgstr "{type}としてインポートするフォルダを選択"
 
 msgid "Select Archive to Import as {type}"
 msgstr "{type}としてインポートするアーカイブを選択"
+
+# Image Drop to Folder Import
+msgid "Create Folder from Image"
+msgstr "画像からフォルダーを作成"
+
+msgid "Would you like to create an empty folder named '{name}' and use this image as its icon?"
+msgstr "画像の名前「{name}」で空フォルダーを作成し、この画像をアイコンとして登録しますか？"
+
+msgid "Yes (Normal)"
+msgstr "はい (通常)"
+
+msgid "Add Prefix"
+msgstr "接頭辞を付与"
+
+msgid "Yes (Rename)"
+msgstr "はい (名前を指定)"
+
+msgid "No / Cancel"
+msgstr "いいえ / キャンセル"
+
+msgid "Rename Folder"
+msgstr "フォルダーのリネーム"
+
+msgid "Enter folder name:"
+msgstr "フォルダー名を入力してください:"

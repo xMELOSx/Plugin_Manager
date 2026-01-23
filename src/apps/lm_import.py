@@ -212,39 +212,47 @@ class LMImportMixin:
         
         if ext in img_exts:
             # Phase 66: Image Drop to Folder Import
-            from src.ui.common_widgets import FramelessMessageBox
+            from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
             msg = FramelessMessageBox(self)
             msg.setWindowTitle(_("Create Folder from Image"))
             msg.setText(_("Would you like to create an empty folder named '{name}' and use this image as its icon?").format(name=folder_name))
             msg.setIcon(FramelessMessageBox.Icon.Question)
             
-            # 3-Choice UI: Normal, Prefix, Cancel
-            # Using Yes/No/Cancel as proxies for Normal/Prefix/Cancel
-            # Actually, let's use custom buttons if possible, or just re-mapped StandardButtons
-            btn_normal = msg.addButton(_("Yes (Normal)"), FramelessMessageBox.ButtonRole.YesRole)
-            btn_prefix = msg.addButton(_("Yes (\ue000\ue001_ Prefix)"), FramelessMessageBox.ButtonRole.YesRole)
-            btn_cancel = msg.addButton(_("No / Cancel"), FramelessMessageBox.ButtonRole.NoRole)
+            # 4-Choice UI: Normal, Prefix, Rename, Cancel
+            # FramelessMessageBox doesn't have ButtonRole, so we use code=0 and compare button objects
+            btn_normal = msg.addButton(_("Yes (Normal)"), 0, "Blue")
+            btn_prefix = msg.addButton(_("Add Prefix"), 0, "Blue")
+            btn_rename = msg.addButton(_("Yes (Rename)"), 0, "Green")
+            btn_cancel = msg.addButton(_("No / Cancel"), 0, "Gray")
             
             msg.setDefaultButton(btn_normal)
             msg.exec()
             
             clicked = msg.clickedButton()
-            if clicked == btn_cancel:
+            if clicked == btn_cancel or not clicked:
                 return False
             
-            use_prefix = (clicked == btn_prefix)
-            
             base_name = os.path.splitext(folder_name)[0]
-            if use_prefix:
-                base_name = f"\ue000\ue001_{base_name}"
+            
+            if clicked == btn_prefix:
+                base_name = f"\ue83a\ue83a_{base_name}"
+            elif clicked == btn_rename:
+
+                input_name, ok = FramelessInputDialog.getText(self, _("Rename Folder"), _("Enter folder name:"), text=base_name)
+                if not ok or not input_name.strip():
+                    return False
+                base_name = input_name.strip()
             
             dest_path = os.path.join(target_dir, base_name)
             
-            # Ensure unique name
+            # Ensure unique name using sequential numbering (the "last number")
             if os.path.exists(dest_path):
-                import time
-                dest_path = f"{dest_path}_{int(time.time())}"
-                base_name = os.path.basename(dest_path)
+                counter = 2
+                orig_base = base_name
+                while os.path.exists(os.path.join(target_dir, f"{orig_base}_{counter}")):
+                    counter += 1
+                base_name = f"{orig_base}_{counter}"
+                dest_path = os.path.join(target_dir, base_name)
             
             try:
                 # 1. Create Empty Folder
@@ -253,8 +261,9 @@ class LMImportMixin:
                 
                 # 2. Copy Image to Icon Cache
                 # We reuse the logic from FolderPropertiesDialog or similar
-                from src.core.file_handler import get_user_data_path, ensure_dir
+                from src.utils.path_utils import get_user_data_path, ensure_dir
                 import hashlib
+
                 import time
                 import shutil
                 
