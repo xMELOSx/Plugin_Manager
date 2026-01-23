@@ -457,6 +457,27 @@ class LMFileOpsMixin:
         app_data = self.app_combo.currentData()
         if not app_data: return False
         
+        # Phase 66: Unlink before trash to avoid orphaned/dead links
+        if hasattr(self, 'deployer') and self.deployer:
+            try:
+                storage_root = app_data.get('storage_root')
+                if storage_root:
+                    # Robust relative path calculation
+                    rel_path = os.path.relpath(abs_path, storage_root).replace('\\', '/')
+                    if rel_path == ".": rel_path = ""
+                    
+                    # Unlink from all targets to be exhaustive
+                    target_roots = [
+                        app_data.get('target_root'),
+                        app_data.get('target_root_2'),
+                        app_data.get('target_root_3')
+                    ]
+                    for root in target_roots:
+                        if root and os.path.isdir(root):
+                            self.deployer.unlink_folder(app_data['name'], rel_path, root)
+            except Exception as e:
+                self.logger.error(f"Failed to unlink before trash: {e}")
+        
         # Use new resource/app/{app}/Trash path
         trash_root = get_trash_dir(app_data['name'])
             

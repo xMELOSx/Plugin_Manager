@@ -313,17 +313,27 @@ class ItemCard(QFrame):
         # Phase 59: Apply prefix stripping logic during metadata updates to prevent hidden keys exposure
         import re
         def sanitize(n):
+            # Phase 66: Enhanced sanitization for sorting prefixes (like \ue83a\ue83a_)
+            if n.startswith('\ue83a\ue83a_'):
+                 n = n[len('\ue83a\ue83a_'):]
             n = re.sub(r'[\ue000-\uf8ff]', u'', n) # Strip Private Use
             n = re.sub(r'^\d+[\.\s_\-]*', '', n) # Strip Sort Keys
             if n.startswith('_') and not n.startswith('__'): n = n[1:]
             return n
 
+        # Support 'name' and 'display_name' updates
         if 'display_name' in kwargs or 'name' in kwargs:
             val = kwargs.get('display_name') or kwargs.get('name')
-            if val:
-                self.display_name = val
+            # If explicit name provided (not None), use it.
+            if val is not None:
+                if val.strip():
+                    self.display_name = val
+                else:
+                    # Explicit empty string -> reset to sanitized folder name
+                    self.display_name = sanitize(self.folder_name) or self.folder_name
             else:
-                self.display_name = sanitize(self.folder_name)
+                # If explicit None provided, reset to sanitized folder name
+                self.display_name = sanitize(self.folder_name) or self.folder_name
 
             # Ensure display_name is updated in the card state immediately
             if 'name' in kwargs and 'display_name' not in kwargs:
@@ -461,13 +471,11 @@ class ItemCard(QFrame):
         self._deploy_btn_opacity = kwargs.get('deploy_button_opacity', getattr(self, '_deploy_btn_opacity', 0.8))
 
         # Phase 58: Apply per-folder Display Style overrides
-        # This fixes Batch Edit not applying display styles (text/image mode) visually
-        # Phase 61: Resolve None (App Default) to the passed app-level defaults
-        target_style = kwargs.get('display_style_package') if self.is_package else kwargs.get('display_style')
-        
-        # If 'display_style' or 'display_style_package' was provided, or if this is a reuse
-        if 'display_style' in kwargs or 'display_style_package' in kwargs or target_style is None:
-            # Fallback to App Default if folder style is None
+        # Only apply if explicitly provided in kwargs (to prevent resets on pinpoint updates)
+        if 'display_style' in kwargs or 'display_style_package' in kwargs:
+            target_style = kwargs.get('display_style_package') if self.is_package else kwargs.get('display_style')
+            
+            # Fallback to App Default if folder style is None (Restoring Default)
             if target_style is None:
                 target_style = getattr(self, 'app_pkg_style_default' if self.is_package else 'app_cat_style_default', 'image')
             

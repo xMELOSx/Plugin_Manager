@@ -511,7 +511,7 @@ class FramelessMessageBox(FramelessDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.resize(400, 200)
+        self.resize(600, 200)
         self.set_resizable(False)
         self._setup_ui()
         self.set_title_bar_icon_visible(True)
@@ -636,7 +636,6 @@ class FramelessMessageBox(FramelessDialog):
                 style = "Green"
         
         btn = StyledButton(text, style_type=style)
-        btn.setMinimumWidth(100)
         btn.clicked.connect(lambda _, b=btn, c=code: self._done(c, b))
         self.pixel_btn_layout.addWidget(btn)
         return btn

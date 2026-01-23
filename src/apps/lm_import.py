@@ -215,7 +215,7 @@ class LMImportMixin:
             from src.ui.common_widgets import FramelessMessageBox, FramelessInputDialog
             msg = FramelessMessageBox(self)
             msg.setWindowTitle(_("Create Folder from Image"))
-            msg.setText(_("Would you like to create an empty folder named '{name}' and use this image as its icon?").format(name=folder_name))
+            msg.setText(_("Would you like to create an empty folder named '{name}' and use this image as its icon?").format(name=os.path.splitext(folder_name)[0]))
             msg.setIcon(FramelessMessageBox.Icon.Question)
             
             # 4-Choice UI: Normal, Prefix, Rename, Cancel
@@ -233,19 +233,20 @@ class LMImportMixin:
                 return False
             
             base_name = os.path.splitext(folder_name)[0]
+            display_name = base_name # User wants the prefix hidden in the UI display name
             
             if clicked == btn_prefix:
                 base_name = f"\ue83a\ue83a_{base_name}"
             elif clicked == btn_rename:
-
                 input_name, ok = FramelessInputDialog.getText(self, _("Rename Folder"), _("Enter folder name:"), text=base_name)
                 if not ok or not input_name.strip():
                     return False
                 base_name = input_name.strip()
+                display_name = base_name # Update display name if renamed
             
             dest_path = os.path.join(target_dir, base_name)
             
-            # Ensure unique name using sequential numbering (the "last number")
+            # Ensure unique name using sequential numbering
             if os.path.exists(dest_path):
                 counter = 2
                 orig_base = base_name
@@ -253,6 +254,10 @@ class LMImportMixin:
                     counter += 1
                 base_name = f"{orig_base}_{counter}"
                 dest_path = os.path.join(target_dir, base_name)
+                # If we auto-numbered, update display name to match (but keep it clean of prefix)
+                display_name = base_name
+                if display_name.startswith("\ue83a\ue83a_"):
+                    display_name = display_name[len("\ue83a\ue83a_"):]
             
             try:
                 # 1. Create Empty Folder
@@ -260,10 +265,8 @@ class LMImportMixin:
                 self.logger.info(f"Created empty folder from image drop: {dest_path}")
                 
                 # 2. Copy Image to Icon Cache
-                # We reuse the logic from FolderPropertiesDialog or similar
                 from src.utils.path_utils import get_user_data_path, ensure_dir
                 import hashlib
-
                 import time
                 import shutil
                 
@@ -287,12 +290,14 @@ class LMImportMixin:
                 
                 self.db.update_folder_display_config(
                     rel_path,
-                    display_name=base_name,
+                    display_name=display_name,
                     image_path=cache_path,
                     folder_type=target_type,
-                    is_visible=1
+                    is_visible=1,
+                    display_style=None,
+                    display_style_package=None
                 )
-                self.logger.info(f"Registered folder with image icon: {rel_path}")
+                self.logger.info(f"Registered folder: {rel_path} (display: {display_name})")
                 return True
                 
             except Exception as e:
@@ -303,6 +308,7 @@ class LMImportMixin:
                 msg_err.setIcon(FramelessMessageBox.Icon.Critical)
                 msg_err.exec()
                 return False
+
 
         elif ext in ['.zip', '.7z', '.rar']:
             folder_name = os.path.splitext(folder_name)[0]
