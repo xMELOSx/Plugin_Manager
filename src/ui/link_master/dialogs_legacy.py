@@ -1127,7 +1127,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         current_style = self.current_config.get('display_style') # None = App Default
 
         # Ensure App Default is selected when style is not set
-        if current_style:
+        if current_style is not None:
             idx = self.style_combo.findData(current_style)
             if idx >= 0 and not self.batch_mode:
                 self.style_combo.setCurrentIndex(idx)
@@ -1155,7 +1155,7 @@ class FolderPropertiesDialog(FramelessDialog, OptionsMixin):
         current_style_pkg = self.current_config.get('display_style_package') # None = App Default
 
         # Ensure App Default is selected when style is not set
-        if current_style_pkg:
+        if current_style_pkg is not None:
             idx_pkg = self.style_combo_pkg.findData(current_style_pkg)
             if idx_pkg >= 0 and not self.batch_mode:
                 self.style_combo_pkg.setCurrentIndex(idx_pkg)

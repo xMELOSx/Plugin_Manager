@@ -462,9 +462,17 @@ class ItemCard(QFrame):
 
         # Phase 58: Apply per-folder Display Style overrides
         # This fixes Batch Edit not applying display styles (text/image mode) visually
+        # Phase 61: Resolve None (App Default) to the passed app-level defaults
         target_style = kwargs.get('display_style_package') if self.is_package else kwargs.get('display_style')
-        if target_style and target_style != "KEEP":
-            self.set_display_mode(target_style)
+        
+        # If 'display_style' or 'display_style_package' was provided, or if this is a reuse
+        if 'display_style' in kwargs or 'display_style_package' in kwargs or target_style is None:
+            # Fallback to App Default if folder style is None
+            if target_style is None:
+                target_style = getattr(self, 'app_pkg_style_default' if self.is_package else 'app_cat_style_default', 'image')
+            
+            if target_style != "KEEP":
+                self.set_display_mode(target_style)
 
         # 4. Reset Interaction State (ALWAYS reset when card is reused for a different path)
         if self.path != old_path:
@@ -1385,6 +1393,10 @@ class ItemCard(QFrame):
         This only controls visibility of elements, NOT sizes.
         Use set_card_params for size control.
         """
+        # Phase 61: Map raw DB strings ('image', 'text') to internal mode strings
+        mapping = {'image': 'mini_image', 'text': 'text_list'}
+        mode = mapping.get(mode, mode)
+        
         self._display_mode = mode
 
         if mode == 'text_list':
