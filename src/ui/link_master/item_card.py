@@ -85,7 +85,7 @@ class ItemCard(QFrame):
                  is_misplaced: bool = False, is_trash_view: bool = False, is_hidden: bool = False, is_partial: bool = False,
                  deploy_type: str = 'folder', conflict_policy: str = 'backup',
                  app_deploy_default: str = 'folder', app_conflict_default: str = 'backup',
-                 app_cat_style_default: str = 'image', app_pkg_style_default: str = 'image',
+                 app_cat_style_default: str = 'image_text', app_pkg_style_default: str = 'image_text',
                  show_link: bool = True, show_deploy: bool = True,
                  deploy_button_opacity: float = 0.8,
                  is_library: int = 0, lib_name: str = '', is_intentional: bool = False, **kwargs):

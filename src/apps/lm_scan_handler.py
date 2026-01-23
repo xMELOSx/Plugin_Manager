@@ -157,8 +157,8 @@ class LMScanHandlerMixin:
             view_config.pop('display_style_package', None)
         
         # Defaults from App Data
-        app_cat_style_default = app_data.get('default_category_style', 'image')
-        app_pkg_style_default = app_data.get('default_package_style', 'image')
+        app_cat_style_default = app_data.get('default_category_style', 'image_text')
+        app_pkg_style_default = app_data.get('default_package_style', 'image_text')
         
         # Mapping for legacy modes
         mapping = {'image': 'mini_image', 'text': 'text_list'}

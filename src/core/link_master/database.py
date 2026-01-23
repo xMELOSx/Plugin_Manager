@@ -29,8 +29,8 @@ class LinkMasterRegistry:
                 deployment_type TEXT DEFAULT 'folder',
                 cover_image TEXT,
                 last_target TEXT DEFAULT 'target_root',
-                default_category_style TEXT DEFAULT 'image',
-                default_package_style TEXT DEFAULT 'image',
+                default_category_style TEXT DEFAULT 'image_text',
+                default_package_style TEXT DEFAULT 'image_text',
                 default_skip_levels INTEGER DEFAULT 0
 
             )''',
@@ -65,10 +65,16 @@ class LinkMasterRegistry:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN last_target TEXT DEFAULT 'target_root'")
             except: pass
             try:
-                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_category_style TEXT DEFAULT 'image'")
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_category_style TEXT DEFAULT 'image_text'")
             except: pass
             try:
-                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_package_style TEXT DEFAULT 'image'")
+                conn.execute("ALTER TABLE lm_apps ADD COLUMN default_package_style TEXT DEFAULT 'image_text'")
+            except: pass
+            
+            # Phase 67: Migrate old hardcoded 'image' default to 'image_text'
+            try:
+                conn.execute("UPDATE lm_apps SET default_category_style = 'image_text' WHERE default_category_style = 'image'")
+                conn.execute("UPDATE lm_apps SET default_package_style = 'image_text' WHERE default_package_style = 'image'")
             except: pass
             try:
                 conn.execute("ALTER TABLE lm_apps ADD COLUMN executables TEXT DEFAULT '[]'")

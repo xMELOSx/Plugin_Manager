@@ -233,7 +233,7 @@ class LMImportMixin:
                 return False
             
             base_name = os.path.splitext(folder_name)[0]
-            display_name = base_name # User wants the prefix hidden in the UI display name
+            display_name = None # Phase 67: Default to NULL to follow folder name dynamically
             
             if clicked == btn_prefix:
                 base_name = f"\ue83a\ue83a_{base_name}"
@@ -242,7 +242,7 @@ class LMImportMixin:
                 if not ok or not input_name.strip():
                     return False
                 base_name = input_name.strip()
-                display_name = base_name # Update display name if renamed
+                display_name = base_name # Explicitly set if renamed
             
             dest_path = os.path.join(target_dir, base_name)
             
@@ -254,10 +254,8 @@ class LMImportMixin:
                     counter += 1
                 base_name = f"{orig_base}_{counter}"
                 dest_path = os.path.join(target_dir, base_name)
-                # If we auto-numbered, update display name to match (but keep it clean of prefix)
-                display_name = base_name
-                if display_name.startswith("\ue83a\ue83a_"):
-                    display_name = display_name[len("\ue83a\ue83a_"):]
+                # Phase 67: Do NOT set display_name here. 
+                # Keeping it None allows the UI to dynamically show the folder name (without prefix).
             
             try:
                 # 1. Create Empty Folder
